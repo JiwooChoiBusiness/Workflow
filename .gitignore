@@ -1,0 +1,39 @@
+# 비밀값·로컬 설정
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 런타임 데이터 (저장소에 넣지 않음)
+data/
+backups/
+storage/
+*.tar.gz
+*.dump
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# 에디터·OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Claude Code 로컬 설정 (공유 설정 .claude/settings.json 과 agents/ 는 포함)
+.claude/settings.local.json
