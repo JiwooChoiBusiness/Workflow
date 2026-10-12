@@ -6,9 +6,9 @@
 *.key
 
 # 런타임 데이터 (저장소에 넣지 않음)
-data/
-backups/
-storage/
+/data/
+/backups/
+/storage/
 *.tar.gz
 *.dump
 

@@ -1,0 +1,15 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.placeholder {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}

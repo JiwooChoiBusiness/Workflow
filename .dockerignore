@@ -1,0 +1,18 @@
+# 모든 이미지가 저장소 루트를 빌드 컨텍스트로 쓴다. 비밀값과 로컬 산출물은 데몬에 보내지 않는다.
+.git
+.github
+.claude
+docs
+**/.env
+**/.env.*
+data
+backups
+storage
+**/node_modules
+**/dist
+**/coverage
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache

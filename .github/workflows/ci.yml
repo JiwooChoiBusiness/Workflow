@@ -1,0 +1,69 @@
+# 린트·테스트와 compose 스모크만 돈다. 이미지 푸시와 배포는 하지 않는다(ADR-0002).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [apps/api, apps/sandboxd]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.0"
+          python-version: "3.12"
+          working-directory: ${{ matrix.project }}
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  compose:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose --env-file .env -f infra/docker/compose.yaml
+    steps:
+      - uses: actions/checkout@v7
+      - run: cp .env.example .env
+      - run: $COMPOSE up -d --build --wait --wait-timeout 300
+      - run: bash scripts/smoke.sh
+      - if: failure()
+        run: $COMPOSE ps && $COMPOSE logs --no-color
+      - if: always()
+        run: $COMPOSE down -v

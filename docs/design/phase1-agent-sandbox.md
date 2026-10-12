@@ -941,6 +941,14 @@ M10에서 각 항목에 확인 방법과 결과를 기입한다. "대응"은 설
 - 프로바이더 서버측 압축·컨텍스트 편집 기능은 사용하지 않음(프로바이더 중립).
 - 라이브러리 스킬은 발행 시 버전을 고정(`skill_version_ids`), 자동 최신 추적 없음.
 - 단일 계정, 역할 없음, 감사 로그 없음, 엔드유저 테이블 없음(ADR-0002). 다인 사용으로 전환하면 ADR을 갱신하고 마이그레이션으로 추가한다.
+- M1 이후 확정한 기본값(2026-10-12):
+  - compose 프로젝트 이름은 `workflow`로 고정한다(볼륨 `workflow_pgdata` 등). 바꾸면 데이터 볼륨이 새로 생기므로 바꾸지 않는다.
+  - compose 파일이 `infra/docker`에 있으므로 루트에서 `--env-file .env`를 항상 붙인다. 스크립트와 CI가 이를 포함한다.
+  - sandbox-manager는 자기 컨테이너 안에서 root로 실행해 Docker 소켓에 접근한다(M3). api·runner 이미지는 비루트(uid 10001)를 유지한다. 네트워크 서브넷은 app-net 172.28.0.0/24(sandbox-manager 고정 IP 172.28.0.10), sandbox-net 172.28.1.0/24, egress-net 172.28.2.0/24.
+  - `compose.dev.yaml`은 Postgres·Redis를 127.0.0.1:5432, 127.0.0.1:6379로 노출해 로컬 백엔드 실행을 돕는다(M2).
+  - "빈 홈"은 home-skeleton만 있는 상태(`.gitkeep`, `.profile` 외 파일 없음)로 정의한다. 스냅샷 복원은 이 상태에서만 허용한다(M3).
+  - 샌드박스 이미지는 `infra/sandbox-image/**`가 바뀐 커밋에서만 CI가 빌드한다(M3). 평소 CI는 lint·test·compose 스모크만.
+  - squid 사설 대역 차단에 `0.0.0.0/8`, `::1`을 추가했다. `.gitignore`의 `data/`, `backups/`, `storage/`는 루트 고정(`/data/` 등)으로 바꿨다.
 
 ### 12.3 리스크
 
