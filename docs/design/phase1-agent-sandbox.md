@@ -405,6 +405,7 @@ stop_reason 정규화: `end_turn`(Anthropic `end_turn`, OpenAI `stop`), `tool_us
 - SDK `max_retries=2`(연결·429·5xx 자동 재시도), `timeout=600`. 스트림 중간 끊김은 4.6절.
 
 **OpenAI 호환 (`app/llm/openai_adapter.py`, 공식 `openai` SDK, Chat Completions, `base_url` 지정)**
+- 기본 프로바이더는 Gemini의 OpenAI 호환 엔드포인트(`https://generativelanguage.googleapis.com/v1beta/openai`)다(ADR-0003). 프로바이더 설정에 키를 여러 개 두고 순서대로 로테이션하며, 429를 받은 키는 다음 키로 넘어간다. 모델 폴백 목록(`gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash`)은 429·503 같은 일시 오류에서만 다음 모델로 넘어간다. 빈 응답(사고 토큰이 출력 상한을 소진)은 상한을 올려 1회 재시도한다.
 - 대상: OpenAI 본가, vLLM, Ollama, LiteLLM, OpenRouter 등 `/v1/chat/completions`를 제공하는 모든 엔드포인트. Responses API는 호환 서버 지원이 고르지 않아 채택하지 않는다.
 - 메시지 변환: `system` → 첫 `{"role":"system"}`; assistant `ToolUseBlock` → `tool_calls[{id, type:"function", function:{name, arguments: json.dumps(input)}}]`; user 메시지의 `ToolResultBlock`들 → 각각 `{"role":"tool","tool_call_id","content"}` 메시지로 분해(텍스트 블록은 별도 user 메시지); `OpaqueBlock` 제거.
 - 도구: `{"type":"function","function":{name, description, parameters, strict}}`. `strict`는 프로바이더 설정 `supports_strict_tools`가 true일 때만.
