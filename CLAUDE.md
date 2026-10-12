@@ -26,9 +26,9 @@
 
 ## 프로젝트 개요
 
-- 목표: Dify와 유사한 LLM 앱·에이전트 플랫폼을 직접 구현한다. 작성자 본인 1명이 자기 PC(Windows 11 + Docker Desktop)에서 쓰는 개인용이며, Dify 코드·패키지에 의존하지 않는다. GitHub은 비공개 저장소에 코드만 보존한다.
+- 목표: Dify와 유사한 LLM 앱·에이전트 플랫폼을 직접 구현한다. 작성자 본인 1명이 자기 PC(Windows 11)에서 파이썬 프로세스 하나로 돌리는 개인용이며, Dify 코드·패키지에 의존하지 않는다. GitHub은 비공개 저장소에 코드만 보존한다.
 - 단계: 1단계 에이전트 샌드박스, 2단계 워크플로우 엔진·캔버스, 3단계 RAG.
-- 기본 스택(가정): Python FastAPI 백엔드, TypeScript React 프론트엔드, PostgreSQL, Redis, Docker.
+- 스택: Python FastAPI 단일 프로세스(API + 러너 + 정적 서빙), SQLite, TypeScript React. Docker·Postgres·Redis 없음. LLM은 Gemini만(OpenAI 호환 엔드포인트, 키 순환, 모델 폴백). 근거는 ADR-0004.
 - 핵심 문서
   - 분석: `docs/research/dify-analysis.md`
   - 결정 기록: `docs/decisions/` (ADR)
