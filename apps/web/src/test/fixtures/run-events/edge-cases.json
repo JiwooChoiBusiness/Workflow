@@ -1,0 +1,949 @@
+[
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 1,
+    "ts": "2026-10-13T05:05:00.000Z",
+    "type": "run.queued",
+    "data": {
+      "position": 2
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 2,
+    "ts": "2026-10-13T05:05:00.900Z",
+    "type": "run.queued",
+    "data": {
+      "position": 1
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 3,
+    "ts": "2026-10-13T05:05:01.800Z",
+    "type": "run.started",
+    "data": {
+      "step_limit": 30,
+      "model": "gemini-3.8-flash",
+      "workspace_instance_id": "0199d7a0-5c1e-7a00-8000-0000000000aa",
+      "resumed": false,
+      "approval_mode": "off"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 4,
+    "ts": "2026-10-13T05:05:01.840Z",
+    "type": "workspace.restoring",
+    "data": {
+      "snapshot_id": "0199d7a0-5c1e-7a00-8000-0000000000d1"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 5,
+    "ts": "2026-10-13T05:05:02.440Z",
+    "type": "workspace.restored",
+    "data": {
+      "snapshot_id": "0199d7a0-5c1e-7a00-8000-0000000000d1",
+      "packages": 3
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 6,
+    "ts": "2026-10-13T05:05:02.480Z",
+    "type": "step.started",
+    "data": {
+      "step": 1
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 7,
+    "ts": "2026-10-13T05:05:02.600Z",
+    "type": "thinking.delta",
+    "data": {
+      "text": "요청을 나눠 보면 "
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 8,
+    "ts": "2026-10-13T05:05:02.720Z",
+    "type": "thinking.delta",
+    "data": {
+      "text": "두 파일을 비교하는 일이다. "
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 9,
+    "ts": "2026-10-13T05:05:02.840Z",
+    "type": "thinking.delta",
+    "data": {
+      "text": "먼저 둘 다 읽어야 한다."
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 10,
+    "ts": "2026-10-13T05:05:02.900Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b8",
+      "text": "두 파일을 읽어 비"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 11,
+    "ts": "2026-10-13T05:05:03.300Z",
+    "type": "run.retrying",
+    "data": {
+      "step": 1,
+      "reason": "model_stream_interrupted",
+      "attempt": 1
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 12,
+    "ts": "2026-10-13T05:05:03.600Z",
+    "type": "thinking.delta",
+    "data": {
+      "text": "다시: 두 파일을 함께 읽는다."
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 13,
+    "ts": "2026-10-13T05:05:03.635Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b9",
+      "text": "두 파일을 함께 읽어 비교"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 14,
+    "ts": "2026-10-13T05:05:03.670Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b9",
+      "text": "하겠습니다."
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 15,
+    "ts": "2026-10-13T05:05:03.730Z",
+    "type": "tool_call.started",
+    "data": {
+      "tool_call_id": "call_31",
+      "name": "read_file"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 16,
+    "ts": "2026-10-13T05:05:03.755Z",
+    "type": "tool_call.input_delta",
+    "data": {
+      "tool_call_id": "call_31",
+      "json_fragment": "{\"path\": \"notes.md\"}"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 17,
+    "ts": "2026-10-13T05:05:03.785Z",
+    "type": "tool_call.ready",
+    "data": {
+      "tool_call_id": "call_31",
+      "name": "read_file",
+      "input": {
+        "path": "notes.md"
+      }
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 18,
+    "ts": "2026-10-13T05:05:03.845Z",
+    "type": "tool_call.started",
+    "data": {
+      "tool_call_id": "call_32",
+      "name": "read_file"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 19,
+    "ts": "2026-10-13T05:05:03.870Z",
+    "type": "tool_call.input_delta",
+    "data": {
+      "tool_call_id": "call_32",
+      "json_fragment": "{\"path\": \"..\\\\..\\\\app.db"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 20,
+    "ts": "2026-10-13T05:05:03.895Z",
+    "type": "tool_call.input_delta",
+    "data": {
+      "tool_call_id": "call_32",
+      "json_fragment": "\"}"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 21,
+    "ts": "2026-10-13T05:05:03.925Z",
+    "type": "tool_call.ready",
+    "data": {
+      "tool_call_id": "call_32",
+      "name": "read_file",
+      "input": {
+        "path": "..\\..\\app.db"
+      }
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 22,
+    "ts": "2026-10-13T05:05:03.975Z",
+    "type": "tool_call.completed",
+    "data": {
+      "tool_call_id": "call_31",
+      "status": "ok",
+      "exit_code": null,
+      "timed_out": false,
+      "duration_ms": 6,
+      "output_excerpt": "# 메모\n- 3분기 매출 정리\n- 거래처 목록 업데이트\n",
+      "output_bytes": 65,
+      "output_storage_key": null
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 23,
+    "ts": "2026-10-13T05:05:04.005Z",
+    "type": "tool_call.completed",
+    "data": {
+      "tool_call_id": "call_32",
+      "status": "error",
+      "exit_code": null,
+      "timed_out": false,
+      "duration_ms": 2,
+      "output_excerpt": "path_outside_workspace: 작업공간 밖의 경로는 읽을 수 없다",
+      "output_bytes": 71,
+      "output_storage_key": null
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 24,
+    "ts": "2026-10-13T05:05:04.045Z",
+    "type": "usage",
+    "data": {
+      "step": 1,
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "input_tokens": 3120,
+      "output_tokens": 102,
+      "reasoning_tokens": 64,
+      "cached_input_tokens": 0,
+      "estimated": false
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 25,
+    "ts": "2026-10-13T05:05:04.085Z",
+    "type": "message.completed",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b9",
+      "text": "두 파일을 함께 읽어 비교하겠습니다.",
+      "stop_reason": "tool_use",
+      "files": []
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 26,
+    "ts": "2026-10-13T05:05:04.285Z",
+    "type": "step.started",
+    "data": {
+      "step": 2
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 27,
+    "ts": "2026-10-13T05:05:05.785Z",
+    "type": "context.compacted",
+    "data": {
+      "before_tokens": 212345,
+      "after_tokens": 8421,
+      "summary_message_id": "0199d7a0-5c1e-7a00-8000-0000000000e1"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 28,
+    "ts": "2026-10-13T05:05:05.805Z",
+    "type": "context.prompt_changed",
+    "data": {
+      "previous_hash": "3f1c9a0b7d2e4c55",
+      "prompt_hash": "9b0e2d4a6c8f1e33"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 29,
+    "ts": "2026-10-13T05:05:05.865Z",
+    "type": "tool_call.started",
+    "data": {
+      "tool_call_id": "call_33",
+      "name": "shell"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 30,
+    "ts": "2026-10-13T05:05:05.890Z",
+    "type": "tool_call.input_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "json_fragment": "{\"command\": \"python long"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 31,
+    "ts": "2026-10-13T05:05:05.915Z",
+    "type": "tool_call.input_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "json_fragment": "_job.py\", \"timeout_sec\":"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 32,
+    "ts": "2026-10-13T05:05:05.940Z",
+    "type": "tool_call.input_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "json_fragment": " 5}"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 33,
+    "ts": "2026-10-13T05:05:05.970Z",
+    "type": "tool_call.ready",
+    "data": {
+      "tool_call_id": "call_33",
+      "name": "shell",
+      "input": {
+        "command": "python long_job.py",
+        "timeout_sec": 5
+      }
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 34,
+    "ts": "2026-10-13T05:05:06.060Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[01/40] 처리 중... rows=2500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 35,
+    "ts": "2026-10-13T05:05:06.150Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[02/40] 처리 중... rows=5000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 36,
+    "ts": "2026-10-13T05:05:06.240Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[03/40] 처리 중... rows=7500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 37,
+    "ts": "2026-10-13T05:05:06.330Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[04/40] 처리 중... rows=10000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 38,
+    "ts": "2026-10-13T05:05:06.420Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[05/40] 처리 중... rows=12500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 39,
+    "ts": "2026-10-13T05:05:06.510Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[06/40] 처리 중... rows=15000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 40,
+    "ts": "2026-10-13T05:05:06.600Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[07/40] 처리 중... rows=17500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 41,
+    "ts": "2026-10-13T05:05:06.690Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[08/40] 처리 중... rows=20000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 42,
+    "ts": "2026-10-13T05:05:06.780Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[09/40] 처리 중... rows=22500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 43,
+    "ts": "2026-10-13T05:05:06.870Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[10/40] 처리 중... rows=25000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 44,
+    "ts": "2026-10-13T05:05:06.960Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[11/40] 처리 중... rows=27500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 45,
+    "ts": "2026-10-13T05:05:07.050Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[12/40] 처리 중... rows=30000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 46,
+    "ts": "2026-10-13T05:05:07.140Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[13/40] 처리 중... rows=32500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 47,
+    "ts": "2026-10-13T05:05:07.230Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[14/40] 처리 중... rows=35000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 48,
+    "ts": "2026-10-13T05:05:07.320Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[15/40] 처리 중... rows=37500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 49,
+    "ts": "2026-10-13T05:05:07.410Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[16/40] 처리 중... rows=40000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 50,
+    "ts": "2026-10-13T05:05:07.500Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[17/40] 처리 중... rows=42500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 51,
+    "ts": "2026-10-13T05:05:07.590Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[18/40] 처리 중... rows=45000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 52,
+    "ts": "2026-10-13T05:05:07.680Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[19/40] 처리 중... rows=47500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 53,
+    "ts": "2026-10-13T05:05:07.770Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[20/40] 처리 중... rows=50000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 54,
+    "ts": "2026-10-13T05:05:07.860Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[21/40] 처리 중... rows=52500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 55,
+    "ts": "2026-10-13T05:05:07.950Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[22/40] 처리 중... rows=55000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 56,
+    "ts": "2026-10-13T05:05:08.040Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[23/40] 처리 중... rows=57500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 57,
+    "ts": "2026-10-13T05:05:08.130Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[24/40] 처리 중... rows=60000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 58,
+    "ts": "2026-10-13T05:05:08.220Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[25/40] 처리 중... rows=62500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 59,
+    "ts": "2026-10-13T05:05:08.310Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[26/40] 처리 중... rows=65000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 60,
+    "ts": "2026-10-13T05:05:08.400Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[27/40] 처리 중... rows=67500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 61,
+    "ts": "2026-10-13T05:05:08.490Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[28/40] 처리 중... rows=70000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 62,
+    "ts": "2026-10-13T05:05:08.580Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[29/40] 처리 중... rows=72500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 63,
+    "ts": "2026-10-13T05:05:08.670Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[30/40] 처리 중... rows=75000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 64,
+    "ts": "2026-10-13T05:05:08.760Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[31/40] 처리 중... rows=77500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 65,
+    "ts": "2026-10-13T05:05:08.850Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[32/40] 처리 중... rows=80000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 66,
+    "ts": "2026-10-13T05:05:08.940Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[33/40] 처리 중... rows=82500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 67,
+    "ts": "2026-10-13T05:05:09.030Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[34/40] 처리 중... rows=85000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 68,
+    "ts": "2026-10-13T05:05:09.120Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[35/40] 처리 중... rows=87500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 69,
+    "ts": "2026-10-13T05:05:09.210Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[36/40] 처리 중... rows=90000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 70,
+    "ts": "2026-10-13T05:05:09.300Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[37/40] 처리 중... rows=92500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 71,
+    "ts": "2026-10-13T05:05:09.390Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[38/40] 처리 중... rows=95000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 72,
+    "ts": "2026-10-13T05:05:09.480Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[39/40] 처리 중... rows=97500\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 73,
+    "ts": "2026-10-13T05:05:09.570Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stdout",
+      "text": "[40/40] 처리 중... rows=100000\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 74,
+    "ts": "2026-10-13T05:05:09.660Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_33",
+      "stream": "stderr",
+      "text": "Traceback (most recent call last): 시간 초과로 중단\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 75,
+    "ts": "2026-10-13T05:05:09.740Z",
+    "type": "tool_call.completed",
+    "data": {
+      "tool_call_id": "call_33",
+      "status": "timeout",
+      "exit_code": null,
+      "timed_out": true,
+      "duration_ms": 5004,
+      "peak_memory_bytes": 214958080,
+      "output_excerpt": "[01/40] 처리 중...",
+      "output_bytes": 284211,
+      "output_storage_key": "tool-outputs/0199d7a0-5c1e-7a00-8000-0000000000a4/call_33.txt"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 76,
+    "ts": "2026-10-13T05:05:09.780Z",
+    "type": "usage",
+    "data": {
+      "step": 2,
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "input_tokens": 9050,
+      "output_tokens": 40,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "estimated": false
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 77,
+    "ts": "2026-10-13T05:05:10.180Z",
+    "type": "run.error",
+    "data": {
+      "code": "model_unavailable",
+      "message": "모든 키와 폴백 모델에서 429를 받았다",
+      "retryable": true
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a4",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 78,
+    "ts": "2026-10-13T05:05:10.220Z",
+    "type": "run.completed",
+    "data": {
+      "status": "failed",
+      "usage_total": {
+        "input_tokens": 12170,
+        "output_tokens": 142,
+        "reasoning_tokens": 64,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "steps": 2
+    }
+  }
+]

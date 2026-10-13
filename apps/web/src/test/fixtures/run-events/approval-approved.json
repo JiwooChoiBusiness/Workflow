@@ -1,0 +1,226 @@
+[
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 32,
+    "ts": "2026-10-13T05:02:00.000Z",
+    "type": "run.resumed",
+    "data": {
+      "interaction_id": "int_01"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 33,
+    "ts": "2026-10-13T05:02:00.150Z",
+    "type": "run.started",
+    "data": {
+      "step_limit": 30,
+      "model": "gemini-3.8-flash",
+      "workspace_instance_id": "0199d7a0-5c1e-7a00-8000-0000000000aa",
+      "resumed": true,
+      "approval_mode": "all_shell"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 34,
+    "ts": "2026-10-13T05:02:00.570Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_02",
+      "stream": "stdout",
+      "text": "상태 코드: 200\r\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 35,
+    "ts": "2026-10-13T05:02:00.990Z",
+    "type": "tool_call.output_delta",
+    "data": {
+      "tool_call_id": "call_02",
+      "stream": "stderr",
+      "text": "경고: 응답 헤더에 Content-Length가 없습니다.\r\n"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 36,
+    "ts": "2026-10-13T05:02:01.110Z",
+    "type": "tool_call.completed",
+    "data": {
+      "tool_call_id": "call_02",
+      "status": "ok",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_ms": 1873,
+      "peak_memory_bytes": 61440000,
+      "output_excerpt": "상태 코드: 200\r\n",
+      "output_bytes": 81,
+      "output_storage_key": null
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 37,
+    "ts": "2026-10-13T05:02:01.170Z",
+    "type": "file.changed",
+    "data": {
+      "path": "outputs/status.txt",
+      "size": 24,
+      "session_file_id": "0199d7a0-5c1e-7a00-8000-0000000000f1",
+      "downloadable": true
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 38,
+    "ts": "2026-10-13T05:02:01.420Z",
+    "type": "step.started",
+    "data": {
+      "step": 3
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 39,
+    "ts": "2026-10-13T05:02:01.455Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "pypi.org는 **20"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 40,
+    "ts": "2026-10-13T05:02:01.490Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "0**을 돌려줬습니다. 결"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 41,
+    "ts": "2026-10-13T05:02:01.525Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "과는 `outputs/st"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 42,
+    "ts": "2026-10-13T05:02:01.560Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "atus.txt`에 저장했"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 43,
+    "ts": "2026-10-13T05:02:01.595Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "고, PowerShell "
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 44,
+    "ts": "2026-10-13T05:02:01.630Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "5.1에서도 한글이 깨지지"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 45,
+    "ts": "2026-10-13T05:02:01.665Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": " 않았습니다."
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 46,
+    "ts": "2026-10-13T05:02:01.705Z",
+    "type": "usage",
+    "data": {
+      "step": 3,
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "input_tokens": 2930,
+      "output_tokens": 77,
+      "reasoning_tokens": 18,
+      "cached_input_tokens": 0,
+      "estimated": false
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 47,
+    "ts": "2026-10-13T05:02:01.745Z",
+    "type": "message.completed",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b4",
+      "text": "pypi.org는 **200**을 돌려줬습니다. 결과는 `outputs/status.txt`에 저장했고, PowerShell 5.1에서도 한글이 깨지지 않았습니다.",
+      "stop_reason": "end_turn",
+      "files": [
+        {
+          "session_file_id": "0199d7a0-5c1e-7a00-8000-0000000000f1",
+          "path": "outputs/status.txt",
+          "size": 24,
+          "downloadable": true,
+          "filename": "status.txt",
+          "mime": "text/plain"
+        }
+      ]
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 48,
+    "ts": "2026-10-13T05:02:01.785Z",
+    "type": "run.completed",
+    "data": {
+      "status": "succeeded",
+      "usage_total": {
+        "input_tokens": 7990,
+        "output_tokens": 281,
+        "reasoning_tokens": 58,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "steps": 3
+    }
+  }
+]

@@ -1,3 +1,7 @@
 dist
 coverage
 pnpm-lock.yaml
+playwright-report
+test-results
+# scripts/gen-api-types.sh가 만드는 파일
+src/api/schema.d.ts

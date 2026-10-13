@@ -1,0 +1,135 @@
+[
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 32,
+    "ts": "2026-10-13T05:02:00.000Z",
+    "type": "run.resumed",
+    "data": {
+      "interaction_id": "int_01"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 33,
+    "ts": "2026-10-13T05:02:00.150Z",
+    "type": "run.started",
+    "data": {
+      "step_limit": 30,
+      "model": "gemini-3.8-flash",
+      "workspace_instance_id": "0199d7a0-5c1e-7a00-8000-0000000000aa",
+      "resumed": true,
+      "approval_mode": "all_shell"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 34,
+    "ts": "2026-10-13T05:02:00.210Z",
+    "type": "tool_call.completed",
+    "data": {
+      "tool_call_id": "call_02",
+      "status": "rejected",
+      "exit_code": null,
+      "timed_out": false,
+      "duration_ms": 0,
+      "output_excerpt": "",
+      "output_bytes": 0,
+      "output_storage_key": null
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 35,
+    "ts": "2026-10-13T05:02:00.460Z",
+    "type": "step.started",
+    "data": {
+      "step": 3
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 36,
+    "ts": "2026-10-13T05:02:00.495Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b5",
+      "text": "알겠습니다. 명령은 실행하"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 37,
+    "ts": "2026-10-13T05:02:00.530Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b5",
+      "text": "지 않았습니다. 다른 방법"
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 38,
+    "ts": "2026-10-13T05:02:00.565Z",
+    "type": "message.delta",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b5",
+      "text": "이 필요하면 알려 주세요."
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 39,
+    "ts": "2026-10-13T05:02:00.605Z",
+    "type": "usage",
+    "data": {
+      "step": 3,
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "input_tokens": 2890,
+      "output_tokens": 31,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "estimated": false
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 40,
+    "ts": "2026-10-13T05:02:00.645Z",
+    "type": "message.completed",
+    "data": {
+      "message_id": "0199d7a0-5c1e-7a00-8000-0000000000b5",
+      "text": "알겠습니다. 명령은 실행하지 않았습니다. 다른 방법이 필요하면 알려 주세요.",
+      "stop_reason": "end_turn",
+      "files": []
+    }
+  },
+  {
+    "run_id": "0199d7a0-5c1e-7a00-8000-0000000000a2",
+    "session_id": "0199d7a0-5c1e-7a00-8000-00000000c0de",
+    "seq": 41,
+    "ts": "2026-10-13T05:02:00.685Z",
+    "type": "run.completed",
+    "data": {
+      "status": "succeeded",
+      "usage_total": {
+        "input_tokens": 7950,
+        "output_tokens": 235,
+        "reasoning_tokens": 40,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "steps": 3
+    }
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "status": 409,
+  "body": {
+    "error": {
+      "code": "run_in_progress",
+      "message": "이 세션에서 진행 중인 런이 있다. 끝나거나 승인·답을 받은 뒤 다시 보낸다",
+      "details": {
+        "run_id": "01a1339b-31bf-743c-afd5-8e74de9ee283",
+        "status": "waiting_input",
+        "interaction": "approval"
+      }
+    }
+  },
+  "waiting": {
+    "run_id": "01a1339b-31bf-743c-afd5-8e74de9ee283",
+    "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+    "seq": 10,
+    "ts": "2026-10-13T04:52:51.340Z",
+    "type": "run.completed",
+    "data": {
+      "status": "waiting_input",
+      "usage_total": {
+        "input_tokens": 1689,
+        "output_tokens": 8,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "steps": 1,
+      "changes_truncated": null,
+      "limit": null,
+      "output": null,
+      "error": null
+    }
+  }
+}

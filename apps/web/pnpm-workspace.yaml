@@ -1,4 +1,6 @@
 # eslint-plugin-jsx-a11y 6.10.2의 peer 범위는 ESLint 9까지지만 ESLint 10에서도 규칙이 동작한다.
+# openapi-typescript 7.13의 peer 범위는 TypeScript 5지만 6에서도 타입 생성이 같다.
 peerDependencyRules:
   allowedVersions:
     eslint-plugin-jsx-a11y>eslint: "10"
+    openapi-typescript>typescript: "6"

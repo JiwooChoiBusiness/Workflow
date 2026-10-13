@@ -1,0 +1,116 @@
+/*
+ * 디자인 토큰. 색은 모두 여기서만 정한다. index.css의 @theme이 이 값을 Tailwind 유틸리티
+ * (bg-surface, text-ink-muted 등)로 연결하고, 기본 팔레트는 지워 둔다.
+ */
+:root {
+  color-scheme: light;
+
+  --wf-canvas: #f6f5f2;
+  --wf-surface: #ffffff;
+  --wf-sunken: #efede8;
+  --wf-hover: #e9e6df;
+  --wf-line: #e2dfd7;
+  --wf-line-strong: #cbc7bc;
+
+  --wf-ink: #1d1c1a;
+  --wf-ink-muted: #5d5a52;
+  --wf-ink-subtle: #8a867c;
+
+  --wf-accent: #0f6b5c;
+  --wf-accent-hover: #0b5a4d;
+  --wf-accent-ink: #ffffff;
+  --wf-accent-soft: #e0efeb;
+
+  --wf-danger: #b4321f;
+  --wf-danger-hover: #992817;
+  --wf-danger-soft: #f8e4df;
+  --wf-danger-ink: #ffffff;
+  --wf-warn: #93600a;
+  --wf-warn-soft: #fbefd5;
+  --wf-ok: #2f7a32;
+  --wf-ok-soft: #e3f1e1;
+  --wf-info: #2f5d8a;
+  --wf-info-soft: #e2ecf6;
+
+  /* 내비게이션 레일은 밝은 테마에서도 어둡게 둔다. */
+  --wf-rail: #22211e;
+  --wf-rail-ink: #b9b5aa;
+  --wf-rail-ink-active: #ffffff;
+  --wf-rail-active: #3a3833;
+  --wf-rail-mark: #5fc2ab;
+
+  --wf-code: #f1efe9;
+  --wf-code-ink: #2b2a27;
+  /* 도구 출력(stdout/stderr) 화면 */
+  --wf-term: #1b1a18;
+  --wf-term-ink: #e6e3da;
+  --wf-term-err: #f2a08f;
+  --wf-term-dim: #8f8b80;
+
+  --wf-overlay: rgb(20 19 17 / 0.45);
+  --wf-focus: rgb(15 107 92 / 0.45);
+
+  --wf-font-sans:
+    system-ui, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --wf-font-mono: "Cascadia Code", "D2Coding", Consolas, "Liberation Mono", monospace;
+
+  --wf-radius-sm: 4px;
+  --wf-radius-md: 6px;
+  --wf-radius-lg: 10px;
+
+  --wf-shadow-sm: 0 1px 2px rgb(29 28 26 / 0.06);
+  --wf-shadow-md: 0 2px 8px rgb(29 28 26 / 0.08), 0 1px 2px rgb(29 28 26 / 0.06);
+  --wf-shadow-lg: 0 12px 32px rgb(29 28 26 / 0.16), 0 2px 6px rgb(29 28 26 / 0.08);
+
+  --wf-rail-width: 68px;
+  --wf-contextbar-height: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --wf-canvas: #151513;
+    --wf-surface: #1d1c1a;
+    --wf-sunken: #252421;
+    --wf-hover: #2d2c28;
+    --wf-line: #34322e;
+    --wf-line-strong: #4a4741;
+
+    --wf-ink: #ecebe6;
+    --wf-ink-muted: #b0ada4;
+    --wf-ink-subtle: #868279;
+
+    --wf-accent: #4fb7a0;
+    --wf-accent-hover: #67c8b2;
+    --wf-accent-ink: #0d1f1b;
+    --wf-accent-soft: #1d3a34;
+
+    --wf-danger: #ef8a78;
+    --wf-danger-hover: #f4a597;
+    --wf-danger-soft: #3d211c;
+    --wf-danger-ink: #2a0f0a;
+    --wf-warn: #e3b25a;
+    --wf-warn-soft: #3a2e17;
+    --wf-ok: #8fcf8b;
+    --wf-ok-soft: #1f3220;
+    --wf-info: #8db7e3;
+    --wf-info-soft: #1d2a38;
+
+    --wf-rail: #0f0f0e;
+    --wf-rail-ink: #a7a398;
+    --wf-rail-active: #2a2925;
+
+    --wf-code: #23221f;
+    --wf-code-ink: #e3e1da;
+    --wf-term: #0e0e0d;
+    --wf-term-ink: #dedbd2;
+
+    --wf-overlay: rgb(0 0 0 / 0.6);
+    --wf-focus: rgb(79 183 160 / 0.5);
+
+    --wf-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --wf-shadow-md: 0 2px 8px rgb(0 0 0 / 0.45);
+    --wf-shadow-lg: 0 12px 32px rgb(0 0 0 / 0.55);
+  }
+}

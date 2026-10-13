@@ -1,0 +1,224 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* 기본 팔레트를 지워 토큰 밖의 색(bg-blue-500 등)을 쓰지 못하게 한다. */
+@theme {
+  --color-*: initial;
+}
+
+@theme inline {
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-canvas: var(--wf-canvas);
+  --color-surface: var(--wf-surface);
+  --color-sunken: var(--wf-sunken);
+  --color-hover: var(--wf-hover);
+  --color-line: var(--wf-line);
+  --color-line-strong: var(--wf-line-strong);
+  --color-ink: var(--wf-ink);
+  --color-ink-muted: var(--wf-ink-muted);
+  --color-ink-subtle: var(--wf-ink-subtle);
+  --color-accent: var(--wf-accent);
+  --color-accent-hover: var(--wf-accent-hover);
+  --color-accent-ink: var(--wf-accent-ink);
+  --color-accent-soft: var(--wf-accent-soft);
+  --color-danger: var(--wf-danger);
+  --color-danger-hover: var(--wf-danger-hover);
+  --color-danger-soft: var(--wf-danger-soft);
+  --color-danger-ink: var(--wf-danger-ink);
+  --color-warn: var(--wf-warn);
+  --color-warn-soft: var(--wf-warn-soft);
+  --color-ok: var(--wf-ok);
+  --color-ok-soft: var(--wf-ok-soft);
+  --color-info: var(--wf-info);
+  --color-info-soft: var(--wf-info-soft);
+  --color-rail: var(--wf-rail);
+  --color-rail-ink: var(--wf-rail-ink);
+  --color-rail-ink-active: var(--wf-rail-ink-active);
+  --color-rail-active: var(--wf-rail-active);
+  --color-rail-mark: var(--wf-rail-mark);
+  --color-code: var(--wf-code);
+  --color-code-ink: var(--wf-code-ink);
+  --color-term: var(--wf-term);
+  --color-term-ink: var(--wf-term-ink);
+  --color-term-err: var(--wf-term-err);
+  --color-term-dim: var(--wf-term-dim);
+  --color-overlay: var(--wf-overlay);
+  --color-focus: var(--wf-focus);
+
+  --font-sans: var(--wf-font-sans);
+  --font-mono: var(--wf-font-mono);
+
+  --radius-sm: var(--wf-radius-sm);
+  --radius-md: var(--wf-radius-md);
+  --radius-lg: var(--wf-radius-lg);
+
+  --shadow-sm: var(--wf-shadow-sm);
+  --shadow-md: var(--wf-shadow-md);
+  --shadow-lg: var(--wf-shadow-lg);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+}
+
+/*
+ * 어시스턴트 답변(react-markdown) 본문. 타이포그래피 플러그인 없이 필요한 요소만 꾸민다.
+ */
+.wf-markdown {
+  overflow-wrap: anywhere;
+}
+.wf-markdown > :first-child {
+  margin-top: 0;
+}
+.wf-markdown > :last-child {
+  margin-bottom: 0;
+}
+.wf-markdown p,
+.wf-markdown ul,
+.wf-markdown ol,
+.wf-markdown pre,
+.wf-markdown table,
+.wf-markdown blockquote {
+  margin: 0.6em 0;
+}
+.wf-markdown h1,
+.wf-markdown h2,
+.wf-markdown h3,
+.wf-markdown h4 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.wf-markdown h1 {
+  font-size: 1.3em;
+}
+.wf-markdown h2 {
+  font-size: 1.18em;
+}
+.wf-markdown h3 {
+  font-size: 1.06em;
+}
+.wf-markdown ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.wf-markdown ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.wf-markdown li + li {
+  margin-top: 0.2em;
+}
+.wf-markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.wf-markdown blockquote {
+  border-left: 3px solid var(--color-line-strong);
+  padding-left: 0.8em;
+  color: var(--color-ink-muted);
+}
+.wf-markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--color-code);
+  color: var(--color-code-ink);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.3em;
+}
+.wf-markdown pre {
+  background: var(--color-code);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+  line-height: 1.45;
+}
+.wf-markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.88em;
+}
+.wf-markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.wf-markdown th,
+.wf-markdown td {
+  border: 1px solid var(--color-line);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.wf-markdown th {
+  background: var(--color-sunken);
+  font-weight: 600;
+}
+.wf-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 1em 0;
+}
+
+/* rehype-highlight가 붙이는 hljs 클래스. 색은 토큰에서 고른다. */
+.hljs-comment,
+.hljs-quote {
+  color: var(--color-ink-subtle);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-literal {
+  color: var(--color-accent);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--color-ok);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-variable,
+.hljs-template-variable {
+  color: var(--color-warn);
+}
+.hljs-title,
+.hljs-section,
+.hljs-function .hljs-title {
+  color: var(--color-info);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-type,
+.hljs-meta {
+  color: var(--color-info);
+}
+.hljs-deletion {
+  color: var(--color-danger);
+}

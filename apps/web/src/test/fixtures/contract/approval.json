@@ -1,0 +1,716 @@
+{
+  "send": {
+    "runId": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+    "sessionId": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+    "events": [
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 1,
+        "ts": "2026-10-13T04:52:48.628Z",
+        "type": "run.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 2,
+        "ts": "2026-10-13T04:52:48.644Z",
+        "type": "run.started",
+        "data": {
+          "step_limit": 30,
+          "model": "gemini-3.8-flash",
+          "workspace_instance_id": "01a1339b-2784-7225-a4b0-83b9e988f2db",
+          "resumed": false,
+          "approval_mode": "all_shell"
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 3,
+        "ts": "2026-10-13T04:52:48.708Z",
+        "type": "step.started",
+        "data": {
+          "step": 1
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 4,
+        "ts": "2026-10-13T04:52:48.708Z",
+        "type": "tool_call.started",
+        "data": {
+          "tool_call_id": "call_fake_6b808f0d",
+          "name": "shell"
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 5,
+        "ts": "2026-10-13T04:52:48.709Z",
+        "type": "tool_call.input_delta",
+        "data": {
+          "tool_call_id": "call_fake_6b808f0d",
+          "json_fragment": "{\"command\": \"echo fake-llm\"}"
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 6,
+        "ts": "2026-10-13T04:52:48.709Z",
+        "type": "tool_call.ready",
+        "data": {
+          "tool_call_id": "call_fake_6b808f0d",
+          "name": "shell",
+          "input": {
+            "command": "echo fake-llm"
+          }
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 7,
+        "ts": "2026-10-13T04:52:48.709Z",
+        "type": "usage",
+        "data": {
+          "step": 1,
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1340,
+          "output_tokens": 8,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 8,
+        "ts": "2026-10-13T04:52:48.725Z",
+        "type": "message.completed",
+        "data": {
+          "message_id": "01a1339b-27c4-7e7c-b2fc-c19b7c1cfd3a",
+          "text": "",
+          "stop_reason": "tool_use",
+          "files": []
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 9,
+        "ts": "2026-10-13T04:52:48.868Z",
+        "type": "run.waiting_input",
+        "data": {
+          "interaction_id": "01a1339b-2864-7a1f-a325-53cb570519b9",
+          "kind": "approval",
+          "tool_call_id": "call_fake_6b808f0d",
+          "tool_name": "shell",
+          "input": {
+            "command": "echo fake-llm"
+          },
+          "cwd": ".",
+          "timeout_sec": 120
+        }
+      },
+      {
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "seq": 10,
+        "ts": "2026-10-13T04:52:48.879Z",
+        "type": "run.completed",
+        "data": {
+          "status": "waiting_input",
+          "usage_total": {
+            "input_tokens": 1340,
+            "output_tokens": 8,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "steps": 1,
+          "changes_truncated": null,
+          "limit": null,
+          "output": null,
+          "error": null
+        }
+      }
+    ]
+  },
+  "detailWaiting": {
+    "id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+    "agent_id": "01a1339b-26f6-77c0-92d8-dc510b54e105",
+    "agent_version_id": "01a1339b-26f7-754e-985f-b60440db963f",
+    "source": "preview",
+    "title": "파일 목록 보여줘",
+    "status": "active",
+    "approval_override": null,
+    "external_user": null,
+    "api_key_id": null,
+    "workspace_instance_id": "01a1339b-2784-7225-a4b0-83b9e988f2db",
+    "message_count": 2,
+    "last_message_at": "2026-10-13T04:52:48.722795Z",
+    "created_at": "2026-10-13T04:52:48.581245Z",
+    "updated_at": "2026-10-13T04:52:48.722795Z",
+    "active_run": {
+      "id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "agent_version_id": "01a1339b-26f7-754e-985f-b60440db963f",
+      "trigger": "chat",
+      "status": "waiting_input",
+      "user_message_id": "01a1339b-2764-7517-a6e7-122835e5e531",
+      "assistant_message_id": "01a1339b-27c4-7e7c-b2fc-c19b7c1cfd3a",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120
+      },
+      "approval_mode": "all_shell",
+      "steps": 1,
+      "usage": {
+        "input_tokens": 1340,
+        "output_tokens": 8,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": {
+        "interaction_id": "01a1339b-2864-7a1f-a325-53cb570519b9",
+        "kind": "approval",
+        "tool_call_id": "call_fake_6b808f0d",
+        "tool_name": "shell",
+        "question": null,
+        "options": null,
+        "allow_free_text": null,
+        "input": {
+          "command": "echo fake-llm"
+        },
+        "cwd": ".",
+        "timeout_sec": 120,
+        "created_at": "2026-10-13T04:52:48.868273Z"
+      },
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-13T04:52:48.598422Z",
+      "started_at": "2026-10-13T04:52:48.630732Z",
+      "ended_at": null,
+      "created_at": "2026-10-13T04:52:48.621425Z",
+      "updated_at": "2026-10-13T04:52:48.874273Z"
+    },
+    "last_run": {
+      "id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "agent_version_id": "01a1339b-26f7-754e-985f-b60440db963f",
+      "trigger": "chat",
+      "status": "waiting_input",
+      "user_message_id": "01a1339b-2764-7517-a6e7-122835e5e531",
+      "assistant_message_id": "01a1339b-27c4-7e7c-b2fc-c19b7c1cfd3a",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120
+      },
+      "approval_mode": "all_shell",
+      "steps": 1,
+      "usage": {
+        "input_tokens": 1340,
+        "output_tokens": 8,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": {
+        "interaction_id": "01a1339b-2864-7a1f-a325-53cb570519b9",
+        "kind": "approval",
+        "tool_call_id": "call_fake_6b808f0d",
+        "tool_name": "shell",
+        "question": null,
+        "options": null,
+        "allow_free_text": null,
+        "input": {
+          "command": "echo fake-llm"
+        },
+        "cwd": ".",
+        "timeout_sec": 120,
+        "created_at": "2026-10-13T04:52:48.868273Z"
+      },
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-13T04:52:48.598422Z",
+      "started_at": "2026-10-13T04:52:48.630732Z",
+      "ended_at": null,
+      "created_at": "2026-10-13T04:52:48.621425Z",
+      "updated_at": "2026-10-13T04:52:48.874273Z"
+    },
+    "workspace": {
+      "id": "01a1339b-2784-7225-a4b0-83b9e988f2db",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "backend": "local",
+      "root_path": "C:\\wf-data\\workspaces\\01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "status": "ready",
+      "disk_bytes": 593,
+      "disk_estimated": false,
+      "disk_measured_at": "2026-10-13T04:52:48.870273Z",
+      "last_activity_at": "2026-10-13T04:52:48.870273Z",
+      "created_at": "2026-10-13T04:52:48.653686Z",
+      "session_title": "파일 목록 보여줘",
+      "agent_id": "01a1339b-26f6-77c0-92d8-dc510b54e105",
+      "session_source": "preview"
+    }
+  },
+  "messagesWaiting": {
+    "items": [
+      {
+        "id": "01a1339b-2764-7517-a6e7-122835e5e531",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "seq": 1,
+        "role": "user",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "파일 목록 보여줘"
+          },
+          {
+            "type": "text",
+            "text": "<context>\n현재 시각: 2026-10-13T13:52:48+09:00\n세션 소스: preview\n</context>",
+            "kind": "context"
+          }
+        ],
+        "text": "파일 목록 보여줘",
+        "stop_reason": null,
+        "files": [],
+        "usage": null,
+        "created_at": "2026-10-13T04:52:48.618429Z"
+      },
+      {
+        "id": "01a1339b-27c4-7e7c-b2fc-c19b7c1cfd3a",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "seq": 2,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "tool_use",
+            "id": "call_fake_6b808f0d",
+            "name": "shell",
+            "input": {
+              "command": "echo fake-llm"
+            }
+          }
+        ],
+        "text": "",
+        "stop_reason": "tool_use",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1340,
+          "output_tokens": 8,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-13T04:52:48.718796Z"
+      }
+    ],
+    "has_more": false
+  },
+  "input": {
+    "id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+    "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+    "agent_version_id": "01a1339b-26f7-754e-985f-b60440db963f",
+    "trigger": "chat",
+    "status": "queued",
+    "user_message_id": "01a1339b-2764-7517-a6e7-122835e5e531",
+    "assistant_message_id": "01a1339b-27c4-7e7c-b2fc-c19b7c1cfd3a",
+    "model": {
+      "model_id": null,
+      "used": "fake-model",
+      "fallback_used": true
+    },
+    "limits": {
+      "max_steps": 30,
+      "max_run_seconds": 1800,
+      "max_total_tokens": 2000000,
+      "max_cost_usd": null,
+      "context_budget_tokens": null,
+      "tool_timeout_sec": 120
+    },
+    "approval_mode": "all_shell",
+    "steps": 1,
+    "usage": {
+      "input_tokens": 1340,
+      "output_tokens": 8,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "cost_usd": null,
+      "estimated": true
+    },
+    "error": null,
+    "pending_interaction": {
+      "interaction_id": "01a1339b-2864-7a1f-a325-53cb570519b9",
+      "kind": "approval",
+      "tool_call_id": "call_fake_6b808f0d",
+      "tool_name": "shell",
+      "question": null,
+      "options": null,
+      "allow_free_text": null,
+      "input": {
+        "command": "echo fake-llm"
+      },
+      "cwd": ".",
+      "timeout_sec": 120,
+      "created_at": "2026-10-13T04:52:48.868273Z"
+    },
+    "output": null,
+    "cancel_requested_at": null,
+    "queued_at": "2026-10-13T04:52:48.598422Z",
+    "started_at": "2026-10-13T04:52:48.630732Z",
+    "ended_at": null,
+    "created_at": "2026-10-13T04:52:48.621425Z",
+    "updated_at": "2026-10-13T04:52:49.020949Z"
+  },
+  "resume": [
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 11,
+      "ts": "2026-10-13T04:52:49.021Z",
+      "type": "interaction.resolved",
+      "data": {
+        "interaction_id": "01a1339b-2864-7a1f-a325-53cb570519b9",
+        "kind": "approval",
+        "decision": "approve",
+        "note": null,
+        "session_auto_approve": false
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 12,
+      "ts": "2026-10-13T04:52:49.022Z",
+      "type": "run.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 13,
+      "ts": "2026-10-13T04:52:49.034Z",
+      "type": "run.resumed",
+      "data": {
+        "interaction_id": "01a1339b-2864-7a1f-a325-53cb570519b9"
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 14,
+      "ts": "2026-10-13T04:52:49.034Z",
+      "type": "run.started",
+      "data": {
+        "step_limit": 30,
+        "model": "gemini-3.8-flash",
+        "workspace_instance_id": "01a1339b-2784-7225-a4b0-83b9e988f2db",
+        "resumed": true,
+        "approval_mode": "all_shell"
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 15,
+      "ts": "2026-10-13T04:52:49.544Z",
+      "type": "tool_call.output_delta",
+      "data": {
+        "tool_call_id": "call_fake_6b808f0d",
+        "stream": "stdout",
+        "text": "fake-llm\n"
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 16,
+      "ts": "2026-10-13T04:52:49.596Z",
+      "type": "tool_call.completed",
+      "data": {
+        "tool_call_id": "call_fake_6b808f0d",
+        "status": "ok",
+        "exit_code": 0,
+        "timed_out": false,
+        "duration_ms": 515,
+        "peak_memory_bytes": 66674688,
+        "output_excerpt": "fake-llm\n",
+        "output_bytes": 9,
+        "output_storage_key": null
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 17,
+      "ts": "2026-10-13T04:52:49.597Z",
+      "type": "step.started",
+      "data": {
+        "step": 2
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 18,
+      "ts": "2026-10-13T04:52:49.598Z",
+      "type": "message.delta",
+      "data": {
+        "message_id": "01a1339b-2b3d-77c4-85b6-77b956de220a",
+        "text": "도구 실행 결과를 확인했습니다."
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 19,
+      "ts": "2026-10-13T04:52:49.599Z",
+      "type": "usage",
+      "data": {
+        "step": 2,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1372,
+        "output_tokens": 5,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 20,
+      "ts": "2026-10-13T04:52:49.613Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a1339b-2b3d-77c4-85b6-77b956de220a",
+        "text": "도구 실행 결과를 확인했습니다.",
+        "stop_reason": "end_turn",
+        "files": []
+      }
+    },
+    {
+      "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "seq": 21,
+      "ts": "2026-10-13T04:52:49.623Z",
+      "type": "run.completed",
+      "data": {
+        "status": "succeeded",
+        "usage_total": {
+          "input_tokens": 2712,
+          "output_tokens": 13,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "steps": 2,
+        "changes_truncated": false,
+        "limit": null,
+        "output": null,
+        "error": null
+      }
+    }
+  ],
+  "messagesDone": {
+    "items": [
+      {
+        "id": "01a1339b-2764-7517-a6e7-122835e5e531",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "seq": 1,
+        "role": "user",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "파일 목록 보여줘"
+          },
+          {
+            "type": "text",
+            "text": "<context>\n현재 시각: 2026-10-13T13:52:48+09:00\n세션 소스: preview\n</context>",
+            "kind": "context"
+          }
+        ],
+        "text": "파일 목록 보여줘",
+        "stop_reason": null,
+        "files": [],
+        "usage": null,
+        "created_at": "2026-10-13T04:52:48.618429Z"
+      },
+      {
+        "id": "01a1339b-27c4-7e7c-b2fc-c19b7c1cfd3a",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "seq": 2,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "tool_use",
+            "id": "call_fake_6b808f0d",
+            "name": "shell",
+            "input": {
+              "command": "echo fake-llm"
+            }
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_fake_6b808f0d",
+            "content": "[종료 코드 0]\nfake-llm\n",
+            "is_error": false
+          }
+        ],
+        "text": "",
+        "stop_reason": null,
+        "files": [],
+        "usage": null,
+        "created_at": "2026-10-13T04:52:48.718796Z"
+      },
+      {
+        "id": "01a1339b-2b3d-77c4-85b6-77b956de220a",
+        "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+        "run_id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+        "seq": 3,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "도구 실행 결과를 확인했습니다."
+          }
+        ],
+        "text": "도구 실행 결과를 확인했습니다.",
+        "stop_reason": "end_turn",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1372,
+          "output_tokens": 5,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-13T04:52:49.605212Z"
+      }
+    ],
+    "has_more": false
+  },
+  "detailDone": {
+    "id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+    "agent_id": "01a1339b-26f6-77c0-92d8-dc510b54e105",
+    "agent_version_id": "01a1339b-26f7-754e-985f-b60440db963f",
+    "source": "preview",
+    "title": "파일 목록 보여줘",
+    "status": "active",
+    "approval_override": null,
+    "external_user": null,
+    "api_key_id": null,
+    "workspace_instance_id": "01a1339b-2784-7225-a4b0-83b9e988f2db",
+    "message_count": 3,
+    "last_message_at": "2026-10-13T04:52:49.610213Z",
+    "created_at": "2026-10-13T04:52:48.581245Z",
+    "updated_at": "2026-10-13T04:52:49.611205Z",
+    "active_run": null,
+    "last_run": {
+      "id": "01a1339b-2765-7811-a29f-95e5d0db1cd4",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "agent_version_id": "01a1339b-26f7-754e-985f-b60440db963f",
+      "trigger": "chat",
+      "status": "succeeded",
+      "user_message_id": "01a1339b-2764-7517-a6e7-122835e5e531",
+      "assistant_message_id": "01a1339b-2b3d-77c4-85b6-77b956de220a",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120
+      },
+      "approval_mode": "all_shell",
+      "steps": 2,
+      "usage": {
+        "input_tokens": 2712,
+        "output_tokens": 13,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": null,
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-13T04:52:48.598422Z",
+      "started_at": "2026-10-13T04:52:48.630732Z",
+      "ended_at": "2026-10-13T04:52:49.615214Z",
+      "created_at": "2026-10-13T04:52:48.621425Z",
+      "updated_at": "2026-10-13T04:52:49.618712Z"
+    },
+    "workspace": {
+      "id": "01a1339b-2784-7225-a4b0-83b9e988f2db",
+      "session_id": "01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "backend": "local",
+      "root_path": "C:\\wf-data\\workspaces\\01a1339b-2743-7df4-86aa-d883d31d70c5",
+      "status": "ready",
+      "disk_bytes": 593,
+      "disk_estimated": false,
+      "disk_measured_at": "2026-10-13T04:52:49.615214Z",
+      "last_activity_at": "2026-10-13T04:52:49.615214Z",
+      "created_at": "2026-10-13T04:52:48.653686Z",
+      "session_title": "파일 목록 보여줘",
+      "agent_id": "01a1339b-26f6-77c0-92d8-dc510b54e105",
+      "session_source": "preview"
+    }
+  }
+}

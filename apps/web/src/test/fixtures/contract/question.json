@@ -1,0 +1,823 @@
+{
+  "upload": {
+    "id": "01a1339c-baff-7d7c-bb71-c1f6959a3f25",
+    "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+    "run_id": null,
+    "message_id": null,
+    "kind": "upload",
+    "path": "입력.csv",
+    "filename": "입력.csv",
+    "mime": "text/csv",
+    "size_bytes": 8,
+    "sha256": "492d5ea496056f1a6a6592241032fab764c321596317930b4fa0e1e8bc3b7470",
+    "downloadable": true,
+    "reason": null,
+    "created_at": "2026-10-13T04:54:31.943232Z"
+  },
+  "send": [
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 1,
+      "ts": "2026-10-13T04:54:31.986Z",
+      "type": "run.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 2,
+      "ts": "2026-10-13T04:54:31.999Z",
+      "type": "run.started",
+      "data": {
+        "step_limit": 30,
+        "model": "gemini-3.8-flash",
+        "workspace_instance_id": "01a1339c-bb3e-7c97-879a-46baa774114a",
+        "resumed": false,
+        "approval_mode": "all_shell"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 3,
+      "ts": "2026-10-13T04:54:32.060Z",
+      "type": "step.started",
+      "data": {
+        "step": 1
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 4,
+      "ts": "2026-10-13T04:54:32.061Z",
+      "type": "message.delta",
+      "data": {
+        "message_id": "01a1339c-bb7c-7fed-8f26-98a417e65d2f",
+        "text": "결과 파일을 먼저 만들겠습니다."
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 5,
+      "ts": "2026-10-13T04:54:32.061Z",
+      "type": "tool_call.started",
+      "data": {
+        "tool_call_id": "call_write_1",
+        "name": "write_file"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 6,
+      "ts": "2026-10-13T04:54:32.061Z",
+      "type": "tool_call.input_delta",
+      "data": {
+        "tool_call_id": "call_write_1",
+        "json_fragment": "{\"path\": \"outputs/result.csv\", \"content\": \"이름,값\\na,1\\n\"}"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 7,
+      "ts": "2026-10-13T04:54:32.061Z",
+      "type": "tool_call.ready",
+      "data": {
+        "tool_call_id": "call_write_1",
+        "name": "write_file",
+        "input": {
+          "path": "outputs/result.csv",
+          "content": "이름,값\na,1\n"
+        }
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 8,
+      "ts": "2026-10-13T04:54:32.061Z",
+      "type": "usage",
+      "data": {
+        "step": 1,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1489,
+        "output_tokens": 21,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 9,
+      "ts": "2026-10-13T04:54:32.073Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a1339c-bb7c-7fed-8f26-98a417e65d2f",
+        "text": "결과 파일을 먼저 만들겠습니다.",
+        "stop_reason": "tool_use",
+        "files": []
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 10,
+      "ts": "2026-10-13T04:54:33.303Z",
+      "type": "tool_call.completed",
+      "data": {
+        "tool_call_id": "call_write_1",
+        "status": "ok",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 15,
+        "peak_memory_bytes": null,
+        "output_excerpt": "outputs/result.csv에 15바이트를 썼다.",
+        "output_bytes": 44,
+        "output_storage_key": null
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 11,
+      "ts": "2026-10-13T04:54:33.304Z",
+      "type": "step.started",
+      "data": {
+        "step": 2
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 12,
+      "ts": "2026-10-13T04:54:33.304Z",
+      "type": "tool_call.started",
+      "data": {
+        "tool_call_id": "call_ask_1",
+        "name": "ask_user"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 13,
+      "ts": "2026-10-13T04:54:33.304Z",
+      "type": "tool_call.input_delta",
+      "data": {
+        "tool_call_id": "call_ask_1",
+        "json_fragment": "{\"question\": \"어떤 형식으로 저장할까요?\", \"options\": [\"CSV\", \"JSON\"]}"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 14,
+      "ts": "2026-10-13T04:54:33.304Z",
+      "type": "tool_call.ready",
+      "data": {
+        "tool_call_id": "call_ask_1",
+        "name": "ask_user",
+        "input": {
+          "question": "어떤 형식으로 저장할까요?",
+          "options": ["CSV", "JSON"]
+        }
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 15,
+      "ts": "2026-10-13T04:54:33.304Z",
+      "type": "usage",
+      "data": {
+        "step": 2,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1542,
+        "output_tokens": 17,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 16,
+      "ts": "2026-10-13T04:54:33.319Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a1339c-c058-7103-a870-2ade35840628",
+        "text": "",
+        "stop_reason": "tool_use",
+        "files": []
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 17,
+      "ts": "2026-10-13T04:54:33.320Z",
+      "type": "run.waiting_input",
+      "data": {
+        "interaction_id": "01a1339c-c068-7e1b-a892-8a67ac34fd55",
+        "kind": "question",
+        "tool_call_id": "call_ask_1",
+        "tool_name": "ask_user",
+        "question": "어떤 형식으로 저장할까요?",
+        "options": ["CSV", "JSON"],
+        "allow_free_text": true
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 18,
+      "ts": "2026-10-13T04:54:33.330Z",
+      "type": "run.completed",
+      "data": {
+        "status": "waiting_input",
+        "usage_total": {
+          "input_tokens": 3031,
+          "output_tokens": 38,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "steps": 2,
+        "changes_truncated": null,
+        "limit": null,
+        "output": null,
+        "error": null
+      }
+    }
+  ],
+  "detail": {
+    "id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+    "agent_id": "01a1339c-ba6f-7c6e-8818-2b1de0b64424",
+    "agent_version_id": "01a1339c-ba71-72f3-8b19-7e4db35f3b49",
+    "source": "preview",
+    "title": "파일 만들고 물어봐",
+    "status": "active",
+    "approval_override": null,
+    "external_user": null,
+    "api_key_id": null,
+    "workspace_instance_id": "01a1339c-bb3e-7c97-879a-46baa774114a",
+    "message_count": 3,
+    "last_message_at": "2026-10-13T04:54:33.317291Z",
+    "created_at": "2026-10-13T04:54:31.916928Z",
+    "updated_at": "2026-10-13T04:54:33.318290Z",
+    "active_run": {
+      "id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "agent_version_id": "01a1339c-ba71-72f3-8b19-7e4db35f3b49",
+      "trigger": "chat",
+      "status": "waiting_input",
+      "user_message_id": "01a1339c-bb28-734a-93a5-2c89b4580122",
+      "assistant_message_id": "01a1339c-c058-7103-a870-2ade35840628",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120
+      },
+      "approval_mode": "all_shell",
+      "steps": 2,
+      "usage": {
+        "input_tokens": 3031,
+        "output_tokens": 38,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": {
+        "interaction_id": "01a1339c-c068-7e1b-a892-8a67ac34fd55",
+        "kind": "question",
+        "tool_call_id": "call_ask_1",
+        "tool_name": "ask_user",
+        "question": "어떤 형식으로 저장할까요?",
+        "options": ["CSV", "JSON"],
+        "allow_free_text": true,
+        "input": null,
+        "cwd": null,
+        "timeout_sec": null,
+        "created_at": "2026-10-13T04:54:33.320502Z"
+      },
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-13T04:54:31.965026Z",
+      "started_at": "2026-10-13T04:54:31.987271Z",
+      "ended_at": null,
+      "created_at": "2026-10-13T04:54:31.981090Z",
+      "updated_at": "2026-10-13T04:54:33.327416Z"
+    },
+    "last_run": {
+      "id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "agent_version_id": "01a1339c-ba71-72f3-8b19-7e4db35f3b49",
+      "trigger": "chat",
+      "status": "waiting_input",
+      "user_message_id": "01a1339c-bb28-734a-93a5-2c89b4580122",
+      "assistant_message_id": "01a1339c-c058-7103-a870-2ade35840628",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120
+      },
+      "approval_mode": "all_shell",
+      "steps": 2,
+      "usage": {
+        "input_tokens": 3031,
+        "output_tokens": 38,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": {
+        "interaction_id": "01a1339c-c068-7e1b-a892-8a67ac34fd55",
+        "kind": "question",
+        "tool_call_id": "call_ask_1",
+        "tool_name": "ask_user",
+        "question": "어떤 형식으로 저장할까요?",
+        "options": ["CSV", "JSON"],
+        "allow_free_text": true,
+        "input": null,
+        "cwd": null,
+        "timeout_sec": null,
+        "created_at": "2026-10-13T04:54:33.320502Z"
+      },
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-13T04:54:31.965026Z",
+      "started_at": "2026-10-13T04:54:31.987271Z",
+      "ended_at": null,
+      "created_at": "2026-10-13T04:54:31.981090Z",
+      "updated_at": "2026-10-13T04:54:33.327416Z"
+    },
+    "workspace": {
+      "id": "01a1339c-bb3e-7c97-879a-46baa774114a",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "backend": "local",
+      "root_path": "C:\\wf-data\\workspaces\\01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "status": "ready",
+      "disk_bytes": 616,
+      "disk_estimated": false,
+      "disk_measured_at": "2026-10-13T04:54:33.323217Z",
+      "last_activity_at": "2026-10-13T04:54:33.323217Z",
+      "created_at": "2026-10-13T04:54:32.004318Z",
+      "session_title": "파일 만들고 물어봐",
+      "agent_id": "01a1339c-ba6f-7c6e-8818-2b1de0b64424",
+      "session_source": "preview"
+    }
+  },
+  "messagesWaiting": {
+    "items": [
+      {
+        "id": "01a1339c-bb28-734a-93a5-2c89b4580122",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 1,
+        "role": "user",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "파일 만들고 물어봐"
+          },
+          {
+            "type": "text",
+            "text": "<context>\n현재 시각: 2026-10-13T13:54:31+09:00\n세션 소스: preview\n첨부 파일(작업공간 상대 경로):\n- uploads/01a1339c-bb28-734a-93a5-2c89b4580122/입력.csv (8바이트, text/csv)\n</context>",
+            "kind": "context"
+          }
+        ],
+        "text": "파일 만들고 물어봐",
+        "stop_reason": null,
+        "files": [
+          {
+            "session_file_id": "01a1339c-baff-7d7c-bb71-c1f6959a3f25",
+            "path": "uploads/01a1339c-bb28-734a-93a5-2c89b4580122/입력.csv",
+            "size": 8,
+            "downloadable": true,
+            "filename": "입력.csv",
+            "mime": "text/csv"
+          }
+        ],
+        "usage": null,
+        "created_at": "2026-10-13T04:54:31.978120Z"
+      },
+      {
+        "id": "01a1339c-bb7c-7fed-8f26-98a417e65d2f",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 2,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "결과 파일을 먼저 만들겠습니다."
+          },
+          {
+            "type": "tool_use",
+            "id": "call_write_1",
+            "name": "write_file",
+            "input": {
+              "path": "outputs/result.csv",
+              "content": "이름,값\na,1\n"
+            }
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_write_1",
+            "content": "outputs/result.csv에 15바이트를 썼다.",
+            "is_error": false
+          }
+        ],
+        "text": "결과 파일을 먼저 만들겠습니다.",
+        "stop_reason": "tool_use",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1489,
+          "output_tokens": 21,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-13T04:54:32.068676Z"
+      },
+      {
+        "id": "01a1339c-c058-7103-a870-2ade35840628",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 3,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "tool_use",
+            "id": "call_ask_1",
+            "name": "ask_user",
+            "input": {
+              "question": "어떤 형식으로 저장할까요?",
+              "options": ["CSV", "JSON"]
+            }
+          }
+        ],
+        "text": "",
+        "stop_reason": "tool_use",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1542,
+          "output_tokens": 17,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-13T04:54:33.313028Z"
+      }
+    ],
+    "has_more": false
+  },
+  "answer": [
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 19,
+      "ts": "2026-10-13T04:54:33.396Z",
+      "type": "interaction.resolved",
+      "data": {
+        "interaction_id": "01a1339c-c068-7e1b-a892-8a67ac34fd55",
+        "kind": "question",
+        "answer": "CSV"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 20,
+      "ts": "2026-10-13T04:54:33.396Z",
+      "type": "run.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 21,
+      "ts": "2026-10-13T04:54:33.404Z",
+      "type": "run.resumed",
+      "data": {
+        "interaction_id": "01a1339c-c068-7e1b-a892-8a67ac34fd55"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 22,
+      "ts": "2026-10-13T04:54:33.404Z",
+      "type": "run.started",
+      "data": {
+        "step_limit": 30,
+        "model": "gemini-3.8-flash",
+        "workspace_instance_id": "01a1339c-bb3e-7c97-879a-46baa774114a",
+        "resumed": true,
+        "approval_mode": "all_shell"
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 23,
+      "ts": "2026-10-13T04:54:33.444Z",
+      "type": "tool_call.completed",
+      "data": {
+        "tool_call_id": "call_ask_1",
+        "status": "ok",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 0,
+        "peak_memory_bytes": null,
+        "output_excerpt": "CSV",
+        "output_bytes": 3,
+        "output_storage_key": null
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 24,
+      "ts": "2026-10-13T04:54:33.444Z",
+      "type": "step.started",
+      "data": {
+        "step": 3
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 25,
+      "ts": "2026-10-13T04:54:33.445Z",
+      "type": "message.delta",
+      "data": {
+        "message_id": "01a1339c-c0e4-75a2-b08d-123b61be21d0",
+        "text": "CSV로 저장해 두었습니다."
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 26,
+      "ts": "2026-10-13T04:54:33.445Z",
+      "type": "usage",
+      "data": {
+        "step": 3,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1579,
+        "output_tokens": 5,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 27,
+      "ts": "2026-10-13T04:54:33.486Z",
+      "type": "file.changed",
+      "data": {
+        "path": "outputs/result.csv",
+        "size": 15,
+        "session_file_id": "01a1339c-c108-7a12-932d-c66f0c876b06",
+        "downloadable": true,
+        "reason": null
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 28,
+      "ts": "2026-10-13T04:54:33.486Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a1339c-c0e4-75a2-b08d-123b61be21d0",
+        "text": "CSV로 저장해 두었습니다.",
+        "stop_reason": "end_turn",
+        "files": [
+          {
+            "session_file_id": "01a1339c-c108-7a12-932d-c66f0c876b06",
+            "path": "outputs/result.csv",
+            "size": 15,
+            "downloadable": true,
+            "filename": "result.csv",
+            "mime": "application/vnd.ms-excel"
+          }
+        ]
+      }
+    },
+    {
+      "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+      "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+      "seq": 29,
+      "ts": "2026-10-13T04:54:33.494Z",
+      "type": "run.completed",
+      "data": {
+        "status": "succeeded",
+        "usage_total": {
+          "input_tokens": 4610,
+          "output_tokens": 43,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "steps": 3,
+        "changes_truncated": false,
+        "limit": null,
+        "output": null,
+        "error": null
+      }
+    }
+  ],
+  "messagesDone": {
+    "items": [
+      {
+        "id": "01a1339c-bb28-734a-93a5-2c89b4580122",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 1,
+        "role": "user",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "파일 만들고 물어봐"
+          },
+          {
+            "type": "text",
+            "text": "<context>\n현재 시각: 2026-10-13T13:54:31+09:00\n세션 소스: preview\n첨부 파일(작업공간 상대 경로):\n- uploads/01a1339c-bb28-734a-93a5-2c89b4580122/입력.csv (8바이트, text/csv)\n</context>",
+            "kind": "context"
+          }
+        ],
+        "text": "파일 만들고 물어봐",
+        "stop_reason": null,
+        "files": [
+          {
+            "session_file_id": "01a1339c-baff-7d7c-bb71-c1f6959a3f25",
+            "path": "uploads/01a1339c-bb28-734a-93a5-2c89b4580122/입력.csv",
+            "size": 8,
+            "downloadable": true,
+            "filename": "입력.csv",
+            "mime": "text/csv"
+          }
+        ],
+        "usage": null,
+        "created_at": "2026-10-13T04:54:31.978120Z"
+      },
+      {
+        "id": "01a1339c-bb7c-7fed-8f26-98a417e65d2f",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 2,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "결과 파일을 먼저 만들겠습니다."
+          },
+          {
+            "type": "tool_use",
+            "id": "call_write_1",
+            "name": "write_file",
+            "input": {
+              "path": "outputs/result.csv",
+              "content": "이름,값\na,1\n"
+            }
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_write_1",
+            "content": "outputs/result.csv에 15바이트를 썼다.",
+            "is_error": false
+          }
+        ],
+        "text": "결과 파일을 먼저 만들겠습니다.",
+        "stop_reason": "tool_use",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1489,
+          "output_tokens": 21,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-13T04:54:32.068676Z"
+      },
+      {
+        "id": "01a1339c-c058-7103-a870-2ade35840628",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 3,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "tool_use",
+            "id": "call_ask_1",
+            "name": "ask_user",
+            "input": {
+              "question": "어떤 형식으로 저장할까요?",
+              "options": ["CSV", "JSON"]
+            }
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_ask_1",
+            "content": "CSV",
+            "is_error": false
+          }
+        ],
+        "text": "",
+        "stop_reason": null,
+        "files": [],
+        "usage": null,
+        "created_at": "2026-10-13T04:54:33.313028Z"
+      },
+      {
+        "id": "01a1339c-c0e4-75a2-b08d-123b61be21d0",
+        "session_id": "01a1339c-baeb-72ac-b766-191eb5b850c1",
+        "run_id": "01a1339c-bb29-74ea-a215-6efb7c07553e",
+        "seq": 4,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "CSV로 저장해 두었습니다."
+          }
+        ],
+        "text": "CSV로 저장해 두었습니다.",
+        "stop_reason": "end_turn",
+        "files": [
+          {
+            "session_file_id": "01a1339c-c108-7a12-932d-c66f0c876b06",
+            "path": "outputs/result.csv",
+            "size": 15,
+            "downloadable": true,
+            "filename": "result.csv",
+            "mime": "application/vnd.ms-excel"
+          }
+        ],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1579,
+          "output_tokens": 5,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-13T04:54:33.453188Z"
+      }
+    ],
+    "has_more": false
+  }
+}
