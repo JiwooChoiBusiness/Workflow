@@ -1,6 +1,6 @@
 import pytest
 
-from app.security.rate_limit import SlidingWindowLimiter
+from app.security.rate_limit import API_REQUESTS_PER_MINUTE, SlidingWindowLimiter, new_api_limiter
 
 
 class Clock:
@@ -74,6 +74,21 @@ def test_retry_after_is_at_least_one_second(clock: Clock) -> None:
     clock.now += 0.999
 
     assert limiter.hit("k").retry_after_sec == 1
+
+
+def test_service_api_allows_sixty_per_minute_per_key(clock: Clock) -> None:
+    # 설계 6.4: 키당 60 req/분. 61번째는 막히고 첫 요청이 창에서 빠질 때까지 기다린다.
+    limiter = new_api_limiter(clock=clock)
+
+    allowed = [limiter.hit("key-a").allowed for _ in range(API_REQUESTS_PER_MINUTE)]
+    clock.now += 30
+    blocked = limiter.hit("key-a")
+
+    assert API_REQUESTS_PER_MINUTE == 60 and all(allowed)
+    assert not blocked.allowed and blocked.retry_after_sec == 30
+    assert limiter.hit("key-b").allowed
+    clock.now += 30
+    assert limiter.hit("key-a").allowed
 
 
 @pytest.mark.parametrize(("limit", "window"), [(0, 60), (5, 0)])

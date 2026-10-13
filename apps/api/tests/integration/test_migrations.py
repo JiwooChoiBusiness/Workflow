@@ -11,15 +11,18 @@ from alembic.runtime.migration import MigrationContext
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Connection, text
+from sqlalchemy.exc import IntegrityError
 
 import app.db.models  # noqa: F401
 from app import cli, sysinfo
 from app.config import Settings, get_settings
 from app.db.base import Base
 from app.db.engine import Database
-from app.db.migrate import current_revision, upgrade_head
+from app.db.migrate import alembic_config, current_revision, run_in_transaction, upgrade_head
 from app.logging import configure_logging
 from app.main import create_app
+
+HEAD = "0002"
 
 # 설계 5.1의 테이블 전부.
 TABLES = {
@@ -57,7 +60,7 @@ async def migrated(tmp_path: Path) -> AsyncIterator[Database]:
 
 
 async def test_upgrade_creates_every_table(migrated: Database) -> None:
-    assert await current_revision(migrated) == "0001"
+    assert await current_revision(migrated) == HEAD
     await migrated.close()
 
     assert table_names(migrated.path) == TABLES | {"alembic_version"}
@@ -85,7 +88,7 @@ async def test_upgrade_is_idempotent_and_keeps_foreign_keys_on(migrated: Databas
     async with migrated.read() as a, migrated.read() as b, migrated.read() as c:
         values = [(await s.execute(text("PRAGMA foreign_keys"))).scalar_one() for s in (a, b, c)]
     assert values == [1, 1, 1]
-    assert await current_revision(migrated) == "0001"
+    assert await current_revision(migrated) == HEAD
 
 
 async def test_expression_unique_index_on_skill(migrated: Database) -> None:
@@ -139,5 +142,119 @@ async def test_platform_migrate_cli(
         configure_logging("INFO")
 
     assert first == second == 0
-    assert "리비전 0001" in capsys.readouterr().out
+    assert f"리비전 {HEAD}" in capsys.readouterr().out
     assert table_names(tmp_path / "cli-data" / "app.db") == TABLES | {"alembic_version"}
+
+
+async def migrate_to(db: Database, revision: str, *, down: bool = False) -> None:
+    from alembic import command
+
+    config = alembic_config()
+
+    def run(connection: Connection) -> None:
+        config.attributes["connection"] = connection
+        step = command.downgrade if down else command.upgrade
+        run_in_transaction(connection, lambda: step(config, revision))
+
+    async with db.write_connection() as conn:
+        await conn.run_sync(run)
+
+
+def index_flags(path: Path, table: str) -> dict[str, tuple[int, str, int]]:
+    # PRAGMA index_list: (seq, name, unique, origin, partial). origin은 c(CREATE INDEX),
+    # u(UNIQUE 제약), pk(기본 키).
+    with closing(sqlite3.connect(path)) as conn:
+        rows = conn.execute(f"PRAGMA index_list('{table}')").fetchall()
+    return {row[1]: (row[2], row[3], row[4]) for row in rows}
+
+
+STAMP = "2026-10-13T00:00:00.000000Z"
+
+
+async def insert_agent(
+    db: Database, workspace_id: str, agent_id: str, slug: str, *, deleted: bool = False
+) -> None:
+    async with db.write() as session:
+        await session.execute(
+            text(
+                "INSERT INTO agent (id, workspace_id, slug, name, description, webapp_enabled,"
+                " deleted_at, created_at, updated_at)"
+                " VALUES (:id, :ws, :slug, :slug, '', 0, :deleted, :ts, :ts)"
+            ),
+            {
+                "id": agent_id,
+                "ws": workspace_id,
+                "slug": slug,
+                "deleted": STAMP if deleted else None,
+                "ts": STAMP,
+            },
+        )
+
+
+async def test_slug_indexes_skip_deleted_rows(migrated: Database) -> None:
+    await migrated.close()
+
+    agent = index_flags(migrated.path, "agent")
+    skill = index_flags(migrated.path, "skill")
+
+    assert agent["uq_agent_workspace_id_slug"] == (1, "c", 1)
+    assert skill["uq_skill_workspace_id_scope_agent_id_slug"] == (1, "c", 1)
+    # 0001의 UNIQUE 제약은 테이블을 다시 만들면서 사라져야 한다.
+    assert [flags for flags in agent.values() if flags[1] == "u"] == []
+
+
+async def test_upgrade_from_0001_keeps_rows_and_allows_reusing_deleted_slugs(
+    tmp_path: Path,
+) -> None:
+    db = Database(tmp_path / "app.db")
+    workspace_id = "00000000-0000-7000-8000-000000000001"
+    agent_id = "00000000-0000-7000-8000-000000000002"
+    try:
+        await migrate_to(db, "0001")
+        async with db.write() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO workspace (id, name, slug, settings, created_at, updated_at)"
+                    " VALUES (:id, 'w', 'w', '{}', :ts, :ts)"
+                ),
+                {"id": workspace_id, "ts": STAMP},
+            )
+        await insert_agent(db, workspace_id, agent_id, "helper", deleted=True)
+        async with db.write() as session:
+            # agent를 가리키는 행이 테이블을 다시 만든 뒤에도 그대로 이어져야 한다.
+            await session.execute(
+                text(
+                    "INSERT INTO api_key (id, workspace_id, agent_id, name, key_prefix, key_hash,"
+                    " scopes, created_at, updated_at)"
+                    " VALUES ('00000000-0000-7000-8000-000000000003', :ws, :agent, 'k',"
+                    " 'sk-wf-abcdef', :hash, '[]', :ts, :ts)"
+                ),
+                {"ws": workspace_id, "agent": agent_id, "hash": "0" * 64, "ts": STAMP},
+            )
+
+        await migrate_to(db, "head")
+
+        assert await current_revision(db) == HEAD
+        async with db.read() as session:
+            slugs = (await session.execute(text("SELECT slug, deleted_at FROM agent"))).all()
+            keys = (await session.execute(text("SELECT agent_id FROM api_key"))).scalars().all()
+        assert [tuple(row) for row in slugs] == [("helper", STAMP)]
+        assert keys == [agent_id]
+
+        await insert_agent(db, workspace_id, "00000000-0000-7000-8000-000000000004", "helper")
+        with pytest.raises(IntegrityError):
+            await insert_agent(db, workspace_id, "00000000-0000-7000-8000-000000000005", "helper")
+    finally:
+        await db.close()
+
+
+async def test_downgrade_restores_the_unique_constraint(migrated: Database) -> None:
+    await migrate_to(migrated, "0001", down=True)
+
+    assert await current_revision(migrated) == "0001"
+    await migrated.close()
+    agent = index_flags(migrated.path, "agent")
+    skill = index_flags(migrated.path, "skill")
+    assert "uq_agent_workspace_id_slug" not in agent
+    assert [flags for flags in agent.values() if flags[1] == "u"] == [(1, "u", 0)]
+    assert skill["uq_skill_workspace_id_scope_agent_id_slug"] == (1, "c", 0)

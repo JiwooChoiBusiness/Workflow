@@ -9,6 +9,7 @@ from fastapi.utils import is_body_allowed_for_status_code
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.schemas.errors import ErrorBody, ErrorResponse
+from app.services.errors import ServiceError
 
 # 오류 형식은 전 API 공통 {"error": {"code", "message", "details"?}}이다(설계 6.4).
 _STATUS_CODES = {
@@ -18,6 +19,7 @@ _STATUS_CODES = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    411: "length_required",
     413: "payload_too_large",
     415: "unsupported_media_type",
     422: "validation_error",
@@ -95,6 +97,12 @@ async def _validation_error(request: Request, exc: Exception) -> Response:
     return error_response(422, "validation_error", "요청 값이 올바르지 않다", details=details)
 
 
+async def _service_error(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, ServiceError):
+        return error_response(500, "internal_error", "서버 내부 오류")
+    return error_response(exc.status, exc.code, exc.message, details=exc.details)
+
+
 async def _unhandled(request: Request, exc: Exception) -> Response:
     # 응답만 같은 형식으로 바꾼다. 예외는 Starlette가 다시 던져 uvicorn이 로그를 남긴다.
     return error_response(500, "internal_error", "서버 내부 오류")
@@ -103,4 +111,5 @@ async def _unhandled(request: Request, exc: Exception) -> Response:
 def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, _http_exception)
     app.add_exception_handler(RequestValidationError, _validation_error)
+    app.add_exception_handler(ServiceError, _service_error)
     app.add_exception_handler(Exception, _unhandled)

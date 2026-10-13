@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import sys
 import threading
 import time
@@ -185,3 +186,76 @@ def test_ensure_proactor_loop_policy_undoes_a_selector_policy() -> None:
         assert isinstance(policy, asyncio.WindowsProactorEventLoopPolicy)
     finally:
         asyncio.set_event_loop_policy(original)
+
+
+async def test_queue_positions_and_running_state() -> None:
+    gate = asyncio.Event()
+
+    async def run(run_id: str, cancel: CancelSignal) -> None:
+        await gate.wait()
+
+    supervisor = Supervisor(run, max_concurrent=1)
+    supervisor.start()
+    for run_id in ("a", "b", "c"):
+        supervisor.enqueue(run_id)
+    await asyncio.sleep(0.01)
+
+    assert supervisor.is_running("a")
+    assert [supervisor.position(run_id) for run_id in ("a", "b", "c")] == [None, 1, 2]
+    assert supervisor.stats()["queued"] == 2
+    gate.set()
+    await asyncio.sleep(0.01)
+    assert supervisor.position("c") is None
+    await supervisor.shutdown()
+
+
+async def test_run_requeued_before_returning_keeps_its_new_signal() -> None:
+    # waiting_input으로 끝나는 런에 답이 아주 빨리 와서, 실행 함수가 돌아오기 전에 같은 런이 다시
+    # 큐에 들어가는 경우. 새 신호가 지워지면 재개된 런을 중지할 수 없다.
+    seen: list[CancelSignal] = []
+    finished = asyncio.Event()
+
+    async def run(run_id: str, cancel: CancelSignal) -> None:
+        seen.append(cancel)
+        if len(seen) == 1:
+            supervisor.enqueue(run_id)
+        else:
+            await cancel.wait()
+            finished.set()
+
+    supervisor = Supervisor(run, max_concurrent=1)
+    supervisor.start()
+    supervisor.enqueue("run-1")
+    while len(seen) < 2:
+        await asyncio.sleep(0.01)
+
+    assert supervisor.cancel("run-1")
+    await asyncio.wait_for(finished.wait(), 1)
+    assert seen[0] is not seen[1]
+    await supervisor.shutdown()
+
+
+async def test_exit_signal_chain_starts_shutdown_and_calls_the_previous_handler() -> None:
+    calls: list[str] = []
+
+    def previous(signum: int, frame: object) -> None:
+        calls.append("previous")
+
+    original = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM, previous)
+    supervisor = Supervisor(never_called)
+    supervisor.start()
+    uninstall = winconsole.chain_exit_signals(asyncio.get_running_loop(), supervisor)
+    try:
+        handler = signal.getsignal(signal.SIGTERM)
+        assert callable(handler) and handler is not previous
+        handler(signal.SIGTERM, None)
+        await asyncio.sleep(0.05)
+
+        assert calls == ["previous"]
+        assert supervisor.shutting_down
+    finally:
+        uninstall()
+        assert signal.getsignal(signal.SIGTERM) is previous
+        signal.signal(signal.SIGTERM, original)
+        await supervisor.shutdown()

@@ -4,6 +4,9 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
+# 서비스 API는 키당 분당 60번(설계 6.4).
+API_REQUESTS_PER_MINUTE = 60
+
 
 @dataclass(frozen=True)
 class RateLimitDecision:
@@ -45,3 +48,7 @@ class SlidingWindowLimiter:
             self._hits.clear()
         else:
             self._hits.pop(key, None)
+
+
+def new_api_limiter(*, clock: Callable[[], float] = time.monotonic) -> SlidingWindowLimiter:
+    return SlidingWindowLimiter(API_REQUESTS_PER_MINUTE, 60.0, clock=clock)

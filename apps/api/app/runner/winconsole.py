@@ -1,6 +1,11 @@
 import asyncio
+import contextlib
+import signal
 import sys
+import threading
 from collections.abc import Callable
+from types import FrameType
+from typing import Any
 
 import structlog
 
@@ -57,6 +62,48 @@ def reload_warning() -> str | None:
         "Windows에서 --reload로 띄우면 서버가 SelectorEventLoop로 돌아 셸·파이썬 도구"
         "(서브프로세스)를 실행하지 못한다. 도구를 쓰려면 --reload 없이 띄운다."
     )
+
+
+def chain_exit_signals(
+    loop: asyncio.AbstractEventLoop, supervisor: Supervisor
+) -> Callable[[], None]:
+    """uvicorn의 종료 신호 처리기 앞에 런 종료 요청을 끼운다.
+
+    uvicorn은 신호를 받으면 열린 HTTP 연결이 모두 닫힐 때까지 기다린 뒤에 lifespan 종료를 부른다.
+    진행 중인 런의 SSE 응답은 런이 끝나야 닫히므로 그대로 두면 서로를 기다려 Ctrl+C로 꺼지지 않는다.
+    신호를 받는 즉시 Supervisor 종료를 시작해 런이 run.completed로 끝나고 SSE가 닫히게 한다.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return _noop
+    names = ["SIGINT", "SIGTERM", "SIGBREAK"]
+    previous: dict[signal.Signals, Any] = {}
+    for name in names:
+        signum = getattr(signal, name, None)
+        if not isinstance(signum, signal.Signals):
+            continue
+        current = signal.getsignal(signum)
+        if not callable(current):
+            continue
+
+        def handler(
+            received: int, frame: FrameType | None, _next: Callable[..., Any] = current
+        ) -> None:
+            with contextlib.suppress(RuntimeError):
+                loop.call_soon_threadsafe(supervisor.request_shutdown)
+            _next(received, frame)
+
+        try:
+            signal.signal(signum, handler)
+        except (ValueError, OSError):
+            continue
+        previous[signum] = current
+
+    def uninstall() -> None:
+        for signum, original in previous.items():
+            with contextlib.suppress(ValueError, OSError):
+                signal.signal(signum, original)
+
+    return uninstall
 
 
 def install(loop: asyncio.AbstractEventLoop, supervisor: Supervisor) -> Callable[[], None]:

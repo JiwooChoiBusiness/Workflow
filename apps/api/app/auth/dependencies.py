@@ -10,6 +10,8 @@ from app.config import Settings
 from app.db.engine import Database
 from app.db.models import Account
 from app.db.repositories.workspaces import WorkspaceRepository
+from app.security.rate_limit import SlidingWindowLimiter
+from app.services.api_keys import ApiKeyService, AuthenticatedApiKey
 
 SESSION_COOKIE = "sid"
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -100,3 +102,44 @@ async def current_auth(request: Request, response: Response, db: DbDep) -> AuthC
 
 
 CurrentAuth = Annotated[AuthContext, Depends(current_auth)]
+
+
+def _bearer_token(request: Request) -> str | None:
+    scheme, _, value = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return value.strip() or None
+
+
+async def api_key_auth(request: Request, db: DbDep) -> AuthenticatedApiKey:
+    """서비스 API의 Bearer 인증(6.1)과 키당 레이트 리밋(분당 60번, 6.4).
+
+    쿠키는 보지 않는다. 키에 묶인 에이전트 범위는 각 경로가 SessionScope로 검사한다.
+    """
+    challenge = {"WWW-Authenticate": "Bearer"}
+    raw = _bearer_token(request)
+    if raw is None:
+        raise ApiError(
+            401, "unauthorized", "Authorization: Bearer <API 키> 헤더가 필요하다", headers=challenge
+        )
+    key = await ApiKeyService(db).authenticate(raw)
+    if key is None:
+        raise ApiError(401, "invalid_api_key", "API 키가 없거나 폐기·만료되었다", headers=challenge)
+    limiter: SlidingWindowLimiter = request.app.state.api_limiter
+    decision = limiter.hit(str(key.key_id))
+    if not decision.allowed:
+        raise ApiError(
+            429,
+            "rate_limited",
+            f"API 키 하나로 분당 {limiter.limit}번까지 부를 수 있다. 잠시 뒤 다시 부른다",
+            headers={"Retry-After": str(decision.retry_after_sec)},
+        )
+    return key
+
+
+ApiKeyAuth = Annotated[AuthenticatedApiKey, Depends(api_key_auth)]
+
+
+def require_scope(key: AuthenticatedApiKey, scope: str) -> None:
+    if scope not in key.scopes:
+        raise ApiError(403, "scope_not_allowed", f"이 API 키에는 {scope} 권한이 없다")

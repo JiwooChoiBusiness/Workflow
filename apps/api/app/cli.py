@@ -35,6 +35,11 @@ def _serve(reload: bool) -> int:
     return 0
 
 
+def serve(reload: bool = False) -> int:
+    # main.py를 직접 실행했을 때도 `platform serve`와 같은 경로를 타게 한다.
+    return _serve(reload)
+
+
 def _doctor() -> int:
     from app import sysinfo
 

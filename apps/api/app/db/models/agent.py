@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Index, String, Text, UniqueConstraint
+from sqlalchemy import Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, id_column, workspace_id_column
@@ -10,7 +10,14 @@ from app.db.base import Base, TimestampMixin, id_column, workspace_id_column
 class Agent(TimestampMixin, Base):
     __tablename__ = "agent"
     __table_args__ = (
-        UniqueConstraint("workspace_id", "slug"),
+        # 지운 에이전트의 slug는 다시 쓸 수 있게 살아 있는 행끼리만 유일하다(리비전 0002).
+        Index(
+            "uq_agent_workspace_id_slug",
+            "workspace_id",
+            "slug",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         Index(None, "workspace_id", "deleted_at"),
     )
 

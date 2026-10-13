@@ -89,6 +89,16 @@ class LlmStatusService:
     def key_count(self) -> int:
         return len(self._keys)
 
+    def cached_live_models(self) -> list[str] | None:
+        """마지막으로 받은 라이브 모델 목록. 받은 적이 없으면 None.
+
+        초안 저장의 model_id 검사가 쓴다. 저장할 때마다 Gemini를 부르지 않도록 오래된 목록이어도
+        그대로 돌려준다(목록은 /models를 부를 때 갱신된다).
+        """
+        if self._settings.llm_fake or self._cache is None:
+            return None
+        return list(self._cache[2])
+
     def _last4(self, index: int) -> str:
         return self._keys[index][-4:]
 

@@ -99,7 +99,7 @@ async def test_unknown_api_path_is_json_404(settings: Settings) -> None:
 async def test_startup_failure_still_closes_database(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def broken_recover(db: object, supervisor: object) -> None:
+    async def broken_recover(db: object, supervisor: object, bus: object) -> None:
         raise RuntimeError("recovery failed")
 
     monkeypatch.setattr(recovery, "recover", broken_recover)

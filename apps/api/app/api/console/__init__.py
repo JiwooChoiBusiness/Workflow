@@ -1,6 +1,20 @@
 from fastapi import APIRouter, Depends
 
-from app.api.console import auth, llm, models, setup, workspace
+from app.api.console import (
+    agents,
+    auth,
+    files,
+    llm,
+    models,
+    runs,
+    sessions,
+    settings,
+    setup,
+    skills,
+    stats,
+    workspace,
+    workspaces,
+)
 from app.auth.dependencies import csrf_protect
 from app.schemas.errors import ErrorResponse
 
@@ -13,5 +27,19 @@ router = APIRouter(
     dependencies=[Depends(csrf_protect)],
     responses={"4XX": {"model": ErrorResponse, "description": "오류"}},
 )
-for module in (setup, auth, workspace, llm, models):
+for module in (
+    setup,
+    auth,
+    workspace,
+    llm,
+    models,
+    agents,
+    files,
+    skills,
+    sessions,
+    runs,
+    workspaces,
+    stats,
+    settings,
+):
     router.include_router(module.router)

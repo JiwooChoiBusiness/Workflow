@@ -13,6 +13,7 @@ class Skill(TimestampMixin, Base):
     __tablename__ = "skill"
     __table_args__ = (
         # 라이브러리 스킬은 agent_id가 NULL이라 그대로 두면 유니크가 걸리지 않는다.
+        # 지운 스킬의 slug는 다시 쓸 수 있게 살아 있는 행끼리만 본다(리비전 0002).
         Index(
             "uq_skill_workspace_id_scope_agent_id_slug",
             "workspace_id",
@@ -20,6 +21,7 @@ class Skill(TimestampMixin, Base):
             text("coalesce(agent_id, '')"),
             "slug",
             unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
         ),
         enum_check("scope", SkillScope),
     )
