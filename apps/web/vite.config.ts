@@ -1,16 +1,22 @@
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
+import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 
-// 개발 서버의 /api 요청은 compose로 띄운 gateway로 넘긴다.
-const gatewayPort = process.env.GATEWAY_HTTP_PORT ?? "8080";
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: { "/api": `http://localhost:${gatewayPort}` },
-  },
-  test: {
-    environment: "node",
-  },
+export default defineConfig(({ mode }) => {
+  // 환경변수 SERVER_PORT가 있으면 그것을, 없으면 저장소 루트 .env의 값을 쓴다. 다른 키는 가져오지 않는다.
+  const serverPort = loadEnv(mode, repoRoot, "SERVER_PORT").SERVER_PORT || "8500";
+  return {
+    plugins: [react()],
+    server: {
+      port: 5173,
+      // localhost로 적으면 Node가 ::1을 먼저 시도해 127.0.0.1에만 바인드한 서버에 닿지 못한다.
+      proxy: { "/api": `http://127.0.0.1:${serverPort}` },
+    },
+    test: {
+      environment: "node",
+    },
+  };
 });

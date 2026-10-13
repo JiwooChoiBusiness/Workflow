@@ -1,0 +1,290 @@
+{
+  "source": "recorded",
+  "recorded_at": "2026-10-13",
+  "model": "gemini-3.8-flash",
+  "description": "max_completion_tokens=200으로 텍스트 도중 length 종료.",
+  "request": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a concise assistant."
+      },
+      {
+        "role": "user",
+        "content": "1부터 300까지의 숫자를 쉼표로 구분해 전부 나열해."
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "max_completion_tokens": 200,
+    "reasoning_effort": "low"
+  },
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "1, 2, 3, 4, 5, 6, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852591,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 18,
+        "prompt_tokens": 29,
+        "total_tokens": 47
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "7, 8, 9, 10, 11, 12, 13,",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852591,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 42,
+        "prompt_tokens": 29,
+        "total_tokens": 71
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": " 14, 15, 16, 17, 18, 19, 20, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852591,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 71,
+        "prompt_tokens": 29,
+        "total_tokens": 100
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "21, 22, 23, 24, 25, 26, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852591,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 95,
+        "prompt_tokens": 29,
+        "total_tokens": 124
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "27, 28, 29, 30, 31, 32, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852592,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 119,
+        "prompt_tokens": 29,
+        "total_tokens": 148
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "33, 34, 35, 36, 37, 38, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852592,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 143,
+        "prompt_tokens": 29,
+        "total_tokens": 172
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "39, 40, 41, 42, 43, 44, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852592,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 167,
+        "prompt_tokens": 29,
+        "total_tokens": 196
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "45, 46, 47, 48, 49, 50, ",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852592,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 191,
+        "prompt_tokens": 29,
+        "total_tokens": 220
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "51, 5",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852592,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 196,
+        "prompt_tokens": 29,
+        "total_tokens": 225
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "extra_content": {
+              "google": {
+                "thought_signature": "EmkKZwFpFH0TztyN7B+IOn8nDFSQH8+GCT/LIs+ETiw3/pEuDZQ5SNKt384nI3MWKGheG5OeJVsNLuO6t9fXAfqXhigbrkltHhC2zySBZEqqvw718n/CQg1kDgWmZy+Q2iz/D8/m9JtrAbA="
+              }
+            },
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0
+        }
+      ],
+      "created": 1791852592,
+      "id": "LYDNareGB5-z2roPoJDhyQo",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 196,
+        "prompt_tokens": 29,
+        "total_tokens": 225
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "text_delta",
+      "text": "1, 2, 3, 4, 5, 6, "
+    },
+    {
+      "type": "text_delta",
+      "text": "7, 8, 9, 10, 11, 12, 13,"
+    },
+    {
+      "type": "text_delta",
+      "text": " 14, 15, 16, 17, 18, 19, 20, "
+    },
+    {
+      "type": "text_delta",
+      "text": "21, 22, 23, 24, 25, 26, "
+    },
+    {
+      "type": "text_delta",
+      "text": "27, 28, 29, 30, 31, 32, "
+    },
+    {
+      "type": "text_delta",
+      "text": "33, 34, 35, 36, 37, 38, "
+    },
+    {
+      "type": "text_delta",
+      "text": "39, 40, 41, 42, 43, 44, "
+    },
+    {
+      "type": "text_delta",
+      "text": "45, 46, 47, 48, 49, 50, "
+    },
+    {
+      "type": "text_delta",
+      "text": "51, 5"
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "max_tokens",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 196,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": null,
+        "estimated": false
+      },
+      "raw_stop": "length",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": {
+        "extra_content": {
+          "google": {
+            "thought_signature": "EmkKZwFpFH0TztyN7B+IOn8nDFSQH8+GCT/LIs+ETiw3/pEuDZQ5SNKt384nI3MWKGheG5OeJVsNLuO6t9fXAfqXhigbrkltHhC2zySBZEqqvw718n/CQg1kDgWmZy+Q2iz/D8/m9JtrAbA="
+          }
+        }
+      }
+    }
+  ]
+}

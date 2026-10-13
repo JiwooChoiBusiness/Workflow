@@ -1,0 +1,170 @@
+{
+  "source": "handmade",
+  "model": "gemini-3.8-flash",
+  "description": "손으로 만든 픽스처. OpenAI 방식(index 있음, 인자 조각 분할, finish_reason=tool_calls, usage는 choices가 빈 마지막 청크, reasoning_tokens·cached_tokens 상세)을 처리하는지 본다.",
+  "chunks": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "index": 0,
+                "id": "call_a",
+                "type": "function",
+                "function": {
+                  "name": "read_file",
+                  "arguments": ""
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "function": {
+                  "arguments": "{\"path\": \"no"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "function": {
+                  "arguments": "tes.txt\"}"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 1,
+                "id": "call_b",
+                "type": "function",
+                "function": {
+                  "name": "list_files",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "tool_calls"
+        }
+      ]
+    },
+    {
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 50,
+        "completion_tokens": 30,
+        "total_tokens": 80,
+        "completion_tokens_details": {
+          "reasoning_tokens": 12
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 20
+        }
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "tool_call_start",
+      "index": 0,
+      "id": "call_a",
+      "name": "read_file"
+    },
+    {
+      "type": "tool_call_delta",
+      "index": 0,
+      "json_fragment": "{\"path\": \"no"
+    },
+    {
+      "type": "tool_call_delta",
+      "index": 0,
+      "json_fragment": "tes.txt\"}"
+    },
+    {
+      "type": "tool_call_end",
+      "index": 0,
+      "id": "call_a",
+      "name": "read_file",
+      "arguments": "{\"path\": \"notes.txt\"}",
+      "provider_extra": null
+    },
+    {
+      "type": "tool_call_start",
+      "index": 1,
+      "id": "call_b",
+      "name": "list_files"
+    },
+    {
+      "type": "tool_call_delta",
+      "index": 1,
+      "json_fragment": "{}"
+    },
+    {
+      "type": "tool_call_end",
+      "index": 1,
+      "id": "call_b",
+      "name": "list_files",
+      "arguments": "{}",
+      "provider_extra": null
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 50,
+        "output_tokens": 30,
+        "reasoning_tokens": 12,
+        "cached_input_tokens": 20,
+        "estimated": false
+      },
+      "raw_stop": "tool_calls",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": null
+    }
+  ]
+}

@@ -1,44 +1,32 @@
 [project]
 name = "platform-api"
 version = "0.1.0"
-description = "api, runner, sandbox-manager 공용 백엔드"
+description = "API, 에이전트 러너, 화면 정적 서빙을 한 프로세스에서 돌리는 플랫폼 서버"
 requires-python = ">=3.12"
 dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.20.0",
+    "argon2-cffi>=25.1.0",
+    "cryptography>=50.0.2",
     "fastapi>=0.143.0",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "jsonschema>=4.26.0",
+    "openai>=3.29.0",
     "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.1.4",
     "structlog>=26.1.0",
+    "uuid6>=2025.0.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
-[dependency-groups]
-dev = [
-    "httpx>=0.28.1",
-    "pyright>=1.1.414",
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
-    "ruff>=0.17.0",
-]
+[project.scripts]
+platform = "app.cli:main"
 
-[tool.uv]
-package = false
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP"]
-
-[tool.pyright]
-include = ["app", "tests"]
-pythonVersion = "3.12"
-typeCheckingMode = "basic"
-venvPath = "."
-venv = ".venv"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-addopts = ["--import-mode=importlib"]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

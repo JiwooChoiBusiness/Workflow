@@ -1,0 +1,68 @@
+{
+  "source": "handmade",
+  "model": "gemini-3.8-flash",
+  "description": "손으로 만든 픽스처. content_filter는 자연히 얻기 어려워 Gemini 청크 형식에 맞춰 만들었다.",
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "요청하신 내용은",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852700,
+      "id": "handmade-content-filter",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 3,
+        "prompt_tokens": 15,
+        "total_tokens": 18
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant"
+          },
+          "finish_reason": "content_filter",
+          "index": 0
+        }
+      ],
+      "created": 1791852700,
+      "id": "handmade-content-filter",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 3,
+        "prompt_tokens": 15,
+        "total_tokens": 18
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "text_delta",
+      "text": "요청하신 내용은"
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "refusal",
+      "usage": {
+        "input_tokens": 15,
+        "output_tokens": 3,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": null,
+        "estimated": false
+      },
+      "raw_stop": "content_filter",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": null
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "source": "recorded",
+  "recorded_at": "2026-10-13",
+  "model": "gemini-3.8-flash",
+  "description": "병렬 도구 호출 2개. 호출마다 별도 청크, index 없음, 서명은 첫 호출에만.",
+  "request": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a concise assistant."
+      },
+      {
+        "role": "user",
+        "content": "서울과 부산의 현재 날씨를 get_weather 도구로 조회해. 두 도시를 한 번에 병렬로 호출해."
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "max_completion_tokens": 1024,
+    "reasoning_effort": "low",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get the current weather for one city.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto"
+  },
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "extra_content": {
+                  "google": {
+                    "thought_signature": "EmkKZwFpFH0T5JqsUY4nN6RhY9ePz81o5C8jAcVO+rvICovoocakFkiaN7h5D4RA9VKgGmXaYa3aM06IgAHYNVkW7uQGDRJ1TSbIkvioXRYuAMxy7aPWlMqTapnaNxb7jLJTglyVcI8qRG8="
+                  }
+                },
+                "function": {
+                  "arguments": "{\"city\":\"서울\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_206770",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852578,
+      "id": "IIDNatq3KbaM1e8P2N6wYQ",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 16,
+        "prompt_tokens": 82,
+        "total_tokens": 98
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\":\"부산\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_206771",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852578,
+      "id": "IIDNatq3KbaM1e8P2N6wYQ",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 32,
+        "prompt_tokens": 82,
+        "total_tokens": 114
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 1791852578,
+      "id": "IIDNatq3KbaM1e8P2N6wYQ",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 32,
+        "prompt_tokens": 82,
+        "total_tokens": 114
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "tool_call_start",
+      "index": 0,
+      "id": "call_206770",
+      "name": "get_weather"
+    },
+    {
+      "type": "tool_call_delta",
+      "index": 0,
+      "json_fragment": "{\"city\":\"서울\"}"
+    },
+    {
+      "type": "tool_call_end",
+      "index": 0,
+      "id": "call_206770",
+      "name": "get_weather",
+      "arguments": "{\"city\":\"서울\"}",
+      "provider_extra": {
+        "extra_content": {
+          "google": {
+            "thought_signature": "EmkKZwFpFH0T5JqsUY4nN6RhY9ePz81o5C8jAcVO+rvICovoocakFkiaN7h5D4RA9VKgGmXaYa3aM06IgAHYNVkW7uQGDRJ1TSbIkvioXRYuAMxy7aPWlMqTapnaNxb7jLJTglyVcI8qRG8="
+          }
+        }
+      }
+    },
+    {
+      "type": "tool_call_start",
+      "index": 1,
+      "id": "call_206771",
+      "name": "get_weather"
+    },
+    {
+      "type": "tool_call_delta",
+      "index": 1,
+      "json_fragment": "{\"city\":\"부산\"}"
+    },
+    {
+      "type": "tool_call_end",
+      "index": 1,
+      "id": "call_206771",
+      "name": "get_weather",
+      "arguments": "{\"city\":\"부산\"}",
+      "provider_extra": null
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 82,
+        "output_tokens": 32,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": null,
+        "estimated": false
+      },
+      "raw_stop": "stop",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": null
+    }
+  ]
+}

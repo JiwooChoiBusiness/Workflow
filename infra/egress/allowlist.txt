@@ -1,9 +1,0 @@
-# 샌드박스가 egress-proxy를 거쳐 접근할 수 있는 도메인. 한 줄에 하나.
-# 앞에 점을 붙이면 하위 도메인까지 포함한다. 수정 후 squid -k reconfigure 또는 재시작.
-.pypi.org
-.pythonhosted.org
-.npmjs.org
-.npmjs.com
-.github.com
-.githubusercontent.com
-# .huggingface.co

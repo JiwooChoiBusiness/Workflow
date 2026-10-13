@@ -1,0 +1,55 @@
+[project]
+name = "workflow-elon"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["platform-api"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.0",
+]
+
+[tool.uv.workspace]
+members = ["apps/api"]
+
+[tool.uv.sources]
+platform-api = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# app 패키지를 first-party로 분류해 import 정렬이 패키지 안에서 돌릴 때와 같게 한다.
+src = ["apps/api"]
+# 설계 문서의 코드 블록은 설명용 의사 코드라 포매터 대상이 아니다.
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+# S603은 인자와 무관하게 모든 subprocess 호출을 잡는다. 프로세스 실행이 샌드박스의 본업이라 끈다.
+ignore = ["S603"]
+
+[tool.ruff.lint.per-file-ignores]
+"apps/api/tests/**" = ["S101"]
+
+[tool.pyright]
+include = ["apps/api/app", "apps/api/tests", "scripts"]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+strict = ["apps/api/app/sandbox", "apps/api/app/agent", "apps/api/app/llm"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["apps/api/tests"]
+# windows·live 마커는 기본 실행에서 뺀다. `uv run pytest -m windows`처럼 -m을 주면 뒤의 값이 이긴다.
+addopts = ["--import-mode=importlib", "-m", "not windows and not live"]
+markers = [
+    "windows: Windows에서만 도는 Job Object·PowerShell 테스트. uv run pytest -m windows로 돌린다",
+    "live: 실제 Gemini API를 부르는 테스트(.env의 GEMINI_API_KEYS). uv run pytest -m live로만 돈다",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

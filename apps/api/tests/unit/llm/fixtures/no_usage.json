@@ -1,0 +1,54 @@
+{
+  "source": "handmade",
+  "model": "gemini-3.8-flash",
+  "description": "손으로 만든 픽스처. usage가 없는 스트림이면 추정치(estimated=true)로 채우는지 본다.",
+  "chunks": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": "usage 없는 "
+          }
+        }
+      ]
+    },
+    {
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "content": "응답"
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "text_delta",
+      "text": "usage 없는 "
+    },
+    {
+      "type": "text_delta",
+      "text": "응답"
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 24,
+        "output_tokens": 4,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true
+      },
+      "raw_stop": "stop",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": null
+    }
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "source": "recorded",
+  "recorded_at": "2026-10-13",
+  "model": "gemini-3.8-flash",
+  "description": "shell 도구 1회. index 없음, finish_reason은 stop, tool_calls[0]에 사고 서명.",
+  "request": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a concise assistant."
+      },
+      {
+        "role": "user",
+        "content": "Get-ChildItem을 실행해"
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "max_completion_tokens": 1024,
+    "reasoning_effort": "low",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "shell",
+          "description": "Run a PowerShell command in the session workspace and return its output.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto"
+  },
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "extra_content": {
+                  "google": {
+                    "thought_signature": "EmkKZwFpFH0T/UOetruPkhC0AX6IpHlxk/3f5t62W4NzgbCOKD26XwfSyeCcpuwXUof54HuCGK0D95VAu8LBSwnWjNcsQ2ciK5vYOEoqZuswhj5rJIEgwV+uTZ9zELGfvwswTDbcslrs8r0="
+                  }
+                },
+                "function": {
+                  "arguments": "{\"command\":\"Get-ChildItem\"}",
+                  "name": "shell"
+                },
+                "id": "call_20829",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852576,
+      "id": "G4DNap6gK-Sw0-kPrIbxIA",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 63,
+        "total_tokens": 80
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 1791852576,
+      "id": "G4DNap6gK-Sw0-kPrIbxIA",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 63,
+        "total_tokens": 80
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "tool_call_start",
+      "index": 0,
+      "id": "call_20829",
+      "name": "shell"
+    },
+    {
+      "type": "tool_call_delta",
+      "index": 0,
+      "json_fragment": "{\"command\":\"Get-ChildItem\"}"
+    },
+    {
+      "type": "tool_call_end",
+      "index": 0,
+      "id": "call_20829",
+      "name": "shell",
+      "arguments": "{\"command\":\"Get-ChildItem\"}",
+      "provider_extra": {
+        "extra_content": {
+          "google": {
+            "thought_signature": "EmkKZwFpFH0T/UOetruPkhC0AX6IpHlxk/3f5t62W4NzgbCOKD26XwfSyeCcpuwXUof54HuCGK0D95VAu8LBSwnWjNcsQ2ciK5vYOEoqZuswhj5rJIEgwV+uTZ9zELGfvwswTDbcslrs8r0="
+          }
+        }
+      }
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 63,
+        "output_tokens": 17,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": null,
+        "estimated": false
+      },
+      "raw_stop": "stop",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": null
+    }
+  ]
+}

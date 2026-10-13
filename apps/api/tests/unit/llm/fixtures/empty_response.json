@@ -1,0 +1,73 @@
+{
+  "source": "recorded",
+  "recorded_at": "2026-10-13",
+  "model": "gemini-3.7-flash",
+  "description": "max_completion_tokens=8, 사고 토큰만 쓰고 내용 없이 length 종료. 3.8이 503이라 3.7 응답.",
+  "request": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a concise assistant."
+      },
+      {
+        "role": "user",
+        "content": "양자 얽힘을 자세히 설명해줘."
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "max_completion_tokens": 8
+  },
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "extra_content": {
+              "google": {
+                "thought_signature": "Eo8BCowBAWkUfRM4g6YYz7Hbr0i/ZKOFxNmbi7B9HQeCMTKHVwXdB/hCfZKZi3jAF2wR/47ajRT/m/Qy4+acKZbekp0jnuTBvLzfctEVyUsPXguhTlWs0UChcSXWTnhsbduVOwHcf1JewPaM+TRoeAUVLk5DcvvAtcYNyIqmtM0YehZV++yjjW1EfLvso5Ioif8="
+              }
+            },
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0
+        }
+      ],
+      "created": 1791852602,
+      "id": "MoDNau-sBvja9tMPpKWO4QU",
+      "model": "gemini-3.7-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 20,
+        "total_tokens": 25
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "message_end",
+      "stop_reason": "max_tokens",
+      "usage": {
+        "input_tokens": 20,
+        "output_tokens": 5,
+        "reasoning_tokens": 5,
+        "cached_input_tokens": null,
+        "estimated": false
+      },
+      "raw_stop": "length",
+      "model": "gemini-3.7-flash",
+      "key_index": 0,
+      "provider_extra": {
+        "extra_content": {
+          "google": {
+            "thought_signature": "Eo8BCowBAWkUfRM4g6YYz7Hbr0i/ZKOFxNmbi7B9HQeCMTKHVwXdB/hCfZKZi3jAF2wR/47ajRT/m/Qy4+acKZbekp0jnuTBvLzfctEVyUsPXguhTlWs0UChcSXWTnhsbduVOwHcf1JewPaM+TRoeAUVLk5DcvvAtcYNyIqmtM0YehZV++yjjW1EfLvso5Ioif8="
+          }
+        }
+      }
+    }
+  ]
+}

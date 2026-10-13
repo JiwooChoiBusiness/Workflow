@@ -1,0 +1,204 @@
+{
+  "source": "recorded",
+  "recorded_at": "2026-10-13",
+  "model": "gemini-3.8-flash",
+  "description": "사고 서명을 재전송한 다음 턴(도구 결과 뒤 텍스트 응답). 400 없이 정상 응답.",
+  "request": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a concise assistant."
+      },
+      {
+        "role": "user",
+        "content": "한국어로 짧게 인사해줘. 한 문장만."
+      },
+      {
+        "role": "assistant",
+        "content": "안녕하세요, 만나서 반가워요!",
+        "extra_content": {
+          "google": {
+            "thought_signature": "EmkKZwFpFH0TzR9QryBPWqP+ZhaAyZfCGfnWENq++MxakyZr4Uoxd7kMC9APsy9NUUmiTjSxVlbE1wnOAz4uGbHstAcUq8mexF3Utnd+hGIvfZ6W1rJldso6KrvsH0Sc+ZLYi5vQMLrEH5k="
+          }
+        }
+      },
+      {
+        "role": "user",
+        "content": "Get-ChildItem을 실행해"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_20829",
+            "type": "function",
+            "function": {
+              "arguments": "{\"command\":\"Get-ChildItem\"}",
+              "name": "shell"
+            },
+            "extra_content": {
+              "google": {
+                "thought_signature": "EmkKZwFpFH0T/UOetruPkhC0AX6IpHlxk/3f5t62W4NzgbCOKD26XwfSyeCcpuwXUof54HuCGK0D95VAu8LBSwnWjNcsQ2ciK5vYOEoqZuswhj5rJIEgwV+uTZ9zELGfvwswTDbcslrs8r0="
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_20829",
+        "content": "\n    Directory: C:\\wf-data\\workspaces\\demo\n\nMode                 LastWriteTime         Length Name\n----                 -------------         ------ ----\nd-----        2026-10-13     09:00                outputs\n-a----        2026-10-13     09:01            120 notes.txt\n"
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "max_completion_tokens": 1024,
+    "reasoning_effort": "low",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "shell",
+          "description": "Run a PowerShell command in the session workspace and return its output.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto"
+  },
+  "chunks": [
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": "실행",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852656,
+      "id": "a4DNau-PNbLYrfcPurHQ4A8",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 2,
+        "prompt_tokens": 196,
+        "total_tokens": 198
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": " 결과는 다음과 같습니다:\n\n- `outputs` (디렉터리)\n- `notes",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852657,
+      "id": "a4DNau-PNbLYrfcPurHQ4A8",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 22,
+        "prompt_tokens": 196,
+        "total_tokens": 218
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "content": ".txt` (파일, 120바이트)",
+            "role": "assistant"
+          },
+          "index": 0
+        }
+      ],
+      "created": 1791852657,
+      "id": "a4DNau-PNbLYrfcPurHQ4A8",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 35,
+        "prompt_tokens": 196,
+        "total_tokens": 231
+      }
+    },
+    {
+      "choices": [
+        {
+          "delta": {
+            "extra_content": {
+              "google": {
+                "thought_signature": "EmkKZwFpFH0T5BftdifWVCL8vkHzHA4CKmY+/GgDPlTTx9LGxdkjgFEuQFbY0wyy/UCsVM2o36gEw2CnslGQmIVyenOt6MVsfgnF+yaw4iph7SqR9VQp6WjCmivgKjJVLt8Bjwj6th1fYX8="
+              }
+            },
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 1791852657,
+      "id": "a4DNau-PNbLYrfcPurHQ4A8",
+      "model": "gemini-3.8-flash",
+      "object": "chat.completion.chunk",
+      "usage": {
+        "completion_tokens": 35,
+        "prompt_tokens": 196,
+        "total_tokens": 231
+      }
+    }
+  ],
+  "expected_events": [
+    {
+      "type": "text_delta",
+      "text": "실행"
+    },
+    {
+      "type": "text_delta",
+      "text": " 결과는 다음과 같습니다:\n\n- `outputs` (디렉터리)\n- `notes"
+    },
+    {
+      "type": "text_delta",
+      "text": ".txt` (파일, 120바이트)"
+    },
+    {
+      "type": "message_end",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 196,
+        "output_tokens": 35,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": null,
+        "estimated": false
+      },
+      "raw_stop": "stop",
+      "model": "gemini-3.8-flash",
+      "key_index": 0,
+      "provider_extra": {
+        "extra_content": {
+          "google": {
+            "thought_signature": "EmkKZwFpFH0T5BftdifWVCL8vkHzHA4CKmY+/GgDPlTTx9LGxdkjgFEuQFbY0wyy/UCsVM2o36gEw2CnslGQmIVyenOt6MVsfgnF+yaw4iph7SqR9VQp6WjCmivgKjJVLt8Bjwj6th1fYX8="
+          }
+        }
+      }
+    }
+  ]
+}
