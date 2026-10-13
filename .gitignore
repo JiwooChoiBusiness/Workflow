@@ -31,7 +31,6 @@ test-results/
 
 # 에디터·OS
 .idea/
-.vscode/
 .DS_Store
 Thumbs.db
 

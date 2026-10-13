@@ -2,7 +2,7 @@
 
 Dify 같은 LLM 에이전트·워크플로우 플랫폼을 혼자 쓰려고 직접 만드는 프로젝트다. 내 PC(Windows 11)에서 파이썬 프로세스 하나로 돌리는 걸 기준으로 하고, 이 저장소는 코드 보존용이다.
 
-백엔드는 M4까지 있다. 계정 로그인, SQLite 스키마, 로컬 샌드박스 백엔드, Gemini 어댑터가 들어갔고 에이전트 실행 루프와 화면은 아직이다.
+백엔드는 M6까지, 화면은 1차까지 있다. 계정 로그인, SQLite 스키마, 로컬 샌드박스, Gemini 어댑터, 에이전트·스킬·파일·API 키 관리, 에이전트 실행 루프와 세션·런 API가 들어갔다. 화면의 미리보기 채팅은 아직 API에 붙이는 중이다.
 
 - `docs/research/dify-analysis.md` : Dify를 뜯어본 기록
 - `docs/decisions/` : 범위, 실행 방식 같은 결정 기록
@@ -34,6 +34,8 @@ python scripts/memcheck.py   # 서버를 따로 띄워 메모리(RSS) 측정
 ```
 
 화면은 `corepack pnpm --dir apps/web build`로 빌드해 두면 서버가 `apps/web/dist`를 서빙한다. 화면을 고치는 중에는 `corepack pnpm --dir apps/web dev`(5173)를 쓰면 되고, `/api` 요청은 127.0.0.1:8500으로 넘어간다.
+
+API가 바뀌면 서버를 띄운 채 `bash scripts/gen-api-types.sh`로 화면의 API 타입(`apps/web/src/api/schema.d.ts`)을 다시 만든다. 채팅 패널은 개발 서버의 `/dev/chat-fixture`에서 녹음된 런 이벤트로 확인하고, 브라우저 스모크(`corepack pnpm --dir apps/web e2e`)는 8502에 따로 띄운 시험용 서버와 설치된 Edge로 돈다(서버가 없으면 건너뛴다).
 
 테스트와 린트는 저장소 루트에서 돌린다.
 
