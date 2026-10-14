@@ -6,7 +6,8 @@ import { minimalSetup } from "codemirror";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 
-export type CodeLanguage = "markdown" | "json" | "text";
+// python은 강조 없이 줄바꿈만 끈다(파이썬 문법 패키지를 넣지 않았다).
+export type CodeLanguage = "markdown" | "json" | "text" | "python";
 
 export interface CodeEditorProps {
   value: string;
@@ -51,6 +52,7 @@ const baseTheme = EditorView.theme({
 function languageExtension(language: CodeLanguage): Extension[] {
   if (language === "markdown") return [markdown(), EditorView.lineWrapping];
   if (language === "json") return [json()];
+  if (language === "python") return [];
   return [EditorView.lineWrapping];
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LOG_FILTERS,
+  childRunsPath,
   clearFilters,
   hasActiveFilters,
   logFiltersToParams,
@@ -24,6 +25,7 @@ describe("로그 필터 상태", () => {
       source: "api",
       period: "7d",
       status: "failed",
+      parent: null,
     });
 
     const junk = parseLogFilters(
@@ -40,10 +42,11 @@ describe("로그 필터 상태", () => {
       source: "webapp",
       period: "30d",
       status: "waiting_input",
+      parent: "r1",
     };
     const params = logFiltersToParams(filters);
     expect(params.toString()).toBe(
-      "tab=runs&agent=a1&source=webapp&period=30d&status=waiting_input",
+      "tab=runs&agent=a1&source=webapp&period=30d&status=waiting_input&parent=r1",
     );
     expect(parseLogFilters(params)).toEqual(filters);
   });
@@ -61,6 +64,7 @@ describe("로그 필터 상태", () => {
       source: "preview",
       period: "7d",
       status: "failed",
+      parent: "r1",
     };
     expect(sessionListQuery(filters, NOW)).toEqual({
       agent_id: "a1",
@@ -72,8 +76,10 @@ describe("로그 필터 상태", () => {
       source: "preview",
       since: "2026-10-06T12:00:00.000Z",
       status: "failed",
+      parent_run_id: "r1",
     });
     expect(runListQuery(DEFAULT_LOG_FILTERS, NOW)).toEqual({});
+    expect(childRunsPath("r 1")).toBe("/logs?tab=runs&parent=r+1");
   });
 
   it("에이전트 로그 화면에서는 에이전트를 빼고 필터 여부를 본다", () => {
@@ -83,6 +89,7 @@ describe("로그 필터 상태", () => {
     // 세션 탭에서는 상태가 걸려 있어도 쓰이지 않으므로 필터로 치지 않는다.
     expect(hasActiveFilters({ ...DEFAULT_LOG_FILTERS, status: "failed" })).toBe(false);
     expect(hasActiveFilters({ ...DEFAULT_LOG_FILTERS, tab: "runs", status: "failed" })).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_LOG_FILTERS, tab: "runs", parent: "r1" })).toBe(true);
 
     const busy: LogFilters = {
       tab: "runs",
@@ -90,6 +97,7 @@ describe("로그 필터 상태", () => {
       source: "api",
       period: "7d",
       status: "failed",
+      parent: "r1",
     };
     expect(clearFilters(busy)).toEqual({ ...DEFAULT_LOG_FILTERS, tab: "runs" });
     expect(clearFilters(busy, { keepAgent: true })).toEqual({

@@ -1,7 +1,9 @@
 import {
+  Bot,
   Check,
   ChevronRight,
   CircleAlert,
+  CornerDownRight,
   Download,
   FileDiff,
   Info,
@@ -11,6 +13,7 @@ import {
 import { Collapsible } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
 import { ToolIcon } from "@/components/chat/ToolIcon";
 import { prettyJson, summarizeInput } from "@/components/chat/toolSummary";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
@@ -19,7 +22,15 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { KeyValueList } from "@/components/ui/layout";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { sessionFileUrl, useRun, useRunEvents } from "@/features/logs/api";
+import {
+  sessionFileUrl,
+  useChildRuns,
+  useRun,
+  useRunEvents,
+  useTreeUsage,
+  type TreeUsage,
+} from "@/features/logs/api";
+import { sessionLogPath } from "@/features/logs/filters";
 import {
   inspectRun,
   type InspectorInteraction,
@@ -32,6 +43,7 @@ import { formatCost } from "@/features/settings/usage";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatDateTime, formatDuration, formatNumber } from "@/lib/format";
 import { RunStatusBadge } from "./badges";
+import { ChildRunList } from "./ChildRunList";
 import { EventTable } from "./EventTable";
 import { ToolOutputActions } from "./ToolOutputDialog";
 
@@ -69,7 +81,27 @@ function duration(run: RunOut): number | null {
   return end === null ? null : end - new Date(run.started_at).getTime();
 }
 
-function RunSummary({ run }: { run: RunOut }) {
+// 이 런과 하위 런들의 합. 가격표가 없는 런이 하나라도 있으면 비용은 빼고 보인다.
+function TreeTotal({ run, tree }: { run: RunOut; tree: TreeUsage }) {
+  const { t } = useTranslation("logs");
+  const own = run.usage.cost_usd;
+  const values = {
+    input: formatNumber((run.usage.input_tokens ?? 0) + tree.inputTokens),
+    output: formatNumber((run.usage.output_tokens ?? 0) + tree.outputTokens),
+    runs: tree.runs,
+  };
+  const cost =
+    own === null || own === undefined || tree.costUsd === null ? null : own + tree.costUsd;
+  return (
+    <span className="tabular-nums">
+      {cost === null
+        ? t("inspector.treeTotalNoCost", values)
+        : t("inspector.treeTotalValue", { ...values, cost: formatCost(cost) })}
+    </span>
+  );
+}
+
+function RunSummary({ run, tree }: { run: RunOut; tree: TreeUsage | undefined }) {
   const { t } = useTranslation("logs");
   const model = run.model as { model_id?: string | null; used?: string; fallback_used?: boolean };
   const usage = run.usage;
@@ -130,6 +162,9 @@ function RunSummary({ run }: { run: RunOut }) {
             ),
           },
           { label: t("inspector.cost"), value: formatCost(usage.cost_usd) },
+          ...(tree && tree.runs > 0
+            ? [{ label: t("inspector.treeTotal"), value: <TreeTotal run={run} tree={tree} /> }]
+            : []),
           { label: t("inspector.duration"), value: formatDuration(duration(run)) },
           { label: t("inspector.queued"), value: formatDateTime(run.queued_at) },
           { label: t("inspector.ended"), value: formatDateTime(run.ended_at) },
@@ -251,6 +286,25 @@ function ToolCallDetail({
         </Collapsible.Trigger>
       </div>
       <Collapsible.Content className="flex flex-col gap-3 border-t border-line px-3 py-3">
+        {tool.child ? (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-ink">
+            <Bot className="size-3.5 text-ink-muted" aria-hidden />
+            <span>
+              {tool.child.agentName || tool.child.agentSlug}{" "}
+              <span className="font-mono text-ink-subtle">{tool.child.agentSlug}</span>
+            </span>
+            {tool.child.version === "draft" ? (
+              <Badge tone="warn">{t("children.draft")}</Badge>
+            ) : null}
+            {tool.child.status ? <RunStatusBadge status={tool.child.status} /> : null}
+            <Link
+              to={sessionLogPath(tool.child.sessionId, tool.child.runId)}
+              className="text-accent hover:underline"
+            >
+              {t("inspector.openChild")}
+            </Link>
+          </p>
+        ) : null}
         {tool.interaction ? <InteractionLine interaction={tool.interaction} /> : null}
         <section>
           <h4 className="mb-1 text-xs font-medium text-ink-muted">{t("tool.input")}</h4>
@@ -420,20 +474,55 @@ function StepCard({
   );
 }
 
+function ParentCrumb({ parentRunId, depth }: { parentRunId: string; depth: number }) {
+  const { t } = useTranslation("logs");
+  const parent = useRun(parentRunId);
+  const label = <span className="font-mono">{parentRunId.slice(0, 8)}</span>;
+  return (
+    <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+      <CornerDownRight className="size-3.5" aria-hidden />
+      {t("inspector.parentRun")}
+      {parent.data ? (
+        <Link
+          to={sessionLogPath(parent.data.session_id, parentRunId)}
+          className="text-accent hover:underline"
+        >
+          {label}
+        </Link>
+      ) : (
+        label
+      )}
+      <span>· {t("inspector.depth", { depth })}</span>
+    </p>
+  );
+}
+
 // 런 인스펙터(설계 7.3 RunInspector): 스텝 타임라인, 도구 호출 입출력, 승인 결정과 사유, 사용량.
+// call_agent로 부른 자식 런은 하위 런 탭에서 같은 인스펙터로 펼친다(오케스트레이션 8.3). nested는 그 안쪽이다.
+// kind=node_child는 워크플로우 agent 노드가 만든 자식 런(2단계 A10)이다. 세션은 런에서 읽고, 그 과업
+// 세션의 로그로 가는 링크를 둔다.
 export function RunInspector({
   runId,
-  sessionId,
-  focusToolCallId,
+  sessionId: givenSessionId,
+  focusToolCallId = null,
+  initialTab = "steps",
+  nested = false,
+  kind = "session",
 }: {
   runId: string;
-  sessionId: string;
-  focusToolCallId: string | null;
+  sessionId?: string;
+  focusToolCallId?: string | null;
+  initialTab?: "steps" | "children";
+  nested?: boolean;
+  kind?: "session" | "node_child";
 }) {
   const { t } = useTranslation("logs");
   const run = useRun(runId);
   const live = isRunActive(run.data?.status);
   const events = useRunEvents(runId, { live });
+  const children = useChildRuns(runId, { live });
+  const childRuns = children.data ?? [];
+  const tree = useTreeUsage(runId, { enabled: childRuns.length > 0, live });
   if (run.isPending || events.isPending) {
     return (
       <div className="flex justify-center p-6">
@@ -455,18 +544,55 @@ export function RunInspector({
   }
   const inspection = inspectRun(events.data.items);
   const interactions = inspection.interactions;
+  const waitingChild = run.data.child ?? null;
+  const showChildren = childRuns.length > 0 || initialTab === "children";
+  const sessionId = givenSessionId ?? run.data.session_id;
   return (
     <div className="flex flex-col gap-4">
-      <RunSummary run={run.data} />
+      {!nested && run.data.parent_run_id ? (
+        <ParentCrumb parentRunId={run.data.parent_run_id} depth={run.data.depth} />
+      ) : null}
+      {kind === "node_child" ? (
+        <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+          <Bot className="size-3.5" aria-hidden />
+          {t("inspector.nodeChild")}
+          <Link
+            to={sessionLogPath(run.data.session_id, runId)}
+            className="text-accent hover:underline"
+          >
+            {t("inspector.openSession")}
+          </Link>
+        </p>
+      ) : null}
+      <RunSummary run={run.data} tree={tree.data} />
       {live ? <Alert tone="info" title={t("inspector.live")} /> : null}
+      {waitingChild ? (
+        <Alert
+          tone="info"
+          title={t("inspector.waitingChild", { name: waitingChild.agent_name })}
+          action={
+            <Link
+              to={sessionLogPath(waitingChild.session_id, waitingChild.run_id)}
+              className="text-sm text-accent hover:underline"
+            >
+              {t("inspector.openChild")}
+            </Link>
+          }
+        />
+      ) : null}
       {run.data.status === "waiting_input" ? (
         <Alert tone="warn" title={t("inspector.waiting")}>
           {t("inspector.waitingHint")}
         </Alert>
       ) : null}
-      <Tabs defaultValue="steps">
+      <Tabs defaultValue={initialTab}>
         <TabsList aria-label={t("inspector.tabs")}>
           <TabsTrigger value="steps">{t("inspector.stepsTab")}</TabsTrigger>
+          {showChildren ? (
+            <TabsTrigger value="children">
+              {t("inspector.childrenTab", { count: childRuns.length })}
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="approvals">
             {t("inspector.approvalsTab", { count: interactions.length })}
           </TabsTrigger>
@@ -557,6 +683,21 @@ export function RunInspector({
         <TabsContent value="events" className="pt-3">
           <EventTable events={events.data.items} truncated={events.data.truncated} />
         </TabsContent>
+        {showChildren ? (
+          <TabsContent value="children" className="pt-3">
+            {children.isPending ? (
+              <Spinner label={t("children.loading")} />
+            ) : children.isError ? (
+              <ErrorAlert
+                error={children.error}
+                title={t("children.loadFailed")}
+                onRetry={() => void children.refetch()}
+              />
+            ) : (
+              <ChildRunList runs={childRuns} />
+            )}
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   );

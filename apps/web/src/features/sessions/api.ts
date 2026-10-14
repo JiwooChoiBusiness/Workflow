@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { apiFetch, requestJson, uploadFile, withQuery } from "@/api/http";
 import type {
@@ -16,7 +15,6 @@ export const sessionKeys = {
   detail: (id: string) => ["sessions", id] as const,
   messages: (id: string) => ["sessions", id, "messages"] as const,
   files: (id: string) => ["sessions", id, "files"] as const,
-  workspace: (id: string) => ["sessions", id, "workspace"] as const,
 };
 
 // 채팅 패널이 한 번에 불러오는 메시지 수. 더 앞의 대화는 로그 화면에서 본다.
@@ -101,28 +99,6 @@ export function sessionEventsRequest(
     run_id: runId,
   });
   return new Request(path, { headers: { Accept: "text/event-stream" } });
-}
-
-export function useSessionDetail(sessionId: string | null) {
-  return useQuery({
-    queryKey: sessionKeys.detail(sessionId ?? ""),
-    queryFn: () => fetchSessionDetail(sessionId!),
-    enabled: Boolean(sessionId),
-  });
-}
-
-// 작업공간 상태(경로·디스크·큰 폴더·실행 중 프로세스). 패널은 M9에서 붙인다.
-export function useSessionWorkspace(
-  sessionId: string | null,
-  options: { refetchInterval?: number | false } = {},
-) {
-  return useQuery({
-    queryKey: sessionKeys.workspace(sessionId ?? ""),
-    queryFn: () =>
-      unwrap(api.GET("/api/console/sessions/{session_id}/workspace", sessionPath(sessionId!))),
-    enabled: Boolean(sessionId),
-    refetchInterval: options.refetchInterval,
-  });
 }
 
 export const consoleSessionApi = {

@@ -23,6 +23,8 @@ export default defineConfig(({ mode }) => {
       environment: "node",
       include: ["src/**/*.test.{ts,tsx}"],
       setupFiles: ["src/test/setup.ts"],
+      // 파일마다 워커를 띄우면 메모리 여유가 적은 PC에서 WebAssembly 할당이 실패한다. 한 워커에서 차례로 돈다.
+      fileParallelism: false,
     },
   };
 });

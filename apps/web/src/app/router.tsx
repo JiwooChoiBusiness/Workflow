@@ -4,7 +4,8 @@ import { createBrowserRouter, Navigate, Outlet, type RouteObject } from "react-r
 import { PageSpinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/toast";
 import { AgentCrumb, CommonCrumb, SessionCrumb, SettingsCrumb } from "./crumbs";
-import { AgentLogsCrumb, SettingsExtraCrumb } from "./crumbs";
+import { AgentLogsCrumb, SettingsExtraCrumb, WorkflowCrumb } from "./crumbs";
+import { WorkflowLogsCrumb, WorkflowRunCrumb } from "./crumbs";
 import { RequireAuth } from "./guards";
 import { AppShell } from "./layout/AppShell";
 import type { RouteHandle } from "./layout/contextBar";
@@ -77,6 +78,39 @@ export const routes: RouteObject[] = [
                     ],
                   },
                   {
+                    path: "workflows",
+                    handle: handle(() => <CommonCrumb k="nav.workflows" />),
+                    children: [
+                      {
+                        index: true,
+                        lazy: page(() => import("./pages/workflows/WorkflowsPage")),
+                      },
+                      {
+                        path: ":id",
+                        lazy: page(() => import("./pages/workflows/WorkflowEditorPage")),
+                        handle: {
+                          crumb: (params) => <WorkflowCrumb id={params.id ?? ""} />,
+                          rail: "collapsed",
+                        } satisfies RouteHandle,
+                      },
+                      {
+                        path: ":id/logs",
+                        handle: handle((params) => <WorkflowLogsCrumb id={params.id ?? ""} />),
+                        children: [
+                          {
+                            index: true,
+                            lazy: page(() => import("./pages/workflows/WorkflowLogsPage")),
+                          },
+                          {
+                            path: ":rid",
+                            lazy: page(() => import("./pages/workflows/WorkflowRunPage")),
+                            handle: handle((params) => <WorkflowRunCrumb rid={params.rid ?? ""} />),
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
                     path: "skills",
                     lazy: page(() => import("./pages/SkillsPage")),
                     handle: handle(() => <CommonCrumb k="nav.skills" />),
@@ -134,6 +168,23 @@ export const routes: RouteObject[] = [
                   { path: "*", element: <NotFoundPage /> },
                 ],
               },
+            ],
+          },
+          {
+            // 워크플로우 웹앱(2단계 7.4). 고른 런은 주소의 ?run=이다.
+            path: "flows/:slug",
+            lazy: page(() => import("./pages/FlowAppPage")),
+            errorElement: <RouteError />,
+          },
+          {
+            // 웹앱(설계 7.2)은 콘솔의 내비게이션 레일 없이 따로 그린다. 대화를 바꿔도 화면은 그대로
+            // 두고 주소의 세션만 바꾸도록 세션 경로를 자식으로 둔다.
+            path: "apps/:slug",
+            lazy: page(() => import("./pages/WebAppPage")),
+            errorElement: <RouteError />,
+            children: [
+              { index: true, element: null },
+              { path: "s/:sid", element: null },
             ],
           },
         ],

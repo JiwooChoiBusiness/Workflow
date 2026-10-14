@@ -1,4 +1,5 @@
 import {
+  Bot,
   CheckCheck,
   FileCode,
   FilePen,
@@ -32,6 +33,8 @@ export function ToolIcon({ name, className }: { name: string; className?: string
       return <MessageCircleQuestion className={className} aria-hidden />;
     case "submit_result":
       return <CheckCheck className={className} aria-hidden />;
+    case "call_agent":
+      return <Bot className={className} aria-hidden />;
     default:
       return <Wrench className={className} aria-hidden />;
   }

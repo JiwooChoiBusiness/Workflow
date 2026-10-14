@@ -17,17 +17,16 @@ export function useSkills() {
   });
 }
 
-export function fetchSkill(skillId: string) {
-  return unwrap(
-    api.GET("/api/console/skills/{skill_id}", { params: { path: { skill_id: skillId } } }),
-  );
-}
-
 export function useSkill(skillId: string | null) {
   return useQuery({
     queryKey: skillKeys.detail(skillId ?? ""),
     enabled: Boolean(skillId),
-    queryFn: () => fetchSkill(skillId ?? ""),
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/console/skills/{skill_id}", {
+          params: { path: { skill_id: skillId ?? "" } },
+        }),
+      ),
   });
 }
 

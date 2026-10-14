@@ -9,7 +9,7 @@ export type UsageRow = Schemas["UsageRow"];
 export type UsageTotals = Schemas["UsageTotals"];
 export type UsageGroupBy = UsageReport["group_by"];
 
-export const USAGE_GROUPS: readonly UsageGroupBy[] = ["day", "agent", "model"];
+export const USAGE_GROUPS: readonly UsageGroupBy[] = ["day", "agent", "workflow", "model"];
 export const USAGE_PERIODS = ["7d", "30d", "90d", "this_month", "last_month"] as const;
 export type UsagePeriod = (typeof USAGE_PERIODS)[number];
 
@@ -97,9 +97,17 @@ export function usageRowLabel(row: UsageRow, groupBy: UsageGroupBy, t: SettingsT
     if (!match) return row.key ?? "-";
     return dayLabel.format(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
   }
+  // 에이전트로 묶으면 워크플로우 런이, 워크플로우로 묶으면 에이전트 런(자식 포함)이 키 없는 한 행에 모인다
+  // (2단계 3.10). 어떻게 묶든 합계가 같다.
   if (groupBy === "agent") {
+    if (row.key === null || row.key === undefined) return t("usage.workflowRuns");
     const name = row.label ?? t("usage.unknownAgent");
     return row.deleted ? t("usage.deletedAgent", { name }) : name;
+  }
+  if (groupBy === "workflow") {
+    if (row.key === null || row.key === undefined) return t("usage.agentRuns");
+    const name = row.label ?? t("usage.unknownWorkflow");
+    return row.deleted ? t("usage.deletedWorkflow", { name }) : name;
   }
   return row.key ?? t("usage.unknownModel");
 }

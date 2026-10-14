@@ -3,29 +3,25 @@
   "nav": {
     "main": "주 메뉴",
     "agents": "에이전트",
+    "workflows": "워크플로우",
     "skills": "스킬",
     "logs": "로그",
     "settings": "설정",
     "account": "내 계정",
-    "breadcrumb": "현재 위치"
+    "breadcrumb": "현재 위치",
+    "expand": "메뉴 펼치기",
+    "collapse": "메뉴 접기"
   },
   "actions": {
     "save": "저장",
-    "saving": "저장 중…",
     "cancel": "취소",
     "close": "닫기",
     "delete": "삭제",
-    "confirm": "확인",
     "retry": "다시 시도",
     "copy": "복사",
     "copied": "복사했습니다",
     "create": "만들기",
-    "upload": "올리기",
-    "download": "내려받기",
-    "logout": "로그아웃",
-    "add": "추가",
-    "remove": "빼기",
-    "view": "보기"
+    "logout": "로그아웃"
   },
   "state": {
     "loading": "불러오는 중…",
@@ -58,7 +54,11 @@
     "passwordMismatch": "비밀번호가 서로 다릅니다",
     "slug": "영문 소문자, 숫자, 하이픈만 쓸 수 있습니다(64자까지)",
     "envName": "영문자·숫자·밑줄만 쓰고 숫자로 시작할 수 없습니다",
-    "duplicate": "같은 이름이 이미 있습니다"
+    "duplicate": "같은 이름이 이미 있습니다",
+    "maxItems": "{{max}}개까지만 둘 수 있습니다",
+    "jsonObject": "JSON 객체({ … })로 써야 합니다",
+    "schemaObject": "스키마의 type은 object여야 합니다",
+    "schemaClosed": "스키마에 \"additionalProperties\": false가 있어야 합니다"
   },
   "unsavedDialog": {
     "title": "저장하지 않은 변경",

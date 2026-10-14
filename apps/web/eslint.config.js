@@ -7,7 +7,15 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig([
   // schema.d.ts는 scripts/gen-api-types.sh가 만드는 파일이다.
-  globalIgnores(["dist", "coverage", "playwright-report", "test-results", "src/api/schema.d.ts"]),
+  globalIgnores([
+    "dist",
+    "dist.next",
+    "dist.old",
+    "coverage",
+    "playwright-report",
+    "test-results",
+    "src/api/schema.d.ts",
+  ]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [

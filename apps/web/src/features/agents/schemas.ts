@@ -19,6 +19,7 @@ import {
   SLUG_PATTERN,
   type T,
 } from "@/lib/formSchemas";
+import { formToSubAgents, subAgentsSchema, subAgentsToForm } from "./subAgents";
 
 // 능력표를 모를 때 쓰는 출력 상한(설계 4.3의 보수적 기본값)
 export const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
@@ -128,6 +129,7 @@ export function makeAgentFormSchema(t: T, options: { maxOutputTokens: number }) 
       }),
     skill_version_ids: z.array(z.string()),
     file_ids: z.array(z.string()),
+    sub_agents: subAgentsSchema(t),
   });
 }
 
@@ -164,6 +166,7 @@ export function agentToForm(agent: AgentOut, draft: AgentVersionOut): AgentForm 
       max_cost_usd: limits.max_cost_usd ?? null,
       context_budget_tokens: limits.context_budget_tokens ?? null,
       tool_timeout_sec: limits.tool_timeout_sec,
+      max_child_calls: limits.max_child_calls,
     },
     sandbox: {
       memory_limit_mb: draft.sandbox?.memory_limit_mb ?? null,
@@ -177,6 +180,7 @@ export function agentToForm(agent: AgentOut, draft: AgentVersionOut): AgentForm 
     })),
     skill_version_ids: draft.skill_version_ids ?? [],
     file_ids: draft.file_ids ?? [],
+    sub_agents: subAgentsToForm(draft.sub_agents),
   };
 }
 
@@ -196,6 +200,8 @@ export function formToDraftUpdate(form: AgentForm, updatedAt: string): DraftUpda
     })),
     skill_version_ids: form.skill_version_ids,
     file_ids: form.file_ids,
+    // 키가 빠지면 서버가 저장된 목록을 그대로 둔다. 모두 뺀 것도 저장되도록 늘 보낸다.
+    sub_agents: formToSubAgents(form.sub_agents),
     allow_unlisted_model: form.allow_unlisted_model,
     updated_at: updatedAt,
   };

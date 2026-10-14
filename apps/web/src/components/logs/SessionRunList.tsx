@@ -20,7 +20,8 @@ export function SessionRunList({
   error: unknown;
   onRetry: () => void;
   selectedRunId: string | null;
-  onSelect: (runId: string) => void;
+  // view=children이면 인스펙터의 하위 런 탭을 연다.
+  onSelect: (runId: string, view?: "children") => void;
 }) {
   const { t } = useTranslation("logs");
   if (loading) return <Spinner label={t("runs.loading")} />;
@@ -31,13 +32,13 @@ export function SessionRunList({
       {runs.map((run, index) => {
         const selected = run.id === selectedRunId;
         return (
-          <li key={run.id}>
+          <li key={run.id} className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => onSelect(run.id)}
               aria-current={selected ? "true" : undefined}
               className={cn(
-                "flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2.5 py-1.5 text-left text-xs",
+                "flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2.5 py-1.5 text-left text-xs",
                 selected ? "bg-accent-soft text-ink" : "text-ink-muted hover:bg-hover",
               )}
             >
@@ -55,6 +56,16 @@ export function SessionRunList({
               </span>
               {run.error ? <span className="font-mono text-danger">{run.error.code}</span> : null}
             </button>
+            {run.child_count > 0 ? (
+              <button
+                type="button"
+                onClick={() => onSelect(run.id, "children")}
+                title={t("children.countHint", { count: run.child_count })}
+                className="inline-flex h-5 shrink-0 items-center rounded-sm border border-line bg-sunken px-1.5 text-xs text-ink-muted hover:text-accent"
+              >
+                {t("children.count", { count: run.child_count })}
+              </button>
+            ) : null}
           </li>
         );
       })}

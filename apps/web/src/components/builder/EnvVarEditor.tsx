@@ -5,13 +5,34 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState, Panel } from "@/components/ui/layout";
 import { Switch } from "@/components/ui/toggle";
-import type { AgentForm } from "@/features/agents/schemas";
 
-export function EnvVarEditor({ form }: { form: UseFormReturn<AgentForm> }) {
+export interface EnvVarRow {
+  name: string;
+  value: string;
+  secret: boolean;
+  // 서버에 값이 있지만 응답에 오지 않은 변수(비밀 값). 값 칸을 비워 두면 그 값을 그대로 둔다.
+  keep: boolean;
+}
+
+export interface EnvVarFields {
+  env_vars: EnvVarRow[];
+}
+
+// 에이전트 빌더 폼과 워크플로우 환경 변수 폼이 같이 쓴다. 두 폼 모두 env_vars 칸을 가진다.
+export function EnvVarEditor<F extends EnvVarFields>({
+  form,
+  title,
+  description,
+}: {
+  form: UseFormReturn<F>;
+  title?: string;
+  description?: string;
+}) {
   const { t } = useTranslation("agents");
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: "env_vars" });
-  const values = useWatch({ control: form.control, name: "env_vars" });
-  const errors = form.formState.errors.env_vars;
+  const envForm = form as unknown as UseFormReturn<EnvVarFields>;
+  const { fields, append, remove } = useFieldArray({ control: envForm.control, name: "env_vars" });
+  const values = useWatch({ control: envForm.control, name: "env_vars" });
+  const errors = envForm.formState.errors.env_vars;
 
   const addButton = (
     <Button size="sm" onClick={() => append({ name: "", value: "", secret: false, keep: false })}>
@@ -21,7 +42,11 @@ export function EnvVarEditor({ form }: { form: UseFormReturn<AgentForm> }) {
   );
 
   return (
-    <Panel title={t("env.title")} description={t("env.description")} actions={addButton}>
+    <Panel
+      title={title ?? t("env.title")}
+      description={description ?? t("env.description")}
+      actions={addButton}
+    >
       {fields.length === 0 ? (
         <EmptyState icon={KeyRound} title={t("env.empty")} />
       ) : (
@@ -45,7 +70,7 @@ export function EnvVarEditor({ form }: { form: UseFormReturn<AgentForm> }) {
                     className="font-mono"
                     aria-label={`${t("env.name")} ${index + 1}`}
                     aria-invalid={rowErrors?.name ? true : undefined}
-                    {...form.register(`env_vars.${index}.name`)}
+                    {...envForm.register(`env_vars.${index}.name`)}
                   />
                   <Input
                     className="font-mono"
@@ -54,15 +79,15 @@ export function EnvVarEditor({ form }: { form: UseFormReturn<AgentForm> }) {
                     aria-invalid={rowErrors?.value ? true : undefined}
                     aria-label={`${t("env.value")} ${index + 1}`}
                     placeholder={keepsStored ? t("env.keepSecret") : undefined}
-                    {...form.register(`env_vars.${index}.value`)}
+                    {...envForm.register(`env_vars.${index}.value`)}
                   />
                   <Switch
                     aria-label={`${t("env.secret")} ${index + 1}`}
                     checked={secret}
                     onCheckedChange={(on) => {
-                      form.setValue(`env_vars.${index}.secret`, on, { shouldDirty: true });
+                      envForm.setValue(`env_vars.${index}.secret`, on, { shouldDirty: true });
                       // 비밀 값을 일반 값으로 바꾸면 서버가 값을 다시 받는다(env_value_required).
-                      if (!on) form.setValue(`env_vars.${index}.keep`, false);
+                      if (!on) envForm.setValue(`env_vars.${index}.keep`, false);
                     }}
                   />
                   <Button

@@ -1,4 +1,9 @@
 @import "tailwindcss";
+/*
+ * 인터넷 없이도 글꼴이 나오도록 CDN이 아니라 패키지의 글꼴 파일을 함께 빌드한다. 동적 서브셋이라
+ * 브라우저는 화면에 쓰인 글자 범위의 조각만 받는다.
+ */
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "./tokens.css";
 
 /* 기본 팔레트를 지워 토큰 밖의 색(bg-blue-500 등)을 쓰지 못하게 한다. */
@@ -185,7 +190,7 @@
   margin: 1em 0;
 }
 
-/* rehype-highlight가 붙이는 hljs 클래스. 색은 토큰에서 고른다. */
+/* 코드 강조(src/lib/highlight.ts)가 붙이는 hljs 클래스. 색은 토큰에서 고른다. */
 .hljs-comment,
 .hljs-quote {
   color: var(--color-ink-subtle);

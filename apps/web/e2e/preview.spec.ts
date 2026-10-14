@@ -1,19 +1,18 @@
 import { readFile } from "node:fs/promises";
-import { expect as baseExpect, test, type Cookie } from "@playwright/test";
+import { expect as baseExpect, test } from "@playwright/test";
 import {
+  ANSWER,
+  COMMAND,
   approvalCard,
   approveAll,
   createAgent,
-  ensureAccount,
-  fakeLlm,
   preview,
   previewSessionId,
   runStatus,
   send,
-  serverUp,
+  setupFakeServer,
   uiLogin,
   waitingRuns,
-  waitRunnerIdle,
 } from "./support.ts";
 
 /*
@@ -26,37 +25,7 @@ import {
 // 런은 서버 워커(동시 1)를 거쳐 돌아 화면 반영이 몇 초 늦을 수 있다.
 const expect = baseExpect.configure({ timeout: 15_000 });
 
-// 가짜 어댑터 기본 각본: shell("echo fake-llm") 한 번 → 승인 → "도구 실행 결과를 확인했습니다."
-const COMMAND = "echo fake-llm";
-const ANSWER = "도구 실행 결과를 확인했습니다.";
-
-// 로그인은 한 번만 하고 쿠키를 시험마다 넣는다. 서버의 로그인 레이트 리밋이 분당 5회다.
-let cookies: Cookie[] | null = null;
-let fake = false;
-
-test.beforeAll(async ({ playwright, baseURL }) => {
-  // 로그인 레이트 리밋에 걸리면 1분 가까이 기다린다.
-  test.setTimeout(90_000);
-  const request = await playwright.request.newContext({ baseURL });
-  try {
-    if (!(await serverUp(request))) return;
-    await ensureAccount(request);
-    fake = await fakeLlm(request);
-    cookies = (await request.storageState()).cookies;
-  } finally {
-    await request.dispose();
-  }
-});
-
-test.beforeEach(async ({ context }) => {
-  test.skip(!cookies, "백엔드가 떠 있지 않거나 로그인하지 못해 건너뛴다");
-  test.skip(!fake, "LLM_FAKE=true로 띄운 서버에서만 돈다");
-  await context.addCookies(cookies!);
-});
-
-test.afterEach(async ({ request }) => {
-  if (await serverUp(request)) await waitRunnerIdle(request);
-});
+setupFakeServer();
 
 test("빌더 미리보기: 에이전트 생성·모델 선택·저장 뒤 승인 카드, 도구 카드, 답, 파일 내려받기", async ({
   page,
@@ -68,7 +37,8 @@ test("빌더 미리보기: 에이전트 생성·모델 선택·저장 뒤 승인
   await uiLogin(page);
   await expect(page).toHaveURL(/\/agents$/);
 
-  await page.getByRole("button", { name: "새 에이전트" }).click();
+  // 에이전트가 하나도 없으면 빈 화면 안내에도 같은 버튼이 있다.
+  await page.getByRole("button", { name: "새 에이전트" }).first().click();
   const dialog = page.getByRole("dialog", { name: "새 에이전트" });
   await dialog.getByLabel("이름").fill(`e2e 미리보기 ${Date.now()}`);
   await dialog.getByRole("button", { name: "만들기" }).click();
@@ -120,13 +90,15 @@ test("빌더 미리보기: 에이전트 생성·모델 선택·저장 뒤 승인
   const [download] = await Promise.all([page.waitForEvent("download"), attachment.click()]);
   expect(await readFile((await download.path())!, "utf8")).toBe(csv);
 
-  // 런이 만든 파일이 있으면 내려받는다. 가짜 어댑터 기본 각본은 파일을 만들지 않는다.
-  const changed = panel.getByRole("heading", { name: "변경된 파일" });
-  if (await changed.isVisible()) {
-    const link = panel.getByRole("link", { name: /내려받기$/ }).last();
-    const [output] = await Promise.all([page.waitForEvent("download"), link.click()]);
-    expect(await output.path()).toBeTruthy();
-  }
+  // "파일:" 메시지는 write_file로 outputs/결과.txt를 쓴다(승인 없음). 런이 바꾼 파일을 내려받는다.
+  const content = "e2e가 쓴 결과";
+  await send(page, `파일: ${content}`);
+  await expect(panel.getByText("파일을 썼습니다.", { exact: true })).toBeVisible();
+  await expect(runStatus(page)).toContainText("완료");
+  await expect(panel.getByRole("heading", { name: "변경된 파일" })).toBeVisible();
+  const output = panel.getByRole("link", { name: "outputs/결과.txt 내려받기" });
+  const [written] = await Promise.all([page.waitForEvent("download"), output.click()]);
+  expect(await readFile((await written.path())!, "utf8")).toBe(content);
 
   // 세션 초기화: 새 대화로 시작하고 다음 메시지에서 새 세션을 만든다.
   expect(await previewSessionId(page, agentId)).not.toBeNull();
@@ -248,4 +220,54 @@ test("'이 세션에서는 묻지 않기'로 승인하면 칩이 켜지고, 끄�
   await send(page, "세 번째 요청");
   await expect(card).toBeVisible();
   await expect(card.locator("pre")).toHaveText(COMMAND);
+});
+
+test("승인 거절: 사유를 남기면 도구 카드가 거절됨으로 끝나고 모델이 이어서 답한다", async ({
+  page,
+}) => {
+  const agentId = await createAgent(page, `e2e 거절 ${Date.now()}`);
+  await page.goto(`/agents/${agentId}`);
+  const panel = preview(page);
+
+  await send(page, "거절할 요청");
+  const card = approvalCard(page);
+  await expect(card).toBeVisible();
+  const note = "작업공간을 건드리지 않기로 했다";
+  await card.getByLabel("거절 사유 (선택)").fill(note);
+  await card.getByRole("button", { name: "거절", exact: true }).click();
+
+  await expect(card).toBeHidden();
+  await expect(panel.getByText(`거절함: ${note}`, { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /shell/ })).toContainText("거절됨");
+  await expect(panel.getByText(ANSWER)).toBeVisible();
+  await expect(runStatus(page)).toContainText("완료");
+});
+
+test("질문 응답: '질문:' 메시지에 질문 카드가 뜨고 보기나 직접 쓴 답으로 이어서 답한다", async ({
+  page,
+}) => {
+  const agentId = await createAgent(page, `e2e 질문 ${Date.now()}`);
+  await page.goto(`/agents/${agentId}`);
+  const panel = preview(page);
+  const question = panel.getByRole("region", { name: "에이전트의 질문" });
+
+  await send(page, "질문: 계속 진행할까요?");
+  await expect(question).toContainText("계속 진행할까요?");
+  await expect(runStatus(page)).toContainText("입력 기다리는 중");
+  const options = question.getByRole("group", { name: "고를 수 있는 답" });
+  await expect(options.getByRole("button")).toHaveText(["예", "아니오"]);
+  await options.getByRole("button", { name: "예", exact: true }).click();
+  await expect(question).toBeHidden();
+  await expect(panel.getByText("답변: 예", { exact: true })).toBeVisible();
+  await expect(panel.getByText("답을 확인했습니다: 예", { exact: true })).toBeVisible();
+  await expect(runStatus(page)).toContainText("완료");
+
+  // 보기 밖의 답은 카드의 입력란에 써서 보낸다.
+  await send(page, "질문: 어떤 이름으로 저장할까요?");
+  await expect(question).toContainText("어떤 이름으로 저장할까요?");
+  await question.getByLabel("답변", { exact: true }).fill("보고서-최종");
+  await question.getByRole("button", { name: "답 보내기" }).click();
+  await expect(panel.getByText("답변: 보고서-최종", { exact: true })).toBeVisible();
+  await expect(panel.getByText("답을 확인했습니다: 보고서-최종", { exact: true })).toBeVisible();
+  await expect(runStatus(page)).toContainText("완료");
 });

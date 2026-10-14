@@ -2,7 +2,9 @@ import { RUN_STATUSES, SESSION_SOURCES, type RunStatus, type SessionSource } fro
 
 // 로그 목록의 필터(설계 7.2: 에이전트·소스·기간·상태). 주소의 검색 매개변수에 두어 새로 고침과 뒤로
 // 가기에도 남고 링크로 그대로 옮길 수 있다.
-export type LogTab = "sessions" | "runs";
+// workflows는 /logs의 워크플로우 런 탭이다. 그 탭의 필터는 workflows/runLogFilters가 따로 읽는다.
+export type LogTab = "sessions" | "runs" | "workflows";
+const LOG_TABS: readonly LogTab[] = ["sessions", "runs", "workflows"];
 export const LOG_PERIODS = ["all", "1d", "7d", "30d", "90d"] as const;
 export type LogPeriod = (typeof LOG_PERIODS)[number];
 
@@ -13,6 +15,8 @@ export interface LogFilters {
   period: LogPeriod;
   // 런 상태. 세션 목록에는 쓰지 않는다.
   status: RunStatus | null;
+  // 이 런이 하위 에이전트로 부른 자식 런만 본다(오케스트레이션 8.3). 런 목록에만 쓴다.
+  parent: string | null;
 }
 
 export const DEFAULT_LOG_FILTERS: LogFilters = {
@@ -21,6 +25,7 @@ export const DEFAULT_LOG_FILTERS: LogFilters = {
   source: null,
   period: "all",
   status: null,
+  parent: null,
 };
 
 const PERIOD_DAYS: Record<Exclude<LogPeriod, "all">, number> = {
@@ -37,12 +42,14 @@ function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T
 
 export function parseLogFilters(params: URLSearchParams): LogFilters {
   const agent = params.get("agent")?.trim();
+  const parent = params.get("parent")?.trim();
   return {
-    tab: params.get("tab") === "runs" ? "runs" : "sessions",
+    tab: oneOf(params.get("tab"), LOG_TABS) ?? "sessions",
     agent: agent ? agent : null,
     source: oneOf(params.get("source"), SESSION_SOURCES),
     period: oneOf(params.get("period"), LOG_PERIODS) ?? DEFAULT_LOG_FILTERS.period,
     status: oneOf(params.get("status"), RUN_STATUSES),
+    parent: parent ? parent : null,
   };
 }
 
@@ -54,6 +61,7 @@ export function logFiltersToParams(filters: LogFilters): URLSearchParams {
   if (filters.source) params.set("source", filters.source);
   if (filters.period !== DEFAULT_LOG_FILTERS.period) params.set("period", filters.period);
   if (filters.status) params.set("status", filters.status);
+  if (filters.parent) params.set("parent", filters.parent);
   return params;
 }
 
@@ -62,7 +70,7 @@ export function hasActiveFilters(filters: LogFilters, { ignoreAgent = false } = 
     (!ignoreAgent && filters.agent !== null) ||
     filters.source !== null ||
     filters.period !== DEFAULT_LOG_FILTERS.period ||
-    (filters.tab === "runs" && filters.status !== null)
+    (filters.tab === "runs" && (filters.status !== null || filters.parent !== null))
   );
 }
 
@@ -83,6 +91,7 @@ export interface SessionListQuery {
 
 export interface RunListQuery extends SessionListQuery {
   status?: RunStatus;
+  parent_run_id?: string;
 }
 
 export function sessionListQuery(filters: LogFilters, now: number): SessionListQuery {
@@ -97,11 +106,21 @@ export function sessionListQuery(filters: LogFilters, now: number): SessionListQ
 export function runListQuery(filters: LogFilters, now: number): RunListQuery {
   const query: RunListQuery = sessionListQuery(filters, now);
   if (filters.status) query.status = filters.status;
+  if (filters.parent) query.parent_run_id = filters.parent;
   return query;
 }
 
-// 세션 상세 주소. 런을 주면 그 런을 인스펙터에 연다.
-export function sessionLogPath(sessionId: string, runId?: string): string {
+// 세션 상세 주소. 런을 주면 그 런을 인스펙터에 열고, view=children이면 인스펙터의 하위 런 탭을 연다.
+export function sessionLogPath(sessionId: string, runId?: string, view?: "children"): string {
+  const params = new URLSearchParams();
+  if (runId) params.set("run", runId);
+  if (runId && view) params.set("view", view);
+  const query = params.toString();
   const base = `/logs/sessions/${encodeURIComponent(sessionId)}`;
-  return runId ? `${base}?run=${encodeURIComponent(runId)}` : base;
+  return query ? `${base}?${query}` : base;
+}
+
+// 런 목록을 한 런의 자식 런으로 거른 주소
+export function childRunsPath(parentRunId: string): string {
+  return `/logs?${logFiltersToParams({ ...DEFAULT_LOG_FILTERS, tab: "runs", parent: parentRunId })}`;
 }

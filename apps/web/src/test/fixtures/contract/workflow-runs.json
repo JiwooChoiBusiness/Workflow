@@ -1,0 +1,2746 @@
+{
+  "linear": {
+    "runId": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+    "events": [
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 1,
+        "ts": "2026-10-14T07:17:36.388Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 2,
+        "ts": "2026-10-14T07:17:36.399Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-13da-7045-95f5-b0e51e38bc4e",
+          "version_id": "01a13946-13db-76ed-aa1d-296ede9c74e6",
+          "kind": "workflow",
+          "inputs_preview": {
+            "q": "세계"
+          },
+          "truncated": false,
+          "resumed": false,
+          "node_count": 3
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 3,
+        "ts": "2026-10-14T07:17:36.403Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-140f-763c-9ad4-baea8a3b64f4",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 4,
+        "ts": "2026-10-14T07:17:36.407Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-140f-763c-9ad4-baea8a3b64f4",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {
+            "q": "세계"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 5,
+        "ts": "2026-10-14T07:17:36.411Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-1417-7a95-8c2a-9515b5248a70",
+          "node_id": "template_1",
+          "node_type": "template",
+          "title": "template_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 6,
+        "ts": "2026-10-14T07:17:36.413Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-1417-7a95-8c2a-9515b5248a70",
+          "node_id": "template_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "output": "안녕, 세계"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 7,
+        "ts": "2026-10-14T07:17:36.418Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-141d-7b27-be5d-06c35045390d",
+          "node_id": "end_1",
+          "node_type": "end",
+          "title": "end_1",
+          "index": 2,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 8,
+        "ts": "2026-10-14T07:17:36.421Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-141d-7b27-be5d-06c35045390d",
+          "node_id": "end_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "greeting": "안녕, 세계"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+        "session_id": null,
+        "seq": 9,
+        "ts": "2026-10-14T07:17:36.425Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "succeeded",
+          "outputs": {
+            "greeting": "안녕, 세계"
+          },
+          "usage_total": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "node_runs": 3,
+          "duration_ms": 22,
+          "error": null,
+          "truncated": false
+        }
+      }
+    ],
+    "detail": {
+      "id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+      "workflow_id": "01a13946-13da-7045-95f5-b0e51e38bc4e",
+      "wf_version_id": "01a13946-13db-76ed-aa1d-296ede9c74e6",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "succeeded",
+      "inputs": {
+        "q": "세계"
+      },
+      "outputs": {
+        "greeting": "안녕, 세계"
+      },
+      "error": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "node_run_count": 3,
+      "pending_interaction": null,
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:36.382168Z",
+      "started_at": "2026-10-14T07:17:36.389172Z",
+      "ended_at": "2026-10-14T07:17:36.421695Z",
+      "created_at": "2026-10-14T07:17:36.383169Z",
+      "updated_at": "2026-10-14T07:17:36.423694Z",
+      "node_runs": [
+        {
+          "id": "01a13946-140f-763c-9ad4-baea8a3b64f4",
+          "wf_run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.399173Z",
+          "ended_at": "2026-10-14T07:17:36.403187Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-1417-7a95-8c2a-9515b5248a70",
+          "wf_run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "node_id": "template_1",
+          "node_type": "template",
+          "title": "template_1",
+          "index": 1,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.407178Z",
+          "ended_at": "2026-10-14T07:17:36.411177Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-141d-7b27-be5d-06c35045390d",
+          "wf_run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "node_id": "end_1",
+          "node_type": "end",
+          "title": "end_1",
+          "index": 2,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.413182Z",
+          "ended_at": "2026-10-14T07:17:36.418695Z",
+          "duration_ms": 0
+        }
+      ]
+    },
+    "nodeRun": {
+      "id": "01a13946-1417-7a95-8c2a-9515b5248a70",
+      "wf_run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+      "node_id": "template_1",
+      "node_type": "template",
+      "title": "template_1",
+      "index": 1,
+      "iteration_node_id": null,
+      "iteration_index": null,
+      "attempt": 1,
+      "status": "succeeded",
+      "truncated": false,
+      "error": null,
+      "usage": null,
+      "warnings": [],
+      "child_run_id": null,
+      "branch": null,
+      "started_at": "2026-10-14T07:17:36.407178Z",
+      "ended_at": "2026-10-14T07:17:36.411177Z",
+      "duration_ms": 0,
+      "inputs": {
+        "q": "세계"
+      },
+      "outputs": {
+        "output": "안녕, 세계"
+      },
+      "process": {}
+    },
+    "eventLog": {
+      "items": [
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 1,
+          "ts": "2026-10-14T07:17:36.388169Z",
+          "type": "workflow.queued",
+          "data": {
+            "position": 1
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 2,
+          "ts": "2026-10-14T07:17:36.399173Z",
+          "type": "workflow.started",
+          "data": {
+            "workflow_id": "01a13946-13da-7045-95f5-b0e51e38bc4e",
+            "version_id": "01a13946-13db-76ed-aa1d-296ede9c74e6",
+            "kind": "workflow",
+            "inputs_preview": {
+              "q": "세계"
+            },
+            "truncated": false,
+            "resumed": false,
+            "node_count": 3
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 3,
+          "ts": "2026-10-14T07:17:36.403187Z",
+          "type": "node.started",
+          "data": {
+            "node_run_id": "01a13946-140f-763c-9ad4-baea8a3b64f4",
+            "node_id": "start",
+            "node_type": "start",
+            "title": "start",
+            "index": 0,
+            "iteration_id": null,
+            "iteration_index": null,
+            "attempt": 1,
+            "child_run_id": null,
+            "child_session_id": null
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 4,
+          "ts": "2026-10-14T07:17:36.407178Z",
+          "type": "node.completed",
+          "data": {
+            "node_run_id": "01a13946-140f-763c-9ad4-baea8a3b64f4",
+            "node_id": "start",
+            "status": "succeeded",
+            "outputs_preview": {
+              "q": "세계"
+            },
+            "truncated": false,
+            "error": null,
+            "usage": null,
+            "duration_ms": 0,
+            "branch": null,
+            "warnings": []
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 5,
+          "ts": "2026-10-14T07:17:36.411177Z",
+          "type": "node.started",
+          "data": {
+            "node_run_id": "01a13946-1417-7a95-8c2a-9515b5248a70",
+            "node_id": "template_1",
+            "node_type": "template",
+            "title": "template_1",
+            "index": 1,
+            "iteration_id": null,
+            "iteration_index": null,
+            "attempt": 1,
+            "child_run_id": null,
+            "child_session_id": null
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 6,
+          "ts": "2026-10-14T07:17:36.413182Z",
+          "type": "node.completed",
+          "data": {
+            "node_run_id": "01a13946-1417-7a95-8c2a-9515b5248a70",
+            "node_id": "template_1",
+            "status": "succeeded",
+            "outputs_preview": {
+              "output": "안녕, 세계"
+            },
+            "truncated": false,
+            "error": null,
+            "usage": null,
+            "duration_ms": 0,
+            "branch": null,
+            "warnings": []
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 7,
+          "ts": "2026-10-14T07:17:36.418695Z",
+          "type": "node.started",
+          "data": {
+            "node_run_id": "01a13946-141d-7b27-be5d-06c35045390d",
+            "node_id": "end_1",
+            "node_type": "end",
+            "title": "end_1",
+            "index": 2,
+            "iteration_id": null,
+            "iteration_index": null,
+            "attempt": 1,
+            "child_run_id": null,
+            "child_session_id": null
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 8,
+          "ts": "2026-10-14T07:17:36.421695Z",
+          "type": "node.completed",
+          "data": {
+            "node_run_id": "01a13946-141d-7b27-be5d-06c35045390d",
+            "node_id": "end_1",
+            "status": "succeeded",
+            "outputs_preview": {
+              "greeting": "안녕, 세계"
+            },
+            "truncated": false,
+            "error": null,
+            "usage": null,
+            "duration_ms": 0,
+            "branch": null,
+            "warnings": []
+          }
+        },
+        {
+          "run_id": "01a13946-13fe-74d2-b767-8ff1fe7890f6",
+          "session_id": null,
+          "conversation_id": null,
+          "seq": 9,
+          "ts": "2026-10-14T07:17:36.425209Z",
+          "type": "workflow.completed",
+          "data": {
+            "status": "succeeded",
+            "outputs": {
+              "greeting": "안녕, 세계"
+            },
+            "usage_total": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": false
+            },
+            "node_runs": 3,
+            "duration_ms": 22,
+            "error": null,
+            "truncated": false
+          }
+        }
+      ],
+      "next_after": null
+    }
+  },
+  "branch": {
+    "runId": "01a13946-1494-7f91-9f82-7e301970f9e4",
+    "events": [
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 1,
+        "ts": "2026-10-14T07:17:36.538Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 2,
+        "ts": "2026-10-14T07:17:36.553Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-1468-7afb-99f1-6a8e2e6c4831",
+          "version_id": "01a13946-1469-7254-ae68-06ea93737d97",
+          "kind": "workflow",
+          "inputs_preview": {
+            "q": "분기 질문"
+          },
+          "truncated": false,
+          "resumed": false,
+          "node_count": 7
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 3,
+        "ts": "2026-10-14T07:17:36.558Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-14a9-73c1-b84a-8976b83614d8",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 4,
+        "ts": "2026-10-14T07:17:36.563Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14a9-73c1-b84a-8976b83614d8",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {
+            "q": "분기 질문"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 5,
+        "ts": "2026-10-14T07:17:36.568Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-14b4-75b3-b8f1-e5168c6867d9",
+          "node_id": "llm_1",
+          "node_type": "llm",
+          "title": "llm_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 6,
+        "ts": "2026-10-14T07:17:36.568Z",
+        "type": "node.text_delta",
+        "data": {
+          "text": "가짜 응답: 분기 질문",
+          "node_id": "llm_1",
+          "node_run_id": "01a13946-14b4-75b3-b8f1-e5168c6867d9"
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 7,
+        "ts": "2026-10-14T07:17:36.568Z",
+        "type": "node.usage",
+        "data": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null,
+          "node_id": "llm_1",
+          "node_run_id": "01a13946-14b4-75b3-b8f1-e5168c6867d9"
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 8,
+        "ts": "2026-10-14T07:17:36.574Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14b4-75b3-b8f1-e5168c6867d9",
+          "node_id": "llm_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "가짜 응답: 분기 질문",
+            "json": null,
+            "usage": {
+              "input_tokens": 14,
+              "output_tokens": 4,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            }
+          },
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 9,
+        "ts": "2026-10-14T07:17:36.580Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-14be-78c6-861b-2e26feab0af6",
+          "node_id": "if_else_1",
+          "node_type": "if_else",
+          "title": "if_else_1",
+          "index": 2,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 10,
+        "ts": "2026-10-14T07:17:36.585Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14be-78c6-861b-2e26feab0af6",
+          "node_id": "if_else_1",
+          "status": "succeeded",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": "case_fake",
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 11,
+        "ts": "2026-10-14T07:17:36.590Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14c9-7458-bbf6-30f05d441336",
+          "node_id": "template_no",
+          "status": "skipped",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 12,
+        "ts": "2026-10-14T07:17:36.596Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14ce-715c-b9f9-ddae301d0e45",
+          "node_id": "end_no",
+          "status": "skipped",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 13,
+        "ts": "2026-10-14T07:17:36.601Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-14d4-7403-b93d-dc0803143a53",
+          "node_id": "template_yes",
+          "node_type": "template",
+          "title": "template_yes",
+          "index": 5,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 14,
+        "ts": "2026-10-14T07:17:36.606Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14d4-7403-b93d-dc0803143a53",
+          "node_id": "template_yes",
+          "status": "succeeded",
+          "outputs_preview": {
+            "output": "예: 가짜 응답: 분기 질문"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 15,
+        "ts": "2026-10-14T07:17:36.610Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-14de-72bc-959c-0d3d8f7b119d",
+          "node_id": "end_yes",
+          "node_type": "end",
+          "title": "end_yes",
+          "index": 6,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 16,
+        "ts": "2026-10-14T07:17:36.615Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-14de-72bc-959c-0d3d8f7b119d",
+          "node_id": "end_yes",
+          "status": "succeeded",
+          "outputs_preview": {
+            "answer": "예: 가짜 응답: 분기 질문"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+        "session_id": null,
+        "seq": 17,
+        "ts": "2026-10-14T07:17:36.620Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "succeeded",
+          "outputs": {
+            "answer": "예: 가짜 응답: 분기 질문"
+          },
+          "usage_total": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "node_runs": 7,
+          "duration_ms": 63,
+          "error": null,
+          "truncated": false
+        }
+      }
+    ],
+    "detail": {
+      "id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+      "workflow_id": "01a13946-1468-7afb-99f1-6a8e2e6c4831",
+      "wf_version_id": "01a13946-1469-7254-ae68-06ea93737d97",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "succeeded",
+      "inputs": {
+        "q": "분기 질문"
+      },
+      "outputs": {
+        "answer": "예: 가짜 응답: 분기 질문"
+      },
+      "error": null,
+      "usage": {
+        "input_tokens": 14,
+        "output_tokens": 4,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "node_run_count": 7,
+      "pending_interaction": null,
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:36.532413Z",
+      "started_at": "2026-10-14T07:17:36.539423Z",
+      "ended_at": "2026-10-14T07:17:36.615201Z",
+      "created_at": "2026-10-14T07:17:36.534410Z",
+      "updated_at": "2026-10-14T07:17:36.618333Z",
+      "node_runs": [
+        {
+          "id": "01a13946-14a9-73c1-b84a-8976b83614d8",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.553525Z",
+          "ended_at": "2026-10-14T07:17:36.558534Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-14b4-75b3-b8f1-e5168c6867d9",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "llm_1",
+          "node_type": "llm",
+          "title": "llm_1",
+          "index": 1,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.564535Z",
+          "ended_at": "2026-10-14T07:17:36.569535Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-14be-78c6-861b-2e26feab0af6",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "if_else_1",
+          "node_type": "if_else",
+          "title": "if_else_1",
+          "index": 2,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": "case_fake",
+          "started_at": "2026-10-14T07:17:36.574186Z",
+          "ended_at": "2026-10-14T07:17:36.580191Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-14c9-7458-bbf6-30f05d441336",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "template_no",
+          "node_type": "template",
+          "title": "template_no",
+          "index": 3,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "skipped",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.585192Z",
+          "ended_at": "2026-10-14T07:17:36.585192Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-14ce-715c-b9f9-ddae301d0e45",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "end_no",
+          "node_type": "end",
+          "title": "end_no",
+          "index": 4,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "skipped",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.590190Z",
+          "ended_at": "2026-10-14T07:17:36.590190Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-14d4-7403-b93d-dc0803143a53",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "template_yes",
+          "node_type": "template",
+          "title": "template_yes",
+          "index": 5,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.596191Z",
+          "ended_at": "2026-10-14T07:17:36.601193Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-14de-72bc-959c-0d3d8f7b119d",
+          "wf_run_id": "01a13946-1494-7f91-9f82-7e301970f9e4",
+          "node_id": "end_yes",
+          "node_type": "end",
+          "title": "end_yes",
+          "index": 6,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.606199Z",
+          "ended_at": "2026-10-14T07:17:36.611201Z",
+          "duration_ms": 0
+        }
+      ]
+    }
+  },
+  "singleNode": {
+    "runId": "01a13946-150e-7369-9dc7-6422c235e8c8",
+    "events": [
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 1,
+        "ts": "2026-10-14T07:17:36.673Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 2,
+        "ts": "2026-10-14T07:17:36.684Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-1468-7afb-99f1-6a8e2e6c4831",
+          "version_id": "01a13946-1469-7254-ae68-06ea93737d97",
+          "kind": "workflow",
+          "inputs_preview": {
+            "start.q": "단독 실행"
+          },
+          "truncated": false,
+          "resumed": false,
+          "node_count": 7
+        }
+      },
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 3,
+        "ts": "2026-10-14T07:17:36.690Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-152c-7b74-a327-573f95e15c07",
+          "node_id": "llm_1",
+          "node_type": "llm",
+          "title": "llm_1",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 4,
+        "ts": "2026-10-14T07:17:36.690Z",
+        "type": "node.text_delta",
+        "data": {
+          "text": "가짜 응답: 단독 실행",
+          "node_id": "llm_1",
+          "node_run_id": "01a13946-152c-7b74-a327-573f95e15c07"
+        }
+      },
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 5,
+        "ts": "2026-10-14T07:17:36.690Z",
+        "type": "node.usage",
+        "data": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null,
+          "node_id": "llm_1",
+          "node_run_id": "01a13946-152c-7b74-a327-573f95e15c07"
+        }
+      },
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 6,
+        "ts": "2026-10-14T07:17:36.695Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-152c-7b74-a327-573f95e15c07",
+          "node_id": "llm_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "가짜 응답: 단독 실행",
+            "json": null,
+            "usage": {
+              "input_tokens": 14,
+              "output_tokens": 4,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            }
+          },
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "duration_ms": 1,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+        "session_id": null,
+        "seq": 7,
+        "ts": "2026-10-14T07:17:36.701Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "succeeded",
+          "outputs": {
+            "text": "가짜 응답: 단독 실행",
+            "json": null,
+            "usage": {
+              "input_tokens": 14,
+              "output_tokens": 4,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            }
+          },
+          "usage_total": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "node_runs": 1,
+          "duration_ms": 12,
+          "error": null,
+          "truncated": false
+        }
+      }
+    ],
+    "detail": {
+      "id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+      "workflow_id": "01a13946-1468-7afb-99f1-6a8e2e6c4831",
+      "wf_version_id": "01a13946-1469-7254-ae68-06ea93737d97",
+      "kind": "workflow",
+      "trigger": "single_node",
+      "status": "succeeded",
+      "inputs": {
+        "node_id": "llm_1",
+        "values": {
+          "start.q": "단독 실행"
+        }
+      },
+      "outputs": {
+        "text": "가짜 응답: 단독 실행",
+        "json": null,
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        }
+      },
+      "error": null,
+      "usage": {
+        "input_tokens": 14,
+        "output_tokens": 4,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "node_run_count": 1,
+      "pending_interaction": null,
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:36.654947Z",
+      "started_at": "2026-10-14T07:17:36.674484Z",
+      "ended_at": "2026-10-14T07:17:36.695484Z",
+      "created_at": "2026-10-14T07:17:36.656941Z",
+      "updated_at": "2026-10-14T07:17:36.699486Z",
+      "node_runs": [
+        {
+          "id": "01a13946-152c-7b74-a327-573f95e15c07",
+          "wf_run_id": "01a13946-150e-7369-9dc7-6422c235e8c8",
+          "node_id": "llm_1",
+          "node_type": "llm",
+          "title": "llm_1",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.684484Z",
+          "ended_at": "2026-10-14T07:17:36.691482Z",
+          "duration_ms": 1
+        }
+      ]
+    }
+  },
+  "iteration": {
+    "runId": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+    "events": [
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 1,
+        "ts": "2026-10-14T07:17:36.809Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 2,
+        "ts": "2026-10-14T07:17:36.822Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-155a-7be3-b3bc-8bad49361a62",
+          "version_id": "01a13946-155b-74d4-89e3-4d2e4dc4578e",
+          "kind": "workflow",
+          "inputs_preview": {
+            "q": "x"
+          },
+          "truncated": false,
+          "resumed": false,
+          "node_count": 6
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 3,
+        "ts": "2026-10-14T07:17:36.829Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-15b6-77af-94a7-2e4ff5216879",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 4,
+        "ts": "2026-10-14T07:17:36.834Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-15b6-77af-94a7-2e4ff5216879",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {
+            "q": "x"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 5,
+        "ts": "2026-10-14T07:17:36.839Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-15c2-799b-a2c8-49d3dca11d73",
+          "node_id": "code_1",
+          "node_type": "code",
+          "title": "code_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 6,
+        "ts": "2026-10-14T07:17:37.053Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-15c2-799b-a2c8-49d3dca11d73",
+          "node_id": "code_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "items": ["x-1", "x-2", "x-3"]
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 207,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 7,
+        "ts": "2026-10-14T07:17:37.065Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-169f-71b0-974d-c85d3ed4b1bc",
+          "node_id": "iteration_1",
+          "node_type": "iteration",
+          "title": "iteration_1",
+          "index": 2,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 8,
+        "ts": "2026-10-14T07:17:37.065Z",
+        "type": "iteration.started",
+        "data": {
+          "node_id": "iteration_1",
+          "total": 3
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 9,
+        "ts": "2026-10-14T07:17:37.065Z",
+        "type": "iteration.next",
+        "data": {
+          "node_id": "iteration_1",
+          "index": 0
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 10,
+        "ts": "2026-10-14T07:17:37.071Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-16aa-789e-8be2-d9419bd7d3b3",
+          "node_id": "template_3",
+          "node_type": "template",
+          "title": "template_3",
+          "index": 3,
+          "iteration_id": "iteration_1",
+          "iteration_index": 0,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 11,
+        "ts": "2026-10-14T07:17:37.077Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-16aa-789e-8be2-d9419bd7d3b3",
+          "node_id": "template_3",
+          "status": "succeeded",
+          "outputs_preview": {
+            "output": "0: x-1"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 12,
+        "ts": "2026-10-14T07:17:37.077Z",
+        "type": "iteration.next",
+        "data": {
+          "node_id": "iteration_1",
+          "index": 1
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 13,
+        "ts": "2026-10-14T07:17:37.082Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-16b5-719c-8fe1-5d262a6133c7",
+          "node_id": "template_3",
+          "node_type": "template",
+          "title": "template_3",
+          "index": 4,
+          "iteration_id": "iteration_1",
+          "iteration_index": 1,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 14,
+        "ts": "2026-10-14T07:17:37.087Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-16b5-719c-8fe1-5d262a6133c7",
+          "node_id": "template_3",
+          "status": "succeeded",
+          "outputs_preview": {
+            "output": "1: x-2"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 15,
+        "ts": "2026-10-14T07:17:37.088Z",
+        "type": "iteration.next",
+        "data": {
+          "node_id": "iteration_1",
+          "index": 2
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 16,
+        "ts": "2026-10-14T07:17:37.093Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-16c0-78a0-a537-9b58009dfbd5",
+          "node_id": "template_3",
+          "node_type": "template",
+          "title": "template_3",
+          "index": 5,
+          "iteration_id": "iteration_1",
+          "iteration_index": 2,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 17,
+        "ts": "2026-10-14T07:17:37.097Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-16c0-78a0-a537-9b58009dfbd5",
+          "node_id": "template_3",
+          "status": "succeeded",
+          "outputs_preview": {
+            "output": "2: x-3"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 18,
+        "ts": "2026-10-14T07:17:37.098Z",
+        "type": "iteration.completed",
+        "data": {
+          "node_id": "iteration_1",
+          "count": 3,
+          "failed_count": 0,
+          "duration_ms": 32
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 19,
+        "ts": "2026-10-14T07:17:37.102Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-169f-71b0-974d-c85d3ed4b1bc",
+          "node_id": "iteration_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "output": ["0: x-1", "1: x-2", "2: x-3"],
+            "count": 3,
+            "failed_count": 0
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 33,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 20,
+        "ts": "2026-10-14T07:17:37.108Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-16ce-752e-a45f-092b73c2da0e",
+          "node_id": "end_1",
+          "node_type": "end",
+          "title": "end_1",
+          "index": 6,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 21,
+        "ts": "2026-10-14T07:17:37.112Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-16ce-752e-a45f-092b73c2da0e",
+          "node_id": "end_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "items": ["0: x-1", "1: x-2", "2: x-3"]
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+        "session_id": null,
+        "seq": 22,
+        "ts": "2026-10-14T07:17:37.120Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "succeeded",
+          "outputs": {
+            "items": ["0: x-1", "1: x-2", "2: x-3"]
+          },
+          "usage_total": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "node_runs": 7,
+          "duration_ms": 291,
+          "error": null,
+          "truncated": false
+        }
+      }
+    ],
+    "detail": {
+      "id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+      "workflow_id": "01a13946-155a-7be3-b3bc-8bad49361a62",
+      "wf_version_id": "01a13946-155b-74d4-89e3-4d2e4dc4578e",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "succeeded",
+      "inputs": {
+        "q": "x"
+      },
+      "outputs": {
+        "items": ["0: x-1", "1: x-2", "2: x-3"]
+      },
+      "error": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "node_run_count": 7,
+      "pending_interaction": null,
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:36.794972Z",
+      "started_at": "2026-10-14T07:17:36.810979Z",
+      "ended_at": "2026-10-14T07:17:37.113794Z",
+      "created_at": "2026-10-14T07:17:36.796971Z",
+      "updated_at": "2026-10-14T07:17:37.116795Z",
+      "node_runs": [
+        {
+          "id": "01a13946-15b6-77af-94a7-2e4ff5216879",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.822500Z",
+          "ended_at": "2026-10-14T07:17:36.830034Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-15c2-799b-a2c8-49d3dca11d73",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "code_1",
+          "node_type": "code",
+          "title": "code_1",
+          "index": 1,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:36.834030Z",
+          "ended_at": "2026-10-14T07:17:37.048466Z",
+          "duration_ms": 207
+        },
+        {
+          "id": "01a13946-169f-71b0-974d-c85d3ed4b1bc",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "iteration_1",
+          "node_type": "iteration",
+          "title": "iteration_1",
+          "index": 2,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.055102Z",
+          "ended_at": "2026-10-14T07:17:37.098495Z",
+          "duration_ms": 33
+        },
+        {
+          "id": "01a13946-16ce-752e-a45f-092b73c2da0e",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "end_1",
+          "node_type": "end",
+          "title": "end_1",
+          "index": 6,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.102495Z",
+          "ended_at": "2026-10-14T07:17:37.108786Z",
+          "duration_ms": 0
+        }
+      ]
+    },
+    "children": {
+      "items": [
+        {
+          "id": "01a13946-16aa-789e-8be2-d9419bd7d3b3",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "template_3",
+          "node_type": "template",
+          "title": "template_3",
+          "index": 3,
+          "iteration_node_id": "iteration_1",
+          "iteration_index": 0,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.066441Z",
+          "ended_at": "2026-10-14T07:17:37.071440Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-16b5-719c-8fe1-5d262a6133c7",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "template_3",
+          "node_type": "template",
+          "title": "template_3",
+          "index": 4,
+          "iteration_node_id": "iteration_1",
+          "iteration_index": 1,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.077053Z",
+          "ended_at": "2026-10-14T07:17:37.083495Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-16c0-78a0-a537-9b58009dfbd5",
+          "wf_run_id": "01a13946-159a-7da7-9ece-1ea09fbd45b8",
+          "node_id": "template_3",
+          "node_type": "template",
+          "title": "template_3",
+          "index": 5,
+          "iteration_node_id": "iteration_1",
+          "iteration_index": 2,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.088499Z",
+          "ended_at": "2026-10-14T07:17:37.093496Z",
+          "duration_ms": 0
+        }
+      ]
+    }
+  },
+  "failure": {
+    "runId": "01a13946-1745-7123-8770-90fa60efeac7",
+    "events": [
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 1,
+        "ts": "2026-10-14T07:17:37.239Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 2,
+        "ts": "2026-10-14T07:17:37.250Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-1714-7f4f-bc56-cda675e66926",
+          "version_id": "01a13946-1715-7420-911d-434365ae6021",
+          "kind": "workflow",
+          "inputs_preview": {},
+          "truncated": false,
+          "resumed": false,
+          "node_count": 3
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 3,
+        "ts": "2026-10-14T07:17:37.255Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-1762-7ee4-bfe9-e8dc317eb01e",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 4,
+        "ts": "2026-10-14T07:17:37.260Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-1762-7ee4-bfe9-e8dc317eb01e",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 5,
+        "ts": "2026-10-14T07:17:37.264Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-176c-719b-9666-d2d9e6cb27d9",
+          "node_id": "code_1",
+          "node_type": "code",
+          "title": "code_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 6,
+        "ts": "2026-10-14T07:17:37.472Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-176c-719b-9666-d2d9e6cb27d9",
+          "node_id": "code_1",
+          "status": "failed",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": {
+            "code": "code_error",
+            "message": "ValueError: 일부러 실패",
+            "retryable": true
+          },
+          "usage": null,
+          "duration_ms": 202,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 7,
+        "ts": "2026-10-14T07:17:37.485Z",
+        "type": "workflow.error",
+        "data": {
+          "code": "code_error",
+          "message": "ValueError: 일부러 실패",
+          "node_id": "code_1",
+          "retryable": true
+        }
+      },
+      {
+        "run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+        "session_id": null,
+        "seq": 8,
+        "ts": "2026-10-14T07:17:37.485Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "failed",
+          "outputs": null,
+          "usage_total": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "node_runs": 2,
+          "duration_ms": 226,
+          "error": {
+            "code": "code_error",
+            "message": "ValueError: 일부러 실패",
+            "node_id": "code_1",
+            "retryable": true
+          }
+        }
+      }
+    ],
+    "detail": {
+      "id": "01a13946-1745-7123-8770-90fa60efeac7",
+      "workflow_id": "01a13946-1714-7f4f-bc56-cda675e66926",
+      "wf_version_id": "01a13946-1715-7420-911d-434365ae6021",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "failed",
+      "inputs": {},
+      "outputs": null,
+      "error": {
+        "code": "code_error",
+        "message": "ValueError: 일부러 실패",
+        "node_id": "code_1",
+        "retryable": true
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "node_run_count": 2,
+      "pending_interaction": null,
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:37.221539Z",
+      "started_at": "2026-10-14T07:17:37.239415Z",
+      "ended_at": "2026-10-14T07:17:37.477263Z",
+      "created_at": "2026-10-14T07:17:37.222541Z",
+      "updated_at": "2026-10-14T07:17:37.480257Z",
+      "node_runs": [
+        {
+          "id": "01a13946-1762-7ee4-bfe9-e8dc317eb01e",
+          "wf_run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.250656Z",
+          "ended_at": "2026-10-14T07:17:37.256173Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-176c-719b-9666-d2d9e6cb27d9",
+          "wf_run_id": "01a13946-1745-7123-8770-90fa60efeac7",
+          "node_id": "code_1",
+          "node_type": "code",
+          "title": "code_1",
+          "index": 1,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "failed",
+          "truncated": false,
+          "error": {
+            "code": "code_error",
+            "message": "ValueError: 일부러 실패",
+            "retryable": true
+          },
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.260188Z",
+          "ended_at": "2026-10-14T07:17:37.467397Z",
+          "duration_ms": 202
+        }
+      ]
+    }
+  },
+  "agent": {
+    "runId": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+    "events": [
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 1,
+        "ts": "2026-10-14T07:17:37.615Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 2,
+        "ts": "2026-10-14T07:17:37.630Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-1894-702b-93ff-06b92229078c",
+          "version_id": "01a13946-1896-76fa-8a01-457e165c27dc",
+          "kind": "workflow",
+          "inputs_preview": {},
+          "truncated": false,
+          "resumed": false,
+          "node_count": 3
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 3,
+        "ts": "2026-10-14T07:17:37.636Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-18df-7bab-ab4b-37ea7c182576",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 4,
+        "ts": "2026-10-14T07:17:37.641Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-18df-7bab-ab4b-37ea7c182576",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 5,
+        "ts": "2026-10-14T07:17:37.648Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 6,
+        "ts": "2026-10-14T07:17:37.682Z",
+        "type": "node.progress",
+        "data": {
+          "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+          "child_session_id": "01a13946-18fb-7650-ba19-ca5d5afa4495",
+          "steps": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "position": null,
+          "node_id": "agent_1",
+          "node_run_id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b"
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 7,
+        "ts": "2026-10-14T07:17:37.783Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b",
+          "node_id": "agent_1",
+          "status": "waiting_input",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 129,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 8,
+        "ts": "2026-10-14T07:17:37.793Z",
+        "type": "workflow.waiting_input",
+        "data": {
+          "node_id": "agent_1",
+          "iteration_index": null,
+          "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+          "interaction": {
+            "interaction_id": "01a13946-195a-721d-9cfa-c5568a6dbd37",
+            "kind": "approval",
+            "tool_call_id": "call_fake_8286aaf6",
+            "tool_name": "shell",
+            "question": null,
+            "options": null,
+            "allow_free_text": null,
+            "input": {
+              "command": "echo fake-llm"
+            },
+            "cwd": ".",
+            "timeout_sec": 120
+          }
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 9,
+        "ts": "2026-10-14T07:17:37.793Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "waiting_input",
+          "outputs": null,
+          "usage_total": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "node_runs": 2,
+          "duration_ms": 157,
+          "error": null
+        }
+      }
+    ],
+    "waiting": {
+      "id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+      "workflow_id": "01a13946-1894-702b-93ff-06b92229078c",
+      "wf_version_id": "01a13946-1896-76fa-8a01-457e165c27dc",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "waiting_input",
+      "inputs": {},
+      "outputs": null,
+      "error": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "node_run_count": 2,
+      "pending_interaction": {
+        "node_id": "agent_1",
+        "iteration_index": null,
+        "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+        "interaction": {
+          "interaction_id": "01a13946-195a-721d-9cfa-c5568a6dbd37",
+          "kind": "approval",
+          "tool_call_id": "call_fake_8286aaf6",
+          "tool_name": "shell",
+          "question": null,
+          "options": null,
+          "allow_free_text": null,
+          "input": {
+            "command": "echo fake-llm"
+          },
+          "cwd": ".",
+          "timeout_sec": 120,
+          "created_at": "2026-10-14T07:17:37.754959Z"
+        }
+      },
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:37.609822Z",
+      "started_at": "2026-10-14T07:17:37.617819Z",
+      "ended_at": null,
+      "created_at": "2026-10-14T07:17:37.611818Z",
+      "updated_at": "2026-10-14T07:17:37.792265Z",
+      "node_runs": [
+        {
+          "id": "01a13946-18df-7bab-ab4b-37ea7c182576",
+          "wf_run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.631873Z",
+          "ended_at": "2026-10-14T07:17:37.637965Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b",
+          "wf_run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 1,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "waiting_input",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.641965Z",
+          "ended_at": "2026-10-14T07:17:37.778268Z",
+          "duration_ms": 129
+        }
+      ]
+    },
+    "input": {
+      "id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+      "workflow_id": "01a13946-1894-702b-93ff-06b92229078c",
+      "wf_version_id": "01a13946-1896-76fa-8a01-457e165c27dc",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "queued",
+      "inputs": {},
+      "outputs": null,
+      "error": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "node_run_count": 2,
+      "pending_interaction": {
+        "node_id": "agent_1",
+        "iteration_index": null,
+        "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+        "interaction": {
+          "interaction_id": "01a13946-195a-721d-9cfa-c5568a6dbd37",
+          "kind": "approval",
+          "tool_call_id": "call_fake_8286aaf6",
+          "tool_name": "shell",
+          "question": null,
+          "options": null,
+          "allow_free_text": null,
+          "input": {
+            "command": "echo fake-llm"
+          },
+          "cwd": ".",
+          "timeout_sec": 120,
+          "created_at": "2026-10-14T07:17:37.754959Z"
+        }
+      },
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:37.609822Z",
+      "started_at": "2026-10-14T07:17:37.617819Z",
+      "ended_at": null,
+      "created_at": "2026-10-14T07:17:37.611818Z",
+      "updated_at": "2026-10-14T07:17:37.848496Z"
+    },
+    "resume": [
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 10,
+        "ts": "2026-10-14T07:17:37.849Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 11,
+        "ts": "2026-10-14T07:17:37.896Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13946-1894-702b-93ff-06b92229078c",
+          "version_id": "01a13946-1896-76fa-8a01-457e165c27dc",
+          "kind": "workflow",
+          "inputs_preview": {},
+          "truncated": false,
+          "resumed": true,
+          "node_count": 3
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 12,
+        "ts": "2026-10-14T07:17:37.897Z",
+        "type": "workflow.resumed",
+        "data": {
+          "node_id": "agent_1"
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 13,
+        "ts": "2026-10-14T07:17:37.901Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+          "child_session_id": "01a13946-18fb-7650-ba19-ca5d5afa4495"
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 14,
+        "ts": "2026-10-14T07:17:37.909Z",
+        "type": "node.progress",
+        "data": {
+          "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+          "child_session_id": "01a13946-18fb-7650-ba19-ca5d5afa4495",
+          "steps": 1,
+          "usage": {
+            "input_tokens": 1697,
+            "output_tokens": 8,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "position": null,
+          "node_id": "agent_1",
+          "node_run_id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b"
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 15,
+        "ts": "2026-10-14T07:17:38.366Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b",
+          "node_id": "agent_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "도구 실행 결과를 확인했습니다.",
+            "result": null,
+            "files": [],
+            "status": "succeeded",
+            "usage": {
+              "input_tokens": 3426,
+              "output_tokens": 13,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            },
+            "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 3426,
+            "output_tokens": 13,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "duration_ms": 459,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 16,
+        "ts": "2026-10-14T07:17:38.371Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13946-1bbe-7814-8148-a00b6ecf0b16",
+          "node_id": "end_1",
+          "node_type": "end",
+          "title": "end_1",
+          "index": 2,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 17,
+        "ts": "2026-10-14T07:17:38.376Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13946-1bbe-7814-8148-a00b6ecf0b16",
+          "node_id": "end_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "answer": "도구 실행 결과를 확인했습니다."
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+        "session_id": null,
+        "seq": 18,
+        "ts": "2026-10-14T07:17:38.383Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "succeeded",
+          "outputs": {
+            "answer": "도구 실행 결과를 확인했습니다."
+          },
+          "usage_total": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "node_runs": 3,
+          "duration_ms": 632,
+          "error": null,
+          "truncated": false
+        }
+      }
+    ],
+    "done": {
+      "id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+      "workflow_id": "01a13946-1894-702b-93ff-06b92229078c",
+      "wf_version_id": "01a13946-1896-76fa-8a01-457e165c27dc",
+      "kind": "workflow",
+      "trigger": "preview",
+      "status": "succeeded",
+      "inputs": {},
+      "outputs": {
+        "answer": "도구 실행 결과를 확인했습니다."
+      },
+      "error": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": false
+      },
+      "node_run_count": 3,
+      "pending_interaction": null,
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": null,
+      "message_id": null,
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T07:17:37.609822Z",
+      "started_at": "2026-10-14T07:17:37.617819Z",
+      "ended_at": "2026-10-14T07:17:38.377848Z",
+      "created_at": "2026-10-14T07:17:37.611818Z",
+      "updated_at": "2026-10-14T07:17:38.380367Z",
+      "node_runs": [
+        {
+          "id": "01a13946-18df-7bab-ab4b-37ea7c182576",
+          "wf_run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.631873Z",
+          "ended_at": "2026-10-14T07:17:37.637965Z",
+          "duration_ms": 0
+        },
+        {
+          "id": "01a13946-18e9-7168-a1fa-ee8dd9607d0b",
+          "wf_run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 1,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 3426,
+            "output_tokens": 13,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "warnings": [],
+          "child_run_id": "01a13946-18fd-7f3b-89ae-a8f4bfb19672",
+          "branch": null,
+          "started_at": "2026-10-14T07:17:37.897994Z",
+          "ended_at": "2026-10-14T07:17:38.362212Z",
+          "duration_ms": 459
+        },
+        {
+          "id": "01a13946-1bbe-7814-8148-a00b6ecf0b16",
+          "wf_run_id": "01a13946-18ca-76ca-9e9c-d469025e8ad3",
+          "node_id": "end_1",
+          "node_type": "end",
+          "title": "end_1",
+          "index": 2,
+          "iteration_node_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "status": "succeeded",
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "warnings": [],
+          "child_run_id": null,
+          "branch": null,
+          "started_at": "2026-10-14T07:17:38.366215Z",
+          "ended_at": "2026-10-14T07:17:38.371849Z",
+          "duration_ms": 0
+        }
+      ]
+    }
+  }
+}

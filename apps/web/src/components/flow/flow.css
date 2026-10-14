@@ -1,0 +1,89 @@
+/*
+ * ReactFlow 기본 모양(base.css) 위에 우리 토큰을 입힌다. 색은 tokens.css의 값만 쓰므로 밝은·어두운
+ * 테마를 따로 두지 않는다. 편집기 묶음에서만 불러온다.
+ */
+.wf-flow {
+  --xy-edge-stroke: var(--wf-line-strong);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--wf-accent);
+  --xy-connectionline-stroke: var(--wf-accent);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-background-color: var(--wf-canvas);
+  --xy-background-pattern-dots-color: var(--wf-line-strong);
+  --xy-minimap-background-color: var(--wf-surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--wf-sunken) 70%, transparent);
+  --xy-minimap-node-background-color: var(--wf-line-strong);
+  --xy-handle-background-color: var(--wf-surface);
+  --xy-selection-background-color: color-mix(in srgb, var(--wf-accent) 8%, transparent);
+  --xy-selection-border: 1px dashed var(--wf-accent);
+  --xy-attribution-background-color: transparent;
+  --xy-resize-background-color: var(--wf-accent);
+}
+
+.wf-flow .react-flow__handle {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--wf-ink-subtle);
+  border-radius: 9999px;
+  transition: border-color 120ms;
+}
+
+.wf-flow .react-flow__handle:hover,
+.wf-flow .react-flow__handle.connectingfrom,
+.wf-flow .react-flow__handle.valid {
+  border-color: var(--wf-accent);
+}
+
+.wf-flow .react-flow__handle[data-handleid="fail"] {
+  border-color: var(--wf-danger);
+}
+
+.wf-flow .react-flow__edge.selected .react-flow__edge-path,
+.wf-flow .react-flow__edge:focus-visible .react-flow__edge-path {
+  stroke: var(--wf-accent);
+  stroke-width: 2;
+}
+
+.wf-flow .wf-edge-fail .react-flow__edge-path {
+  stroke: var(--wf-danger);
+  stroke-dasharray: 5 4;
+}
+
+.wf-flow .wf-edge-issue .react-flow__edge-path {
+  stroke: var(--wf-danger);
+}
+
+.wf-flow .react-flow__attribution {
+  color: var(--wf-ink-subtle);
+  font-size: 10px;
+}
+
+.wf-flow .react-flow__attribution a {
+  color: inherit;
+}
+
+.wf-flow .react-flow__minimap {
+  border: 1px solid var(--wf-line);
+  border-radius: var(--wf-radius-md);
+  overflow: hidden;
+}
+
+/* 반복 노드는 하위 노드를 담는 틀이라 선택 테두리를 카드가 직접 그린다. */
+.wf-flow .react-flow__node-iteration {
+  border-radius: var(--wf-radius-lg);
+}
+
+.wf-flow .react-flow__resize-control.handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--wf-accent);
+  border: 1px solid var(--wf-surface);
+}
+
+/* 프롬프트 편집기(CodeMirror) 안의 {{ 변수 }} 표시 */
+.wf-var-token {
+  border-radius: 3px;
+  background: var(--wf-accent-soft);
+  color: var(--wf-accent);
+}

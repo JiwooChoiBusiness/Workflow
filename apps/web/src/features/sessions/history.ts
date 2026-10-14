@@ -103,12 +103,23 @@ function numberField(value: Record<string, unknown>, key: string): number | null
 }
 
 // 진행 중인 런은 events?after=0 재생이 다시 그리므로 상태 표시만 먼저 맞춘다. 사용량은 재생에서 더한다.
+// 하위 에이전트를 기다리는 런은 서버가 running과 child로 알려 준다(오케스트레이션 6.4).
 function activeRunState(run: RunOut): Partial<RunViewState> {
+  const child = run.child ?? null;
   return {
     runId: run.id,
     status: run.status as RunStatus,
     pendingInteraction: run.pending_interaction ? pendingOf(run.pending_interaction, run.id) : null,
     approvalMode: approvalModeOf(run.approval_mode),
+    activeChild: child
+      ? {
+          toolCallId: child.tool_call_id,
+          runId: child.run_id,
+          sessionId: child.session_id,
+          agentSlug: child.agent_slug,
+          agentName: child.agent_name,
+        }
+      : null,
   };
 }
 

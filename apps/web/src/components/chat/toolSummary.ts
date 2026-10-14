@@ -31,6 +31,8 @@ export function summarizeInput(
       return `${text(input.method) || "GET"} ${text(input.url)}`;
     case "ask_user":
       return firstLine(text(input.question));
+    case "call_agent":
+      return `${text(input.agent)}: ${firstLine(text(input.task))}`;
     default:
       return firstLine(JSON.stringify(input));
   }

@@ -66,6 +66,7 @@ export const DEFAULT_RUN_LIMITS = {
   max_cost_usd: null,
   context_budget_tokens: null,
   tool_timeout_sec: 120,
+  max_child_calls: 20,
 };
 
 // 서버 RunLimits(app/schemas/common.py)와 같은 범위
@@ -80,5 +81,6 @@ export function runLimitsSchema(t: T) {
       .nullable(),
     context_budget_tokens: integer(t, 1).nullable(),
     tool_timeout_sec: integer(t, 1, 900),
+    max_child_calls: integer(t, 0, 100),
   });
 }

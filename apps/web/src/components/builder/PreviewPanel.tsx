@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import type { ApprovalMode } from "@/api/types";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { WorkspaceDialogButton } from "@/components/chat/WorkspacePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -60,6 +61,7 @@ export function PreviewPanel({
           {t(`approval.chip.${approvalMode}`)}
         </Badge>
         <div className="ml-auto flex items-center">
+          <WorkspaceDialogButton sessionId={chat.sessionId} />
           <Button
             variant="ghost"
             size="iconSm"

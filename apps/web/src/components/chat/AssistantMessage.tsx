@@ -1,12 +1,12 @@
 import { memo } from "react";
 import Markdown, { type Components, type Options } from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { rehypeHighlight } from "@/lib/highlight";
 
 type PluggableList = NonNullable<Options["remarkPlugins"]>;
 
 const remarkPlugins: PluggableList = [remarkGfm];
-const rehypePlugins: PluggableList = [[rehypeHighlight, { detect: false }]];
+const rehypePlugins: PluggableList = [rehypeHighlight];
 
 // 원시 HTML은 react-markdown 기본값대로 그리지 않는다(설계 S12). 이미지는 링크로만 보여 준다.
 // 모델이 쓴 ![](https://.../?q=...)가 저절로 요청되면 대화 내용이 밖으로 새어 나갈 수 있어서다.

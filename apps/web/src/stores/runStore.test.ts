@@ -9,6 +9,7 @@ import {
   createRunStore,
   initialRunState,
   TOOL_OUTPUT_LIMIT,
+  waitingChildName,
   type RunViewState,
   type TimelineItem,
   type ToolCallView,
@@ -432,6 +433,150 @@ describe("runStore 리듀서", () => {
       }),
     ]);
     expect(fromMessage.files).toMatchObject([{ path: "outputs/a.txt", sessionFileId: "f1" }]);
+  });
+
+  it("하위 에이전트 호출: 도구 카드에 자식 런·세션을 남기고 런은 열린 채로 둔다", () => {
+    const e = eventFactory();
+    const waiting = run([
+      e("run.started", {
+        step_limit: 30,
+        model: "gemini-3.8-flash",
+        workspace_instance_id: null,
+        resumed: false,
+        approval_mode: "all_shell",
+      }),
+      e("tool_call.started", { tool_call_id: "c1", name: "call_agent" }),
+      e("child_run.started", {
+        tool_call_id: "c1",
+        child_run_id: "child-run",
+        child_session_id: "child-session",
+        agent_id: "agent-2",
+        agent_slug: "researcher",
+        agent_name: "조사",
+        version: "published",
+        depth: 1,
+        result_format: "text",
+        task_preview: "조사",
+      }),
+    ]);
+    expect(waiting.status).toBe("running");
+    expect(waiting.toolCalls.c1).toMatchObject({
+      phase: "child",
+      child: {
+        runId: "child-run",
+        sessionId: "child-session",
+        agentSlug: "researcher",
+        agentName: "조사",
+        version: "published",
+        end: null,
+      },
+    });
+    expect(waitingChildName(waiting)).toBe("조사");
+
+    const childDone = applyRunEvents(waiting, [
+      e("child_run.completed", {
+        tool_call_id: "c1",
+        child_run_id: "child-run",
+        status: "failed",
+        error: { code: "timeout", message: "시간 초과" },
+        steps: 2,
+        usage_total: { input_tokens: 10, output_tokens: 3 },
+        duration_ms: 1200,
+        files: 1,
+      }),
+      e("run.queued", { position: 1 }),
+    ]);
+    expect(childDone.toolCalls.c1.child?.end).toEqual({
+      status: "failed",
+      error: { code: "timeout", message: "시간 초과", retryable: false },
+      steps: 2,
+      usage: expect.objectContaining({ inputTokens: 10, outputTokens: 3 }),
+      durationMs: 1200,
+      files: 1,
+    });
+    // 자식이 끝나면 부모는 다시 대기열로 가고 상태 표시줄의 하위 에이전트 표시는 사라진다.
+    expect(childDone.status).toBe("queued");
+    expect(waitingChildName(childDone)).toBeNull();
+
+    const done = applyRunEvents(childDone, [
+      e("tool_call.completed", {
+        tool_call_id: "c1",
+        status: "error",
+        duration_ms: 1200,
+        output_excerpt: "[하위 에이전트 researcher(조사) 실패: timeout]",
+        output_bytes: 40,
+        child_run_id: "child-run",
+      }),
+    ]);
+    expect(done.toolCalls.c1).toMatchObject({ phase: "done", result: "error", durationMs: 1200 });
+    expect(done.toolCalls.c1.child?.runId).toBe("child-run");
+  });
+
+  it("델타 없이 재생하면 늦게 온 글을 같은 스텝의 도구 카드 앞에 둔다", () => {
+    const e = eventFactory();
+    const state = run([
+      e("step.started", { step: 1 }),
+      e("tool_call.started", { tool_call_id: "c1", name: "call_agent" }),
+      e("tool_call.ready", { tool_call_id: "c1", name: "call_agent", input: { agent: "a" } }),
+      e("message.completed", { message_id: "m1", text: "맡긴다", stop_reason: "tool_use" }),
+      e("step.started", { step: 2 }),
+      e("message.completed", { message_id: "m2", text: "끝", stop_reason: "end_turn" }),
+    ]);
+    expect(state.items.map((item) => item.kind)).toEqual(["text", "tool", "text"]);
+    expect(itemsOf(state, "text").map((item) => item.text)).toEqual(["맡긴다", "끝"]);
+  });
+
+  it("부모가 중지되면 하위 에이전트를 기다리던 카드도 취소됨으로 닫는다", () => {
+    const e = eventFactory();
+    const state = run([
+      e("tool_call.started", { tool_call_id: "c1", name: "call_agent" }),
+      e("child_run.started", {
+        tool_call_id: "c1",
+        child_run_id: "child-run",
+        child_session_id: "child-session",
+        agent_id: "agent-2",
+        agent_slug: "writer",
+        agent_name: "",
+        version: "draft",
+        depth: 1,
+        result_format: "json",
+        task_preview: "쓴다",
+      }),
+    ]);
+    expect(waitingChildName(state)).toBe("writer");
+    const stopped = applyRunEvents(state, [
+      e("run.completed", { status: "cancelled", usage_total: {}, steps: 1 }),
+    ]);
+    expect(stopped.toolCalls.c1).toMatchObject({ phase: "done", result: "cancelled" });
+    expect(waitingChildName(stopped)).toBeNull();
+  });
+
+  it("새로 고친 직후에는 세션 상세의 active_run.child로 하위 에이전트 이름을 보여 준다", () => {
+    const state = initialRunState({
+      runId: "run-1",
+      status: "running",
+      activeChild: {
+        toolCallId: "c1",
+        runId: "child-run",
+        sessionId: "child-session",
+        agentSlug: "researcher",
+        agentName: "조사",
+      },
+    });
+    expect(waitingChildName(state)).toBe("조사");
+    const e = eventFactory();
+    const finished = applyRunEvents(state, [
+      e("child_run.completed", {
+        tool_call_id: "c1",
+        child_run_id: "child-run",
+        status: "succeeded",
+        steps: 1,
+        usage_total: {},
+        duration_ms: 10,
+        files: 0,
+      }),
+    ]);
+    expect(finished.activeChild).toBeNull();
   });
 
   it("ping과 모르는 이벤트는 상태를 바꾸지 않는다", () => {

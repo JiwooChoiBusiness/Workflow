@@ -42,6 +42,7 @@ const draft: AgentVersionOut = {
     max_cost_usd: null,
     context_budget_tokens: null,
     tool_timeout_sec: 120,
+    max_child_calls: 20,
   },
   sandbox: { memory_limit_mb: null, max_processes: null },
   approval_mode: "all_shell",
@@ -123,6 +124,41 @@ describe("에이전트 폼 스키마", () => {
     });
   });
 
+  it("하위 에이전트의 고정 JSON 스키마는 object이고 닫혀 있어야 한다", () => {
+    const sub_agents: AgentForm["sub_agents"] = [
+      {
+        agent_id: "a2",
+        format: "json",
+        schema_source: "fixed",
+        schema_text: '{"type": "object"}',
+        files: true,
+        approval_mode: "inherit",
+      },
+      {
+        agent_id: "a3",
+        format: "json",
+        schema_source: "model",
+        schema_text: "아무 글",
+        files: false,
+        approval_mode: "off",
+      },
+      {
+        agent_id: "a4",
+        format: "text",
+        schema_source: "fixed",
+        schema_text: "[]",
+        files: true,
+        approval_mode: "inherit",
+      },
+    ];
+    expect(issues({ ...form, sub_agents })).toEqual({
+      "sub_agents.0.schema_text": '스키마에 "additionalProperties": false가 있어야 합니다',
+    });
+    expect(issues({ ...form, limits: { ...form.limits, max_child_calls: 101 } })).toEqual({
+      "limits.max_child_calls": "100 이하여야 합니다",
+    });
+  });
+
   it("슬러그와 이름을 검사한다", () => {
     expect(issues({ ...form, meta: { ...form.meta, name: " ", slug: "Bad Slug" } })).toEqual({
       "meta.name": "필수 항목입니다",
@@ -152,6 +188,9 @@ describe("초안 저장 본문", () => {
     expect(body.updated_at).toBe(draft.updated_at);
     expect(body.allow_unlisted_model).toBe(false);
     expect(body.skill_version_ids).toEqual(["s1"]);
+    // 하위 에이전트를 모두 뺀 저장도 서버에 닿도록 빈 목록이라도 키를 보낸다.
+    expect(body.sub_agents).toEqual([]);
+    expect(body.limits?.max_child_calls).toBe(20);
   });
 
   it("저장된 비밀 값을 새로 입력하면 그 값을 보낸다", () => {

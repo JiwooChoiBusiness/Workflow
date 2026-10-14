@@ -1,7 +1,19 @@
-import { Bot, ChevronRight, LogOut, Puzzle, ScrollText, Settings, UserRound } from "lucide-react";
+import {
+  Bot,
+  ChevronRight,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Puzzle,
+  ScrollText,
+  Settings,
+  UserRound,
+  Workflow,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, NavLink, Outlet, useMatches, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useMatches, useNavigate } from "react-router";
+import { Button } from "@/components/ui/button";
 import {
   Menu,
   MenuContent,
@@ -18,6 +30,7 @@ import { ContextBarSlotContext, type RouteHandle } from "./contextBar";
 
 const NAV_ITEMS = [
   { to: "/agents", icon: Bot, key: "nav.agents" },
+  { to: "/workflows", icon: Workflow, key: "nav.workflows" },
   { to: "/skills", icon: Puzzle, key: "nav.skills" },
   { to: "/logs", icon: ScrollText, key: "nav.logs" },
   { to: "/settings", icon: Settings, key: "nav.settings" },
@@ -154,13 +167,55 @@ function AccountMenu() {
   );
 }
 
+// 캔버스 편집기처럼 레일을 접어 여는 화면(route handle rail=collapsed)인지. 그 화면에서 사용자가 펼친
+// 경로를 기억해 두고, 다른 경로로 가면 다시 화면의 기본값을 따른다.
+function useRail() {
+  const matches = useMatches();
+  const { pathname } = useLocation();
+  const collapsible = matches.some(
+    (match) => (match.handle as RouteHandle | undefined)?.rail === "collapsed",
+  );
+  const [openedOn, setOpenedOn] = useState<string | null>(null);
+  const collapsed = collapsible && openedOn !== pathname;
+  const toggle = () => setOpenedOn(collapsed ? pathname : null);
+  return { collapsible, collapsed, toggle };
+}
+
 export function AppShell() {
+  const { t } = useTranslation();
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const rail = useRail();
   return (
-    <div className="grid h-full grid-cols-[var(--wf-rail-width)_minmax(0,1fr)]">
-      <NavRail />
+    // 행 높이를 명시하지 않으면 내용이 길 때 행이 늘어나 문서 전체가 스크롤된다(빌더의 채팅 패널에서
+    // 스크롤이 바깥으로 새던 문제). 행을 뷰포트에 고정하고 각 영역이 안에서 스크롤하게 한다.
+    <div
+      className={cn(
+        "grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden",
+        rail.collapsed
+          ? "grid-cols-[minmax(0,1fr)]"
+          : "grid-cols-[var(--wf-rail-width)_minmax(0,1fr)]",
+      )}
+    >
+      {rail.collapsed ? null : <NavRail />}
       <div className="flex min-h-0 min-w-0 flex-col">
         <header className="flex h-[var(--wf-contextbar-height)] shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
+          {rail.collapsible ? (
+            <Button
+              size="iconSm"
+              variant="ghost"
+              className="-ml-2"
+              aria-label={rail.collapsed ? t("nav.expand") : t("nav.collapse")}
+              title={rail.collapsed ? t("nav.expand") : t("nav.collapse")}
+              aria-expanded={!rail.collapsed}
+              onClick={rail.toggle}
+            >
+              {rail.collapsed ? (
+                <PanelLeftOpen className="size-4" aria-hidden />
+              ) : (
+                <PanelLeftClose className="size-4" aria-hidden />
+              )}
+            </Button>
+          ) : null}
           <Breadcrumbs />
           <div ref={setSlot} className="ml-auto flex items-center gap-2" />
           <AccountMenu />

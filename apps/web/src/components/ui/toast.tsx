@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, X } from "lucide-react";
+import { CircleAlert, CircleCheck, TriangleAlert, X } from "lucide-react";
 import { Toast as RadixToast } from "radix-ui";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -6,7 +6,8 @@ import { cn } from "@/lib/cn";
 
 interface ToastItem {
   id: number;
-  tone: "success" | "error";
+  // warning: 저장은 됐지만 확인할 것이 있다(하위 에이전트 경고 등).
+  tone: "success" | "error" | "warning";
   message: string;
 }
 
@@ -28,6 +29,7 @@ const useToastStore = create<ToastState>()((set) => ({
 export const toast = {
   success: (message: string) => useToastStore.getState().push("success", message),
   error: (message: string) => useToastStore.getState().push("error", message),
+  warning: (message: string) => useToastStore.getState().push("warning", message),
 };
 
 export function Toaster() {
@@ -37,12 +39,17 @@ export function Toaster() {
   return (
     <RadixToast.Provider duration={4000} label={t("toast.region")}>
       {items.map((item) => {
-        const Icon = item.tone === "success" ? CircleCheck : CircleAlert;
+        const Icon =
+          item.tone === "success"
+            ? CircleCheck
+            : item.tone === "warning"
+              ? TriangleAlert
+              : CircleAlert;
         return (
           <RadixToast.Root
             key={item.id}
             type={item.tone === "error" ? "foreground" : "background"}
-            duration={item.tone === "error" ? 8000 : 4000}
+            duration={item.tone === "success" ? 4000 : 8000}
             onOpenChange={(open) => {
               if (!open) dismiss(item.id);
             }}
@@ -51,7 +58,11 @@ export function Toaster() {
             <Icon
               className={cn(
                 "mt-0.5 size-4 shrink-0",
-                item.tone === "success" ? "text-ok" : "text-danger",
+                item.tone === "success"
+                  ? "text-ok"
+                  : item.tone === "warning"
+                    ? "text-warn"
+                    : "text-danger",
               )}
               aria-hidden
             />

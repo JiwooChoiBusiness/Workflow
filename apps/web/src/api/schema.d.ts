@@ -656,7 +656,8 @@ export interface paths {
          * @description 런 목록(최근 것부터). 지운 세션의 런도 나온다(session_deleted).
          *
          *     기간은 런을 만든 시각(queued_at) 기준 [since, until)이다. 시간대 없이 온 시각은 서버 PC
-         *     시간대로 본다.
+         *     시간대로 본다. parent_run_id를 주면 그 런이 하위 에이전트로 부른 자식 런만 나오고, 각 항목의
+         *     child_count는 그 런의 자식 수다.
          */
         get: operations["list_runs_api_console_runs_get"];
         put?: never;
@@ -870,7 +871,9 @@ export interface paths {
          * Usage Stats
          * @description 토큰·비용·런 수 집계. 런을 만든 시각(queued_at)이 [from, to)에 드는 런의 usage를 더한다.
          *
-         *     시간대 없이 온 from·to는 tz_offset_minutes 시간대의 시각으로, 날짜만 오면 그날 0시로 본다.
+         *     에이전트 런과 워크플로우 런을 함께 센다. group_by=agent면 워크플로우 런이, group_by=workflow면
+         *     에이전트 런(agent 노드의 자식 런 포함)이 key가 null인 행 하나로 모인다. 시간대 없이 온 from·to는
+         *     tz_offset_minutes 시간대의 시각으로, 날짜만 오면 그날 0시로 본다.
          */
         get: operations["usage_stats_api_console_stats_usage_get"];
         put?: never;
@@ -897,6 +900,476 @@ export interface paths {
         get: operations["http_allowlist_api_console_settings_http_allowlist_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/node-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Node Types
+         * @description 노드 레지스트리. 캔버스 팔레트·속성 패널·변수 선택기가 쓴다.
+         */
+        get: operations["list_node_types_api_console_node_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workflows */
+        get: operations["list_workflows_api_console_workflows_get"];
+        put?: never;
+        /**
+         * Create Workflow
+         * @description kind는 만든 뒤 바꿀 수 없다. 초안 그래프는 template에 맞는 최소 모양으로 시작한다.
+         */
+        post: operations["create_workflow_api_console_workflows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow */
+        get: operations["get_workflow_api_console_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Workflow
+         * @description 소프트 삭제. 런 기록은 남고 slug는 다시 쓸 수 있다.
+         */
+        delete: operations["delete_workflow_api_console_workflows__workflow_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Workflow */
+        patch: operations["patch_workflow_api_console_workflows__workflow_id__patch"];
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Draft
+         * @description 초안과 지금 레지스트리로 다시 검증한 issues. 비밀 env는 값 대신 has_value만 있다.
+         */
+        get: operations["get_draft_api_console_workflows__workflow_id__draft_get"];
+        /**
+         * Save Draft
+         * @description 초안 전체 저장(낙관적 잠금 updated_at). 검증 오류가 있어도 저장하고 issues로 알린다.
+         */
+        put: operations["save_draft_api_console_workflows__workflow_id__draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/draft/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Draft
+         * @description 저장하지 않고 검증한다. 본문이 없으면 저장된 초안을 검증한다.
+         */
+        post: operations["validate_draft_api_console_workflows__workflow_id__draft_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/draft/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Draft
+         * @description 초안으로 미리보기 런을 만든다(workflow만. 챗플로우는 대화로 실행한다).
+         *
+         *     초안에 검증 오류가 있으면 422 draft_invalid, 입력이 start 필드에 맞지 않으면 422 invalid_inputs.
+         *     streaming이면 첫 이벤트가 workflow.queued이고 workflow.completed 뒤에 닫힌다.
+         */
+        post: operations["run_draft_api_console_workflows__workflow_id__draft_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/draft/nodes/{node_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Draft Node
+         * @description 초안의 노드 하나만 돌린다(trigger=single_node). iteration이면 하위 그래프가 한 번 돈다.
+         *
+         *     inputs에는 노드가 참조하는 변수 값을 "<scope>.<name>" 키로 준다. 그 노드와 하위 그래프에 검증
+         *     오류가 있으면 422 draft_invalid, 키가 그래프에 없거나 노드 자신·env를 가리키면 422
+         *     invalid_inputs. 런 출력(workflow.completed.outputs)은 그 노드의 출력이다. agent 노드가 승인을
+         *     기다리면 /wf-runs/{id}/input으로 잇는다.
+         */
+        post: operations["run_draft_node_api_console_workflows__workflow_id__draft_nodes__node_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Runs
+         * @description 런 목록(최근 것부터). 단일 노드 실행 런은 trigger=single_node로 고를 때만 나온다.
+         *
+         *     기간은 런을 만든 시각(queued_at) 기준 [since, until)이다. 시간대 없이 온 시각은 서버 PC 시간대로
+         *     본다.
+         */
+        get: operations["list_workflow_runs_api_console_workflows__workflow_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Workflow
+         * @description 초안을 발행 버전으로 복제한다. 검증 오류가 있으면 422 draft_invalid(details에 오류 목록).
+         */
+        post: operations["publish_workflow_api_console_workflows__workflow_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Versions */
+        get: operations["list_versions_api_console_workflows__workflow_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_api_console_workflows__workflow_id__versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/versions/{version_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Version
+         * @description 롤백. 이 발행 버전을 현재 발행 버전으로 지정한다.
+         */
+        post: operations["restore_version_api_console_workflows__workflow_id__versions__version_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Workflow File
+         * @description 미리보기 런의 파일 입력(멀티파트, X-Requested-With: fetch). 런 입력에는 받은 id를 준다.
+         */
+        post: operations["upload_workflow_file_api_console_workflows__workflow_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Workflow
+         * @description 워크플로우를 우리 DSL YAML로 내려 준다. version은 draft(기본)·published·버전 id다.
+         *
+         *     비밀 환경 변수는 기본으로 이름만 쓴다. include_secrets=true면 평문으로 넣고 경고 헤더를 붙인다.
+         *     agent 노드에는 다른 PC에서 에이전트를 찾을 agent_slug를 더 쓴다.
+         */
+        post: operations["export_workflow_api_console_workflows__workflow_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Workflow
+         * @description 우리 DSL이나 Dify DSL(workflow·advanced-chat)을 가져온다.
+         *
+         *     본문은 {"yaml": "..."}(JSON) 또는 multipart의 file(X-Requested-With: fetch). 새 워크플로우를
+         *     만들면 201, into로 준 워크플로우의 초안을 덮어쓰면 200이다(발행 버전·이름은 그대로). 저장한
+         *     초안의 검증 결과가 issues에, 바꾸거나 버린 것이 converted.warnings에, 옮기지 못한 노드 id가
+         *     converted.unsupported에 온다. 가져온 code 노드는 ui.imported_code가 붙어 검토 전까지
+         *     imported_code_unreviewed 오류다(초안 저장에서 그 키를 지우면 풀린다). 2MB 초과는 422
+         *     dsl_too_large, 읽을 수 없는 YAML은 422 invalid_yaml이다.
+         */
+        post: operations["import_workflow_api_console_workflows_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Wf Run
+         * @description 런 상세. 노드 런은 루트 그래프의 것만 요약으로 붙는다.
+         */
+        get: operations["get_wf_run_api_console_wf_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/node-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Node Runs
+         * @description 실행 순서. iteration=<노드 id>를 주면 그 iteration 하위 노드 런만.
+         */
+        get: operations["list_node_runs_api_console_wf_runs__run_id__node_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/node-runs/{node_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Node Run
+         * @description 노드 런 상세(inputs·outputs·process 전체). 이벤트의 4KB 미리보기를 펼칠 때 쓴다.
+         */
+        get: operations["get_node_run_api_console_wf_runs__run_id__node_runs__node_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wf Run Events
+         * @description after 다음부터 다시 받는다(재접속).
+         *
+         *     진행 중이면 workflow.completed까지 따라가고, 끝났거나 입력을 기다리는 중이면 남은 기록만 보내고
+         *     닫는다.
+         */
+        get: operations["wf_run_events_api_console_wf_runs__run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/event-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wf Run Event Log
+         * @description SQLite에 남은 영속 이벤트(페이지). 델타는 없다.
+         */
+        get: operations["wf_run_event_log_api_console_wf_runs__run_id__event_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Wf Run
+         * @description 중지. 입력을 기다리는 런이면 기다리던 자식 런도 중지한다.
+         *
+         *     결과는 workflow.completed로 온다.
+         */
+        post: operations["stop_wf_run_api_console_wf_runs__run_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provide Wf Input
+         * @description 질문(answer)·승인(decision) 응답. 1단계 /runs/{rid}/input과 같은 본문이다(3.7의 3번).
+         *
+         *     기다리는 자식 런에 응답을 넘긴 뒤 같은 워크플로우 런을 다시 큐에 넣는다. streaming이면 첫
+         *     이벤트가 workflow.queued다.
+         */
+        post: operations["provide_wf_input_api_console_wf_runs__run_id__input_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1072,6 +1545,164 @@ export interface paths {
         put?: never;
         /** Provide Input */
         post: operations["provide_input_api_web_runs__run_id__input_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/flows/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Flow
+         * @description 발행되어 webapp_enabled인 워크플로우의 공개 정보와 입력 필드. 아니면 404 app_not_found.
+         */
+        get: operations["get_flow_api_web_flows__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/flows/{slug}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Flow Runs
+         * @description 이 웹앱에서 실행한 런(최근 것부터). 미리보기·서비스 API 런은 나오지 않는다.
+         */
+        get: operations["list_flow_runs_api_web_flows__slug__runs_get"];
+        put?: never;
+        /**
+         * Run Flow
+         * @description 발행 버전으로 실행한다(trigger=webapp). 챗플로우는 409 wrong_kind.
+         *
+         *     입력이 start 필드에 맞지 않으면 422 invalid_inputs. streaming이면 첫 이벤트가
+         *     workflow.queued이고 workflow.completed(입력 대기 포함) 뒤에 닫힌다.
+         */
+        post: operations["run_flow_api_web_flows__slug__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/flows/{slug}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Flow File
+         * @description 파일 입력(멀티파트, X-Requested-With: fetch). 런 입력의 파일 필드에는 받은 id를 준다.
+         */
+        post: operations["upload_flow_file_api_web_flows__slug__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Flow Run */
+        get: operations["get_flow_run_api_web_wf_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Flow Run Events */
+        get: operations["flow_run_events_api_web_wf_runs__run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-runs/{run_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Flow Run */
+        post: operations["stop_flow_run_api_web_wf_runs__run_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-runs/{run_id}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provide Flow Input
+         * @description agent 노드의 승인·질문 응답. 콘솔 /wf-runs/{rid}/input과 같다.
+         */
+        post: operations["provide_flow_input_api_web_wf_runs__run_id__input_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-runs/{run_id}/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Flow Run File
+         * @description 런의 입력·출력에 든 파일. 출력 화면의 내려받기 링크가 쓴다.
+         */
+        get: operations["download_flow_run_file_api_web_wf_runs__run_id__files__file_id__download_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1350,6 +1981,9 @@ export interface paths {
         /**
          * Get Task
          * @description 과업 상태와 결과. 진행 중이면 지금까지의 글과 사용량만 있다.
+         *
+         *     대화(api 세션)에서 부른 하위 에이전트의 과업 런도 키의 범위로 연다. 범위는 부모 사슬의 뿌리
+         *     세션으로 보므로 세션 소스를 task로 좁히지 않고, 과업 런인지는 view가 본다(오케스트레이션 6.3).
          */
         get: operations["get_task_api_v1_agent_tasks__run_id__get"];
         put?: never;
@@ -1627,6 +2261,8 @@ export interface components {
             skill_version_ids?: string[];
             /** File Ids */
             file_ids?: string[];
+            /** Sub Agents */
+            sub_agents?: components["schemas"]["SubAgentRef"][];
             /**
              * Id
              * Format: uuid
@@ -1662,6 +2298,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Warnings */
+            warnings?: components["schemas"]["AgentWarning"][];
         };
         /** AgentVersionSummary */
         AgentVersionSummary: {
@@ -1683,6 +2321,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AgentWarning
+         * @description 저장·발행을 막지 않는 문제(설명 없는 하위 에이전트, 미발행, 깊이 초과 등).
+         */
+        AgentWarning: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Agent Id */
+            agent_id?: string | null;
         };
         /** ApiKeyCreate */
         ApiKeyCreate: {
@@ -1927,6 +2577,19 @@ export interface components {
             /** User */
             user?: string | null;
         };
+        /** ConversationVar */
+        ConversationVar: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @default string
+             * @enum {string}
+             */
+            type: "string" | "number" | "boolean" | "object" | "file" | "array[string]" | "array[number]" | "array[boolean]" | "array[object]" | "array[file]" | "array[any]" | "any";
+            /** Default */
+            default?: unknown;
+        };
         /**
          * DraftUpdate
          * @description PUT .../draft 본문. 초안 전체를 한 번에 바꾼다.
@@ -1952,6 +2615,8 @@ export interface components {
             skill_version_ids?: string[];
             /** File Ids */
             file_ids?: string[];
+            /** Sub Agents */
+            sub_agents?: components["schemas"]["SubAgentRef"][];
             /**
              * Updated At
              * Format: date-time
@@ -1964,6 +2629,51 @@ export interface components {
              * @default false
              */
             allow_unlisted_model: boolean;
+        };
+        /** DslImportSummary */
+        DslImportSummary: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "dsl" | "dify";
+            /** Nodes */
+            nodes: number;
+            /** Unsupported */
+            unsupported: string[];
+            /** Warnings */
+            warnings: components["schemas"]["DslWarning"][];
+        };
+        /**
+         * DslWarning
+         * @description 가져오면서 바꾸거나 버린 것. 검증 오류(issues)와 달리 실행을 막지 않는다.
+         */
+        DslWarning: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Node Id */
+            node_id?: string | null;
+        };
+        /** Edge */
+        Edge: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /**
+             * Source Handle
+             * @default out
+             */
+            source_handle: string;
+            /** Target */
+            target: string;
+            /**
+             * Target Handle
+             * @default in
+             */
+            target_handle: string;
         };
         /** EnvVarIn */
         EnvVarIn: {
@@ -1994,6 +2704,19 @@ export interface components {
             message: string;
             /** Details */
             details?: unknown | null;
+        };
+        /** ErrorPolicy */
+        ErrorPolicy: {
+            /**
+             * Strategy
+             * @default fail
+             * @enum {string}
+             */
+            strategy: "fail" | "default" | "branch";
+            /** Default Outputs */
+            default_outputs?: {
+                [key: string]: unknown;
+            };
         };
         /** ErrorResponse */
         ErrorResponse: {
@@ -2026,6 +2749,99 @@ export interface components {
             conversation_id: string;
         };
         /**
+         * FlowAppOut
+         * @description 웹앱(/flows/<slug>)이 보여 주는 발행 워크플로우 정보(2단계 설계 6.2).
+         */
+        FlowAppOut: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
+            /** Published At */
+            published_at: string | null;
+            /** Fields */
+            fields: components["schemas"]["FlowField"][];
+            webapp: components["schemas"]["WebappSettings"];
+        };
+        /**
+         * FlowField
+         * @description 발행 버전 start 노드의 입력 필드 하나. 웹앱이 이것으로 입력 폼을 만든다.
+         */
+        FlowField: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "boolean" | "select" | "file" | "file_list" | "paragraph";
+            /** Label */
+            label: string;
+            /** Required */
+            required: boolean;
+            /** Default */
+            default?: unknown;
+            /** Options */
+            options?: string[] | null;
+            /** Max Length */
+            max_length?: number | null;
+        };
+        /**
+         * FlowRunResult
+         * @description 웹앱 런의 blocking 응답. 입력을 기다리며 멈췄으면 pending_interaction에 승인·질문이 있다.
+         */
+        FlowRunResult: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
+            /** Outputs */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            usage: components["schemas"]["UsageTotal"];
+            error: components["schemas"]["WfRunErrorOut"] | null;
+            pending_interaction: components["schemas"]["WfPendingOut"] | null;
+        };
+        /** Graph */
+        Graph: {
+            /** Nodes */
+            nodes?: components["schemas"]["Node"][];
+            /** Edges */
+            edges?: components["schemas"]["Edge"][];
+            /** Viewport */
+            viewport?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * HttpAllowlistOut
          * @description http_request 허용 목록 파일(설계 3.9). 화면에서는 보기만 하고 고치려면 파일을 편집한다.
          */
@@ -2054,6 +2870,24 @@ export interface components {
             suffixes: string[];
             /** Allow Any */
             allow_any: boolean;
+        };
+        /** Issue */
+        Issue: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warning";
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Node Id */
+            node_id?: string | null;
+            /** Edge Id */
+            edge_id?: string | null;
+            /** Field */
+            field?: string | null;
         };
         /** LlmAttempt */
         LlmAttempt: {
@@ -2337,6 +3171,89 @@ export interface components {
             /** Cached Input Per Mtok */
             cached_input_per_mtok?: number | null;
         };
+        /** Node */
+        Node: {
+            /** Id */
+            id: string;
+            /** Type */
+            type: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            error?: components["schemas"]["ErrorPolicy"];
+            retry?: components["schemas"]["RetryPolicy"];
+            /** Parent Id */
+            parent_id?: string | null;
+            position?: components["schemas"]["Position"];
+            /** Ui */
+            ui?: {
+                [key: string]: unknown;
+            };
+        };
+        /** NodeError */
+        NodeError: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
+        };
+        /**
+         * NodeType
+         * @description GET /api/console/node-types 항목. 캔버스 팔레트·속성 패널·변수 선택기가 쓴다.
+         */
+        NodeType: {
+            /** Type */
+            type: string;
+            /** Version */
+            version: number;
+            /** Kinds */
+            kinds: ("workflow" | "chatflow")[];
+            /** Implemented */
+            implemented: boolean;
+            /** Error Strategies */
+            error_strategies: ("fail" | "default" | "branch")[];
+            /** Config Schema */
+            config_schema: {
+                [key: string]: unknown;
+            };
+            /** Outputs */
+            outputs: components["schemas"]["OutputSpecOut"][];
+            /** Dynamic Outputs */
+            dynamic_outputs: boolean;
+            /** Branching */
+            branching: boolean;
+        };
+        /** NodeTypeList */
+        NodeTypeList: {
+            /** Items */
+            items: components["schemas"]["NodeType"][];
+        };
+        /** OutputSpecOut */
+        OutputSpecOut: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "boolean" | "object" | "file" | "array[string]" | "array[number]" | "array[boolean]" | "array[object]" | "array[file]" | "array[any]" | "any";
+        };
         /** PasswordChangeRequest */
         PasswordChangeRequest: {
             /**
@@ -2386,16 +3303,105 @@ export interface components {
              */
             created_at: string;
         };
+        /** Position */
+        Position: {
+            /**
+             * X
+             * @default 0
+             */
+            x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            y: number;
+        };
         /** PublishOut */
         PublishOut: {
             agent: components["schemas"]["AgentOut"];
             version: components["schemas"]["AgentVersionOut"];
             snapshot?: components["schemas"]["SnapshotOut"] | null;
+            /** Warnings */
+            warnings?: components["schemas"]["AgentWarning"][];
         };
         /** PublishRequest */
         PublishRequest: {
             /** Change Note */
             change_note?: string | null;
+        };
+        /**
+         * ResultSpec
+         * @description 하위 에이전트 호출 하나가 돌려주는 모양(오케스트레이션 2.2).
+         *
+         *     2단계 agent 노드의 결과 설정도 같은 구조다.
+         */
+        ResultSpec: {
+            /**
+             * Format
+             * @default text
+             * @enum {string}
+             */
+            format: "text" | "json";
+            /** Schema */
+            schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Files
+             * @default true
+             */
+            files: boolean;
+        };
+        /** RetryPolicy */
+        RetryPolicy: {
+            /**
+             * Max Attempts
+             * @default 0
+             */
+            max_attempts: number;
+            /**
+             * Interval Ms
+             * @default 1000
+             */
+            interval_ms: number;
+        };
+        /**
+         * RunChildOut
+         * @description call_agent로 부른 자식 런을 기다리는 중. 화면은 이 값으로 하위 에이전트 카드를 다시 그리고
+         *     session_id의 이벤트 스트림에 붙는다(오케스트레이션 6.4, 8.1).
+         */
+        RunChildOut: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Slug */
+            agent_slug: string;
+            /** Agent Name */
+            agent_name: string;
+            /** Tool Call Id */
+            tool_call_id: string;
+            /**
+             * Version
+             * @enum {string}
+             */
+            version: "draft" | "published";
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
         };
         /** RunErrorOut */
         RunErrorOut: {
@@ -2426,11 +3432,10 @@ export interface components {
              * Format: uuid
              */
             run_id: string;
-            /**
-             * Session Id
-             * Format: uuid
-             */
-            session_id: string;
+            /** Session Id */
+            session_id: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
             /** Seq */
             seq: number;
             /**
@@ -2494,6 +3499,11 @@ export interface components {
              * @default 120
              */
             tool_timeout_sec: number;
+            /**
+             * Max Child Calls
+             * @default 20
+             */
+            max_child_calls: number;
         };
         /** RunLogItem */
         RunLogItem: {
@@ -2566,6 +3576,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Parent Run Id */
+            parent_run_id?: string | null;
+            /**
+             * Depth
+             * @default 0
+             */
+            depth: number;
+            child?: components["schemas"]["RunChildOut"] | null;
             /**
              * Agent Id
              * Format: uuid
@@ -2584,6 +3602,11 @@ export interface components {
             session_title: string | null;
             /** Session Deleted */
             session_deleted: boolean;
+            /**
+             * Child Count
+             * @default 0
+             */
+            child_count: number;
         };
         /** RunLogList */
         RunLogList: {
@@ -2663,6 +3686,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Parent Run Id */
+            parent_run_id?: string | null;
+            /**
+             * Depth
+             * @default 0
+             */
+            depth: number;
+            child?: components["schemas"]["RunChildOut"] | null;
         };
         /**
          * RunResult
@@ -2941,6 +3972,8 @@ export interface components {
             current_version_id: string | null;
             /** Current Version Number */
             current_version_number: number | null;
+            /** Versions */
+            versions: components["schemas"]["SkillVersionSummary"][];
             /**
              * Created At
              * Format: date-time
@@ -2951,8 +3984,6 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-            /** Versions */
-            versions: components["schemas"]["SkillVersionSummary"][];
             current_version: components["schemas"]["SkillVersionOut"] | null;
         };
         /** SkillList */
@@ -2995,6 +4026,8 @@ export interface components {
             current_version_id: string | null;
             /** Current Version Number */
             current_version_number: number | null;
+            /** Versions */
+            versions: components["schemas"]["SkillVersionSummary"][];
             /**
              * Created At
              * Format: date-time
@@ -3104,6 +4137,24 @@ export interface components {
              */
             status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
         };
+        /**
+         * SubAgentRef
+         * @description 에이전트 버전의 sub_agents 항목. 이 에이전트가 call_agent로 부를 수 있는 에이전트다.
+         */
+        SubAgentRef: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            result?: components["schemas"]["ResultSpec"];
+            /**
+             * Approval Mode
+             * @default inherit
+             * @enum {string}
+             */
+            approval_mode: "inherit" | "off";
+        };
         /** Usage */
         Usage: {
             /**
@@ -3132,7 +4183,7 @@ export interface components {
              * Group By
              * @enum {string}
              */
-            group_by: "day" | "agent" | "model";
+            group_by: "day" | "agent" | "model" | "workflow";
             /**
              * Since
              * Format: date-time
@@ -3271,6 +4322,13 @@ export interface components {
              */
             estimated: boolean;
         };
+        /** ValidationOut */
+        ValidationOut: {
+            /** Ok */
+            ok: boolean;
+            /** Issues */
+            issues: components["schemas"]["Issue"][];
+        };
         /**
          * WebAppOut
          * @description 웹앱(/apps/<slug>)이 보여 주는 발행 에이전트 정보(6.3).
@@ -3303,6 +4361,648 @@ export interface components {
              * @enum {string}
              */
             approval_mode: "off" | "http_writes" | "all_shell";
+        };
+        /** WebappSettings */
+        WebappSettings: {
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Opening Statement */
+            opening_statement?: string | null;
+            /** Suggested Questions */
+            suggested_questions?: string[];
+        };
+        /** WfEnvVarOut */
+        WfEnvVarOut: {
+            /** Name */
+            name: string;
+            /** Secret */
+            secret: boolean;
+            /** Value */
+            value: string | null;
+            /** Has Value */
+            has_value: boolean;
+        };
+        /** WfFileOut */
+        WfFileOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "upload" | "output";
+            /** Workflow Id */
+            workflow_id: string | null;
+            /** Wf Run Id */
+            wf_run_id: string | null;
+            /** Filename */
+            filename: string;
+            /** Mime */
+            mime: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * WfNodeRunCreate
+         * @description POST /workflows/{id}/draft/nodes/{node_id}/runs. 초안의 노드 하나만 돌린다(6.1).
+         */
+        WfNodeRunCreate: {
+            /** Inputs */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Response Mode
+             * @default streaming
+             * @enum {string}
+             */
+            response_mode: "streaming" | "blocking";
+        };
+        /** WfNodeRunDetail */
+        WfNodeRunDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Wf Run Id
+             * Format: uuid
+             */
+            wf_run_id: string;
+            /** Node Id */
+            node_id: string;
+            /** Node Type */
+            node_type: string;
+            /** Title */
+            title: string;
+            /** Index */
+            index: number;
+            /** Iteration Node Id */
+            iteration_node_id: string | null;
+            /** Iteration Index */
+            iteration_index: number | null;
+            /** Attempt */
+            attempt: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "succeeded" | "failed" | "skipped" | "cancelled" | "waiting_input";
+            /** Truncated */
+            truncated: boolean;
+            error: components["schemas"]["NodeError"] | null;
+            usage: components["schemas"]["UsageTotal"] | null;
+            /** Warnings */
+            warnings: string[];
+            /** Child Run Id */
+            child_run_id: string | null;
+            /** Branch */
+            branch: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            } | null;
+            /** Outputs */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            /** Process */
+            process: {
+                [key: string]: unknown;
+            };
+        };
+        /** WfNodeRunList */
+        WfNodeRunList: {
+            /** Items */
+            items: components["schemas"]["WfNodeRunOut"][];
+        };
+        /** WfNodeRunOut */
+        WfNodeRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Wf Run Id
+             * Format: uuid
+             */
+            wf_run_id: string;
+            /** Node Id */
+            node_id: string;
+            /** Node Type */
+            node_type: string;
+            /** Title */
+            title: string;
+            /** Index */
+            index: number;
+            /** Iteration Node Id */
+            iteration_node_id: string | null;
+            /** Iteration Index */
+            iteration_index: number | null;
+            /** Attempt */
+            attempt: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "succeeded" | "failed" | "skipped" | "cancelled" | "waiting_input";
+            /** Truncated */
+            truncated: boolean;
+            error: components["schemas"]["NodeError"] | null;
+            usage: components["schemas"]["UsageTotal"] | null;
+            /** Warnings */
+            warnings: string[];
+            /** Child Run Id */
+            child_run_id: string | null;
+            /** Branch */
+            branch: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+        };
+        /**
+         * WfPendingOut
+         * @description wf_run.pending_interaction.
+         *
+         *     승인·질문 카드는 interaction으로 그리고 응답은 /input으로 보낸다.
+         */
+        WfPendingOut: {
+            /** Node Id */
+            node_id: string;
+            /** Iteration Index */
+            iteration_index?: number | null;
+            /** Child Run Id */
+            child_run_id?: string | null;
+            interaction: components["schemas"]["PendingInteractionOut"];
+        };
+        /**
+         * WfRunCreate
+         * @description POST /workflows/{id}/draft/runs. 초안으로 미리보기 런을 만든다.
+         */
+        WfRunCreate: {
+            /** Inputs */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Response Mode
+             * @default streaming
+             * @enum {string}
+             */
+            response_mode: "streaming" | "blocking";
+        };
+        /** WfRunDetail */
+        WfRunDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "preview" | "webapp" | "api" | "single_node" | "resume";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Outputs */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            error: components["schemas"]["WfRunErrorOut"] | null;
+            usage: components["schemas"]["UsageTotal"];
+            /** Node Run Count */
+            node_run_count: number;
+            pending_interaction: components["schemas"]["WfPendingOut"] | null;
+            /** Limits */
+            limits: {
+                [key: string]: unknown;
+            };
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Message Id */
+            message_id: string | null;
+            /** External User */
+            external_user: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Node Runs */
+            node_runs: components["schemas"]["WfNodeRunOut"][];
+        };
+        /** WfRunErrorOut */
+        WfRunErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Node Id */
+            node_id?: string | null;
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
+        };
+        /** WfRunList */
+        WfRunList: {
+            /** Items */
+            items: components["schemas"]["WfRunOut"][];
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /** WfRunOut */
+        WfRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "preview" | "webapp" | "api" | "single_node" | "resume";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Outputs */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            error: components["schemas"]["WfRunErrorOut"] | null;
+            usage: components["schemas"]["UsageTotal"];
+            /** Node Run Count */
+            node_run_count: number;
+            pending_interaction: components["schemas"]["WfPendingOut"] | null;
+            /** Limits */
+            limits: {
+                [key: string]: unknown;
+            };
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Message Id */
+            message_id: string | null;
+            /** External User */
+            external_user: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkflowCreate */
+        WorkflowCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default workflow
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /** Slug */
+            slug?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Template
+             * @default blank
+             * @enum {string}
+             */
+            template: "blank" | "chat_basic";
+        };
+        /**
+         * WorkflowDraftCheck
+         * @description POST .../draft/validate 본문. 저장하지 않은 편집 상태를 검증한다.
+         *
+         *     env_vars·conversation_vars를 보내지 않으면 저장된 초안의 이름을 쓴다.
+         */
+        WorkflowDraftCheck: {
+            graph: components["schemas"]["Graph"];
+            /** Env Vars */
+            env_vars?: components["schemas"]["EnvVarIn"][] | null;
+            /** Conversation Vars */
+            conversation_vars?: components["schemas"]["ConversationVar"][] | null;
+        };
+        /**
+         * WorkflowDraftUpdate
+         * @description PUT .../draft 본문. 초안 전체를 한 번에 바꾼다. 검증 오류가 있어도 저장한다(3.1).
+         */
+        WorkflowDraftUpdate: {
+            graph: components["schemas"]["Graph"];
+            /** Env Vars */
+            env_vars?: components["schemas"]["EnvVarIn"][];
+            /** Conversation Vars */
+            conversation_vars?: components["schemas"]["ConversationVar"][];
+            settings?: components["schemas"]["WorkflowSettings"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkflowImportOut */
+        WorkflowImportOut: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Issues */
+            issues: components["schemas"]["Issue"][];
+            converted: components["schemas"]["DslImportSummary"];
+        };
+        /** WorkflowLimits */
+        WorkflowLimits: {
+            /**
+             * Max Run Seconds
+             * @default 1800
+             */
+            max_run_seconds: number;
+            /**
+             * Max Total Tokens
+             * @default 2000000
+             */
+            max_total_tokens: number;
+            /** Max Cost Usd */
+            max_cost_usd?: number | null;
+        };
+        /** WorkflowList */
+        WorkflowList: {
+            /** Items */
+            items: components["schemas"]["WorkflowOut"][];
+        };
+        /** WorkflowOut */
+        WorkflowOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /** Webapp Enabled */
+            webapp_enabled: boolean;
+            /** Draft Version Id */
+            draft_version_id: string | null;
+            /** Published Version Id */
+            published_version_id: string | null;
+            /** Published Version Number */
+            published_version_number: number | null;
+            /** Published At */
+            published_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkflowPatch */
+        WorkflowPatch: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Webapp Enabled */
+            webapp_enabled?: boolean | null;
+        };
+        /** WorkflowPublishOut */
+        WorkflowPublishOut: {
+            workflow: components["schemas"]["WorkflowOut"];
+            version: components["schemas"]["WorkflowVersionOut"];
+        };
+        /** WorkflowPublishRequest */
+        WorkflowPublishRequest: {
+            /** Change Note */
+            change_note?: string | null;
+        };
+        /**
+         * WorkflowSettings
+         * @description wf_version.settings(4.1).
+         */
+        WorkflowSettings: {
+            limits?: components["schemas"]["WorkflowLimits"];
+            /**
+             * Approval Mode
+             * @default inherit
+             * @enum {string}
+             */
+            approval_mode: "inherit" | "off";
+            /**
+             * Mask Secrets In Outputs
+             * @default true
+             */
+            mask_secrets_in_outputs: boolean;
+            webapp?: components["schemas"]["WebappSettings"];
+        };
+        /** WorkflowVersionList */
+        WorkflowVersionList: {
+            /** Items */
+            items: components["schemas"]["WorkflowVersionSummary"][];
+        };
+        /** WorkflowVersionOut */
+        WorkflowVersionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /** Version Number */
+            version_number: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "published";
+            graph: components["schemas"]["Graph"];
+            /** Env Vars */
+            env_vars: components["schemas"]["WfEnvVarOut"][];
+            /** Conversation Vars */
+            conversation_vars: components["schemas"]["ConversationVar"][];
+            settings: components["schemas"]["WorkflowSettings"];
+            /** Graph Hash */
+            graph_hash: string;
+            /** Published At */
+            published_at: string | null;
+            /** Change Note */
+            change_note: string | null;
+            /** Issues */
+            issues: components["schemas"]["Issue"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkflowVersionSummary */
+        WorkflowVersionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version Number */
+            version_number: number;
+            /** Graph Hash */
+            graph_hash: string;
+            /** Published At */
+            published_at: string | null;
+            /** Change Note */
+            change_note: string | null;
+            /** Is Current */
+            is_current: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** WorkspaceDirUsage */
         WorkspaceDirUsage: {
@@ -5108,6 +6808,7 @@ export interface operations {
                 status?: ("queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled") | null;
                 since?: string | null;
                 until?: string | null;
+                parent_run_id?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -5472,7 +7173,7 @@ export interface operations {
                 from?: string | null;
                 /** @description 이 시각 전까지. 비우면 지금 */
                 to?: string | null;
-                group_by?: "day" | "agent" | "model";
+                group_by?: "day" | "agent" | "model" | "workflow";
                 /** @description day로 묶을 날짜의 시간대(UTC와의 차이, 분). 비우면 서버 PC의 시간대 */
                 tz_offset_minutes?: number | null;
             };
@@ -5518,6 +7219,900 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HttpAllowlistOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_node_types_api_console_node_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeTypeList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_workflows_api_console_workflows_get: {
+        parameters: {
+            query?: {
+                kind?: ("workflow" | "chatflow") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_workflow_api_console_workflows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_workflow_api_console_workflows__workflow_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_workflow_api_console_workflows__workflow_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_workflow_api_console_workflows__workflow_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_draft_api_console_workflows__workflow_id__draft_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_draft_api_console_workflows__workflow_id__draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDraftUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    validate_draft_api_console_workflows__workflow_id__draft_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDraftCheck"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_draft_api_console_workflows__workflow_id__draft_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfRunCreate"];
+            };
+        };
+        responses: {
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 WfRunOut */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunOut"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_draft_node_api_console_workflows__workflow_id__draft_nodes__node_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfNodeRunCreate"];
+            };
+        };
+        responses: {
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 WfRunOut */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunOut"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_workflow_runs_api_console_workflows__workflow_id__runs_get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled") | null;
+                trigger?: ("preview" | "webapp" | "api" | "single_node" | "resume") | null;
+                conversation_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    publish_workflow_api_console_workflows__workflow_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkflowPublishRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowPublishOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_versions_api_console_workflows__workflow_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_version_api_console_workflows__workflow_id__versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restore_version_api_console_workflows__workflow_id__versions__version_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_workflow_file_api_console_workflows__workflow_id__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfFileOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    export_workflow_api_console_workflows__workflow_id__export_post: {
+        parameters: {
+            query?: {
+                version?: ("draft" | "published") | string;
+                include_secrets?: boolean;
+            };
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 우리 DSL YAML(첨부 파일). include_secrets로 비밀값을 넣었으면 X-Dsl-Warning: secrets_included 헤더가 붙는다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_workflow_api_console_workflows_import_post: {
+        parameters: {
+            query?: {
+                into?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    yaml: string;
+                };
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description into 워크플로우의 초안을 덮어썼다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowImportOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowImportOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_wf_run_api_console_wf_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunDetail"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_node_runs_api_console_wf_runs__run_id__node_runs_get: {
+        parameters: {
+            query?: {
+                iteration?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfNodeRunList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_node_run_api_console_wf_runs__run_id__node_runs__node_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                node_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfNodeRunDetail"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    wf_run_events_api_console_wf_runs__run_id__events_get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+            };
+            header?: {
+                "last-event-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 워크플로우 런 이벤트 SSE */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    wf_run_event_log_api_console_wf_runs__run_id__event_log_get: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunEventList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stop_wf_run_api_console_wf_runs__run_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    provide_wf_input_api_console_wf_runs__run_id__input_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunInput"];
+            };
+        };
+        responses: {
+            /** @description response_mode=blocking이면 WfRunOut, streaming이면 SSE */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": components["schemas"]["WfRunOut"];
+                };
+            };
+            /** @description response_mode=none(기본). 런이 다시 큐에 들어갔다 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunOut"];
                 };
             };
             /** @description 오류 */
@@ -5964,6 +8559,317 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RunOut"];
                 };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_flow_api_web_flows__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowAppOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_flow_runs_api_web_flows__slug__runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_flow_api_web_flows__slug__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfRunCreate"];
+            };
+        };
+        responses: {
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 FlowRunResult */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowRunResult"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_flow_file_api_web_flows__slug__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfFileOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_flow_run_api_web_wf_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunDetail"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    flow_run_events_api_web_wf_runs__run_id__events_get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+            };
+            header?: {
+                "last-event-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 워크플로우 런 이벤트 SSE */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stop_flow_run_api_web_wf_runs__run_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    provide_flow_input_api_web_wf_runs__run_id__input_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunInput"];
+            };
+        };
+        responses: {
+            /** @description response_mode=blocking이면 WfRunOut, streaming이면 SSE */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": components["schemas"]["WfRunOut"];
+                };
+            };
+            /** @description response_mode=none(기본). 런이 다시 큐에 들어갔다 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_flow_run_file_api_web_wf_runs__run_id__files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 오류 */
             "4XX": {

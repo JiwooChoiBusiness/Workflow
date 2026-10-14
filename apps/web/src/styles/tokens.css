@@ -51,7 +51,8 @@
   --wf-focus: rgb(15 107 92 / 0.45);
 
   --wf-font-sans:
-    system-ui, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    "Pretendard Variable", Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+    -apple-system, "Segoe UI", system-ui, sans-serif;
   --wf-font-mono: "Cascadia Code", "D2Coding", Consolas, "Liberation Mono", monospace;
 
   --wf-radius-sm: 4px;

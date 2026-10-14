@@ -4,6 +4,9 @@
   "agentTitle": "{{name}} 로그",
   "agentDescription": "이 에이전트의 세션과 런 기록입니다.",
   "agentCrumb": "{{name}} 로그",
+  "workflowCrumb": "{{name}} 실행 기록",
+  "workflowRunCrumb": "런",
+  "deletedWorkflow": "삭제된 워크플로우",
   "openBuilder": "빌더 열기",
   "deletedAgent": "삭제된 에이전트",
   "deletedMark": "(삭제됨)",
@@ -16,7 +19,8 @@
   "tabs": {
     "label": "기록 종류",
     "sessions": "세션",
-    "runs": "런"
+    "runs": "런",
+    "workflowRuns": "워크플로우 런"
   },
   "periods": {
     "all": "전체",
@@ -123,7 +127,30 @@
     "waitingHint": "응답은 빌더 미리보기나 웹앱의 대화 화면에서 합니다.",
     "noSteps": "기록된 스텝이 없습니다.",
     "files": "바뀐 파일",
-    "noApprovals": "이 런에는 승인·질문이 없었습니다."
+    "noApprovals": "이 런에는 승인·질문이 없었습니다.",
+    "childrenTab": "하위 런 {{count}}",
+    "parentRun": "부모 런",
+    "depth": "깊이 {{depth}}",
+    "treeTotal": "하위 포함 합계",
+    "treeTotalValue": "입력 {{input}} · 출력 {{output}} · {{cost}} (하위 런 {{runs}}개 포함)",
+    "treeTotalNoCost": "입력 {{input}} · 출력 {{output}} (하위 런 {{runs}}개 포함)",
+    "waitingChild": "하위 에이전트 {{name}}의 런이 끝나기를 기다리고 있습니다.",
+    "openChild": "하위 런 보기",
+    "nodeChild": "워크플로우 agent 노드가 만든 과업 런입니다.",
+    "openSession": "과업 세션 로그 열기"
+  },
+  "children": {
+    "label": "하위 런",
+    "loading": "하위 런을 불러오는 중…",
+    "loadFailed": "하위 런을 불러오지 못했습니다.",
+    "none": "이 런이 부른 하위 에이전트가 없습니다.",
+    "openSession": "세션 열기",
+    "badge": "하위",
+    "badgeHint": "다른 에이전트가 call_agent로 부른 런입니다.",
+    "count": "하위 {{count}}개",
+    "countHint": "이 런이 부른 하위 에이전트 런 {{count}}개를 봅니다.",
+    "draft": "초안",
+    "progress": "하위 에이전트 진행"
   },
   "tool": {
     "input": "입력",
@@ -213,7 +240,9 @@
     "source": "소스",
     "period": "기간",
     "status": "상태",
-    "all": "전체"
+    "all": "전체",
+    "parent": "부모 런 {{id}}의 하위 런만",
+    "parentClear": "부모 런 필터 지우기"
   },
   "sources": {
     "preview": "미리보기",
@@ -222,7 +251,6 @@
     "task": "과업"
   },
   "empty": "아직 기록이 없습니다.",
-  "emptyHint": "세션·런 로그는 에이전트 실행 기능과 함께 열립니다.",
   "session": {
     "title": "세션",
     "loading": "세션을 불러오는 중…",
@@ -233,7 +261,6 @@
     "timeline": "메시지",
     "runs": "런",
     "inspector": "런 인스펙터",
-    "empty": "이 세션의 기록을 아직 불러올 수 없습니다.",
     "inspectorHint": "런을 고르면 스텝, 도구 호출 입출력, 승인 결정, 사용량이 여기에 나옵니다."
   }
 }

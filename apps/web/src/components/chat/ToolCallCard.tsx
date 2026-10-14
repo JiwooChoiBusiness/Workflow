@@ -6,8 +6,9 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatDuration, formatNumber } from "@/lib/format";
-import type { ToolCallView } from "@/stores/runStore";
+import { CALL_AGENT, type ToolCallView } from "@/stores/runStore";
 import { useRunStore } from "@/stores/runStoreContext";
+import { ChildRunCard } from "./ChildRunCard";
 import { ToolIcon } from "./ToolIcon";
 import { prettyJson, summarizeInput } from "./toolSummary";
 
@@ -69,6 +70,12 @@ function ToolOutput({ tool }: { tool: ToolCallView }) {
 }
 
 export function ToolCallCard({ toolCallId }: { toolCallId: string }) {
+  const name = useRunStore((state) => state.toolCalls[toolCallId]?.name);
+  if (name === CALL_AGENT) return <ChildRunCard toolCallId={toolCallId} />;
+  return <BasicToolCard toolCallId={toolCallId} />;
+}
+
+function BasicToolCard({ toolCallId }: { toolCallId: string }) {
   const { t } = useTranslation("chat");
   const tool = useRunStore((state) => state.toolCalls[toolCallId]);
   const [open, setOpen] = useState(false);

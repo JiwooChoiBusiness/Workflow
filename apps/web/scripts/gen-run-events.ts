@@ -23,7 +23,7 @@ interface SchemaNode {
 interface EventSchema {
   "x-schema-version": number;
   "x-transient-types": string[];
-  "x-terminal-type": string;
+  "x-terminal-types": string[];
   oneOf: { title: string; properties: { data: SchemaNode } }[];
   $defs: Record<string, SchemaNode>;
 }
@@ -103,7 +103,7 @@ function generate(schema: EventSchema): string {
     "// packages/event-schema/run-events.schema.json에서 scripts/gen-run-events.ts가 만든 파일이다. 손으로 고치지 않는다.",
     "",
     `export const RUN_EVENT_SCHEMA_VERSION = ${schema["x-schema-version"]};`,
-    `export const TERMINAL_EVENT_TYPE = ${literal(schema["x-terminal-type"])};`,
+    `export const TERMINAL_EVENT_TYPES = ${JSON.stringify(schema["x-terminal-types"])} as const;`,
     `export const TRANSIENT_EVENT_TYPES = ${JSON.stringify(schema["x-transient-types"])} as const;`,
     `export const RUN_EVENT_TYPES = ${JSON.stringify(types)} as const;`,
     "",

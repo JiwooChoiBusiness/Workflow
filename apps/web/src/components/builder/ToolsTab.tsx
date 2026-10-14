@@ -1,10 +1,15 @@
-import { useQueries } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
 import { useRef } from "react";
 import { useWatch, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import { TOOL_GROUPS, type ApprovalMode, type SkillOut, type ToolGroup } from "@/api/types";
+import {
+  TOOL_GROUPS,
+  type AgentWarning,
+  type ApprovalMode,
+  type SkillOut,
+  type ToolGroup,
+} from "@/api/types";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -15,8 +20,9 @@ import { toast } from "@/components/ui/toast";
 import { Checkbox, Switch } from "@/components/ui/toggle";
 import { useEmbeddedSkills, useUploadEmbeddedSkill } from "@/features/agents/api";
 import type { AgentForm } from "@/features/agents/schemas";
-import { fetchSkill, skillKeys, useSkills } from "@/features/skills/api";
+import { useSkills } from "@/features/skills/api";
 import { errorMessage } from "@/lib/errors";
+import { SubAgentsPanel } from "./SubAgentsPanel";
 
 function approvalNote(
   group: ToolGroup,
@@ -133,32 +139,13 @@ function SkillPicker({ form, agentId }: { form: UseFormReturn<AgentForm>; agentI
   const listError = form.formState.errors.skill_version_ids?.message;
 
   const skills = [...(library.data ?? []), ...(embedded.data ?? [])];
-  const current = new Set(skills.map((skill) => skill.current_version_id).filter(Boolean));
-  const unresolved = selected.filter((id) => !current.has(id));
-  // 현재 버전이 아닌 id가 고정되어 있을 때만 스킬 상세(버전 목록)를 읽어 어느 스킬의 몇 번째 버전인지 찾는다.
-  const details = useQueries({
-    queries: (unresolved.length > 0 ? skills : []).map((skill) => ({
-      queryKey: skillKeys.detail(skill.id),
-      queryFn: () => fetchSkill(skill.id),
-      staleTime: 60_000,
-    })),
-  });
+  // 목록이 스킬마다 버전 요약을 준다. 예전 버전이 고정돼 있어도 어느 스킬의 몇 번째인지 바로 찾는다.
   const owners = new Map<string, PinnedVersion>();
-  for (const { data } of details) {
-    if (!data) continue;
-    for (const version of data.versions) {
-      owners.set(version.id, { skillId: data.id, versionNumber: version.version_number });
-    }
-  }
   for (const skill of skills) {
-    if (skill.current_version_id) {
-      owners.set(skill.current_version_id, {
-        skillId: skill.id,
-        versionNumber: skill.current_version_number ?? 0,
-      });
+    for (const version of skill.versions) {
+      owners.set(version.id, { skillId: skill.id, versionNumber: version.version_number });
     }
   }
-  const resolving = details.some((detail) => detail.isPending);
   const orphans = selected.filter((id) => !owners.has(id));
 
   const setSelected = (ids: string[]) =>
@@ -266,7 +253,7 @@ function SkillPicker({ form, agentId }: { form: UseFormReturn<AgentForm>; agentI
           renderList(embedded.data, t("skills.noneEmbedded"))
         )}
       </Panel>
-      {library.isSuccess && embedded.isSuccess && !resolving && orphans.length > 0 ? (
+      {library.isSuccess && embedded.isSuccess && orphans.length > 0 ? (
         <div className="flex items-center gap-3 text-sm text-ink-muted">
           {t("skills.unknownPinned", { count: orphans.length })}
           <Button
@@ -282,13 +269,23 @@ function SkillPicker({ form, agentId }: { form: UseFormReturn<AgentForm>; agentI
   );
 }
 
-export function ToolsTab({ form, agentId }: { form: UseFormReturn<AgentForm>; agentId: string }) {
+export function ToolsTab({
+  form,
+  agentId,
+  warnings,
+}: {
+  form: UseFormReturn<AgentForm>;
+  agentId: string;
+  // 마지막 초안 저장 응답의 하위 에이전트 경고
+  warnings: readonly AgentWarning[];
+}) {
   const { t } = useTranslation("agents");
   return (
     <div className="flex flex-col gap-6">
       <Panel title={t("tools.title")} description={t("tools.description")}>
         <ToolGroupToggles form={form} />
       </Panel>
+      <SubAgentsPanel form={form} agentId={agentId} warnings={warnings} />
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-ink">{t("skills.title")}</h2>
         <SkillPicker form={form} agentId={agentId} />

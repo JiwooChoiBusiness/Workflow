@@ -13,6 +13,7 @@ import type { ApprovalMode } from "@/api/types";
 
 // 도구 출력은 화면에 이만큼(문자 수)만 들고 있고, 넘치면 앞부분을 버린다. 전체는 서버에서 내려받는다(설계 7.4).
 export const TOOL_OUTPUT_LIMIT = 200 * 1024;
+export const CALL_AGENT = "call_agent";
 
 export type RunStatus =
   "idle" | "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
@@ -31,7 +32,43 @@ export interface OutputChunk {
   text: string;
 }
 
-export type ToolPhase = "input" | "ready" | "awaiting_approval" | "running" | "done";
+// child: call_agent가 만든 하위 에이전트 런이 끝나기를 기다린다(오케스트레이션 8.1).
+export type ToolPhase = "input" | "ready" | "awaiting_approval" | "running" | "child" | "done";
+
+export interface ChildCallEnd {
+  status: "succeeded" | "failed" | "cancelled";
+  error: RunError | null;
+  steps: number;
+  usage: UsageTotals;
+  durationMs: number;
+  // 하위 에이전트가 남긴 결과 파일 수
+  files: number;
+}
+
+// call_agent 호출 하나가 만든 하위 에이전트 런. child_run.started가 채우고 child_run.completed가 end를 적는다.
+export interface ChildCallView {
+  runId: string;
+  sessionId: string;
+  agentId: string;
+  agentSlug: string;
+  agentName: string;
+  // 미리보기에서 발행 버전이 없는 하위 에이전트는 초안으로 돈다(설계 2.4).
+  version: "draft" | "published";
+  depth: number;
+  resultFormat: "text" | "json";
+  taskPreview: string;
+  end: ChildCallEnd | null;
+}
+
+// 새로 고친 직후 세션 상세의 active_run.child로 아는 하위 호출. 재생된 child_run.started가 도구 카드를
+// 채우기 전까지 상태 표시줄이 쓴다.
+export interface ActiveChildHint {
+  toolCallId: string;
+  runId: string;
+  sessionId: string;
+  agentSlug: string;
+  agentName: string;
+}
 
 export interface ToolCallView {
   id: string;
@@ -55,6 +92,8 @@ export interface ToolCallView {
   peakMemoryBytes: number | null;
   outputBytes: number | null;
   outputStorageKey: string | null;
+  // call_agent 호출이면 그 하위 에이전트 런(오케스트레이션 6.1). 메시지 기록에서 다시 그린 카드는 비어 있다.
+  child: ChildCallView | null;
 }
 
 export interface ChangedFile {
@@ -144,6 +183,7 @@ export interface RunViewState {
   lastSeq: Record<string, number>;
   error: RunError | null;
   sessionAutoApprove: boolean;
+  activeChild: ActiveChildHint | null;
 }
 
 export function emptyUsage(): UsageTotals {
@@ -177,6 +217,7 @@ export function initialRunState(partial: Partial<RunViewState> = {}): RunViewSta
     lastSeq: {},
     error: null,
     sessionAutoApprove: false,
+    activeChild: null,
     ...partial,
   };
 }
@@ -188,6 +229,19 @@ export function isRunActive(status: RunStatus): boolean {
 // 아직 끝나지 않은 런. 입력을 기다리는 런도 중지할 수 있다.
 export function isRunOpen(status: RunStatus): boolean {
   return isRunActive(status) || status === "waiting_input";
+}
+
+// 지금 런이 끝나기를 기다리는 하위 에이전트의 이름(없으면 null).
+export function waitingChildName(state: RunViewState): string | null {
+  if (!isRunOpen(state.status)) return null;
+  for (const tool of Object.values(state.toolCalls)) {
+    const child = tool.child;
+    if (tool.phase === "child" && child && !child.end && tool.runId === state.runId) {
+      return child.agentName || child.agentSlug;
+    }
+  }
+  const hint = state.activeChild;
+  return hint ? hint.agentName || hint.agentSlug : null;
 }
 
 export function usageFromTotal(total: UsageTotal): UsageTotals {
@@ -228,6 +282,7 @@ export function newToolCall(id: string, runId: string, step: number, name: strin
     peakMemoryBytes: null,
     outputBytes: null,
     outputStorageKey: null,
+    child: null,
   };
 }
 
@@ -345,6 +400,7 @@ function startRun<S extends RunViewState>(state: S, runId: string, sessionId: st
     error: null,
     // 새 런이 시작되면 이전 런의 질문은 새 메시지로 답한 것이다(설계 4.9).
     pendingInteraction: null,
+    activeChild: null,
   };
 }
 
@@ -676,18 +732,27 @@ const handlers: HandlerMap = {
     });
     if (indexes.length === 0) {
       if (!text) return { ...state, files };
-      return pushItem(
-        { ...state, files },
-        {
-          kind: "text",
-          id: `text:${messageId}:0`,
-          runId: event.run_id,
-          messageId,
-          step: state.step,
-          text,
-          done: true,
-        },
-      );
+      const item: TimelineItem = {
+        kind: "text",
+        id: `text:${messageId}:0`,
+        runId: event.run_id,
+        messageId,
+        step: state.step,
+        text,
+        done: true,
+      };
+      // 재생(events?after=0)에는 델타가 없어 글이 같은 스텝의 도구 카드보다 늦게 온다. 모델은 글을 쓴 뒤
+      // 도구를 부르므로 그 스텝의 첫 도구 카드 앞에 둔다.
+      const at = state.items.findIndex((entry) => {
+        if (entry.kind !== "tool") return false;
+        const tool = state.toolCalls[entry.toolCallId];
+        return tool?.runId === event.run_id && tool.step === state.step;
+      });
+      const items =
+        at === -1
+          ? [...state.items, item]
+          : [...state.items.slice(0, at), item, ...state.items.slice(at)];
+      return { ...state, files, items };
     }
     const segments = indexes.map((i) => state.items[i] as Extract<TimelineItem, { kind: "text" }>);
     const joined = segments.map((s) => s.text).join("");
@@ -717,6 +782,7 @@ const handlers: HandlerMap = {
       pendingInteraction: waiting ? state.pendingInteraction : null,
       items: markTextDone(state.items, event.run_id),
       toolCalls: waiting ? state.toolCalls : closeOpenTools(state.toolCalls, event.run_id),
+      activeChild: null,
     };
     // run.error를 놓쳤으면(재접속 중 끊김) 완료 이벤트에 담긴 오류로 보여 준다.
     if (d.status === "failed" && d.error && !state.error) {
@@ -756,6 +822,63 @@ const handlers: HandlerMap = {
       });
     }
     return next;
+  },
+
+  // 하위 에이전트 호출. 부모 런은 열린 채로 남고 자식의 진행은 child.sessionId 세션의 스트림으로 따로
+  // 받는다. 자식이 끝나면 child_run.completed 뒤에 재개된 부모의 tool_call.completed가 카드를 닫는다.
+  "child_run.started": (state, event) => {
+    const d = event.data;
+    return withTool(
+      state,
+      d.tool_call_id,
+      (tool) => ({
+        ...tool,
+        name: tool.name || CALL_AGENT,
+        phase: tool.phase === "done" ? "done" : "child",
+        child: {
+          runId: d.child_run_id,
+          sessionId: d.child_session_id,
+          agentId: d.agent_id,
+          agentSlug: d.agent_slug,
+          agentName: d.agent_name,
+          version: d.version,
+          depth: d.depth,
+          resultFormat: d.result_format,
+          taskPreview: d.task_preview,
+          end: tool.child?.runId === d.child_run_id ? tool.child.end : null,
+        },
+      }),
+      () => newToolCall(d.tool_call_id, event.run_id, state.step, CALL_AGENT),
+    );
+  },
+
+  "child_run.completed": (state, event) => {
+    const d = event.data;
+    const next = withTool(state, d.tool_call_id, (tool) =>
+      tool.child
+        ? {
+            ...tool,
+            child: {
+              ...tool.child,
+              end: {
+                status: d.status,
+                error: d.error
+                  ? {
+                      code: d.error.code,
+                      message: d.error.message,
+                      retryable: Boolean(d.error.retryable),
+                    }
+                  : null,
+                steps: d.steps,
+                usage: usageFromTotal(d.usage_total),
+                durationMs: d.duration_ms,
+                files: d.files,
+              },
+            },
+          }
+        : tool,
+    );
+    return state.activeChild?.toolCallId === d.tool_call_id ? { ...next, activeChild: null } : next;
   },
 
   // 실패한 런은 run.error 바로 뒤에 run.completed(failed)로 끝난다. 상태 전환은 여기서 먼저 한다.

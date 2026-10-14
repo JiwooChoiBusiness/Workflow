@@ -40,6 +40,16 @@ export interface InspectorInteraction {
   resolution: InspectorResolution | null;
 }
 
+// call_agent 호출이 만든 하위 에이전트 런(child_run.started·completed)
+export interface InspectorChildRun {
+  runId: string;
+  sessionId: string;
+  agentSlug: string;
+  agentName: string;
+  version: "draft" | "published";
+  status: "succeeded" | "failed" | "cancelled" | null;
+}
+
 export interface InspectorToolCall {
   id: string;
   name: string;
@@ -55,6 +65,7 @@ export interface InspectorToolCall {
   // 256KB를 넘어 storage에 전문이 따로 있다.
   outputStored: boolean;
   interaction: InspectorInteraction | null;
+  child: InspectorChildRun | null;
 }
 
 export interface InspectorMessage {
@@ -119,6 +130,8 @@ const SUMMARIZED = new Set([
   "thinking.delta",
   "tool_call.input_delta",
   "tool_call.output_delta",
+  "child_run.started",
+  "child_run.completed",
   "ping",
 ]);
 
@@ -141,6 +154,7 @@ function newTool(id: string, name: string): InspectorToolCall {
     outputBytes: null,
     outputStored: false,
     interaction: null,
+    child: null,
   };
 }
 
@@ -297,6 +311,24 @@ export function inspectRun(events: readonly RunEventOut[]): RunInspection {
           downloadable: file.downloadable,
           reason: file.reason ?? null,
         });
+        break;
+      }
+      case "child_run.started": {
+        const started = dataOf<"child_run.started">(data);
+        toolFor(started.tool_call_id, "call_agent").child = {
+          runId: started.child_run_id,
+          sessionId: started.child_session_id,
+          agentSlug: started.agent_slug,
+          agentName: started.agent_name,
+          version: started.version,
+          status: null,
+        };
+        break;
+      }
+      case "child_run.completed": {
+        const ended = dataOf<"child_run.completed">(data);
+        const tool = tools.get(ended.tool_call_id);
+        if (tool?.child) tool.child.status = ended.status;
         break;
       }
       case "run.error":

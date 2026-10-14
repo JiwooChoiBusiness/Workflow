@@ -1,4 +1,6 @@
 dist
+dist.next
+dist.old
 coverage
 pnpm-lock.yaml
 playwright-report

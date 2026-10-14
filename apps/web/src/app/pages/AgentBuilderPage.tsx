@@ -1,14 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { PanelRight } from "lucide-react";
+import { PanelRight, ScrollText } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { useBlocker, useParams } from "react-router";
+import { Link, useBlocker, useParams } from "react-router";
 import { isApiError } from "@/api/http";
-import type { AgentOut, AgentVersionOut } from "@/api/types";
+import type { AgentOut, AgentVersionOut, AgentWarning } from "@/api/types";
 import { ContextBarActions } from "@/app/layout/contextBar";
-import { ApiKeyPanel } from "@/components/builder/ApiKeyPanel";
+import { ApiTab } from "@/components/builder/ApiTab";
 import { ApprovalLimitsTab } from "@/components/builder/ApprovalLimitsTab";
 import { EnvVarEditor } from "@/components/builder/EnvVarEditor";
 import { FilesTab } from "@/components/builder/FilesTab";
@@ -38,6 +38,7 @@ import {
   makeAgentFormSchema,
   type AgentForm,
 } from "@/features/agents/schemas";
+import { subAgentErrorPath } from "@/features/agents/subAgents";
 import { useModels } from "@/features/settings/api";
 import { errorMessage } from "@/lib/errors";
 import { applyServerErrors } from "@/lib/serverErrors";
@@ -65,6 +66,8 @@ function draftErrorPath(loc: (string | number)[]): string | null {
     case "skill_version_ids":
     case "file_ids":
       return head;
+    case "sub_agents":
+      return subAgentErrorPath(rest);
     default:
       return null;
   }
@@ -86,6 +89,8 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
   const [tab, setTab] = useState<TabKey>("settings");
   const [previewOpen, setPreviewOpen] = useState(true);
   const [conflict, setConflict] = useState(false);
+  // 마지막 저장 응답의 하위 에이전트 경고(설명 없음, 미발행, 사슬 깊이). 도구 탭의 에이전트 묶음에 보인다.
+  const [warnings, setWarnings] = useState<AgentWarning[]>([]);
 
   const modelEntries = models.data?.models;
   // 출력 상한은 고른 모델의 능력표에 따라 달라서 검증할 때마다 스키마를 만든다.
@@ -149,6 +154,16 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
         const saved = await saveDraft.mutateAsync(formToDraftUpdate(values, draft.updated_at));
         form.reset(agentToForm(latestAgent, saved));
         toast.success(t("builder.saved"));
+        const found = saved.warnings ?? [];
+        setWarnings(found);
+        if (found.length > 0) {
+          toast.warning(
+            t("subAgents.saveWarnings", {
+              count: found.length,
+              messages: found.map((warning) => warning.message).join(" / "),
+            }),
+          );
+        }
       } catch (error) {
         showSaveError(error, draftErrorPath);
       }
@@ -165,7 +180,7 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
 
   const tabErrors: Record<TabKey, boolean> = {
     settings: Boolean(errors.meta || errors.instructions || errors.model),
-    tools: Boolean(errors.tools || errors.skill_version_ids),
+    tools: Boolean(errors.tools || errors.skill_version_ids || errors.sub_agents),
     files: Boolean(errors.file_ids),
     env: Boolean(errors.env_vars),
     approval: Boolean(errors.approval_mode || errors.limits || errors.sandbox),
@@ -177,6 +192,12 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
     <div className="flex h-full min-h-0">
       <ContextBarActions>
         {isDirty ? <Badge tone="warn">{tc("state.unsaved")}</Badge> : null}
+        <Button asChild size="sm" variant="ghost">
+          <Link to={`/agents/${agent.id}/logs`}>
+            <ScrollText className="size-4" aria-hidden />
+            {t("builder.logs")}
+          </Link>
+        </Button>
         <Button size="sm" variant="primary" loading={isSubmitting} onClick={() => void save()}>
           {tc("actions.save")}
         </Button>
@@ -229,7 +250,7 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
               />
             </TabsContent>
             <TabsContent value="tools" className="pt-5">
-              <ToolsTab form={form} agentId={agent.id} />
+              <ToolsTab form={form} agentId={agent.id} warnings={warnings} />
             </TabsContent>
             <TabsContent value="files" className="pt-5">
               <FilesTab form={form} agentId={agent.id} />
@@ -244,7 +265,7 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
               <PublishPanel agent={agent} dirty={isDirty} />
             </TabsContent>
             <TabsContent value="api" className="pt-5">
-              <ApiKeyPanel agent={agent} />
+              <ApiTab agent={agent} />
             </TabsContent>
           </Tabs>
         </div>

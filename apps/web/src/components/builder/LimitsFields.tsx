@@ -11,6 +11,7 @@ const LIMIT_FIELDS = [
   { name: "tool_timeout_sec", optional: false, step: "1" },
   { name: "context_budget_tokens", optional: true, step: "1" },
   { name: "max_cost_usd", optional: true, step: "any" },
+  { name: "max_child_calls", optional: false, step: "1" },
 ] as const;
 
 // 에이전트 초안의 limits와 워크스페이스 기본 한도(default_limits)가 같은 구조(RunLimits)를 쓴다.

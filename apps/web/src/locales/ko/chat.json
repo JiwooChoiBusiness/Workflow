@@ -16,19 +16,21 @@
     "tokens": "입력 {{input}} · 출력 {{output}}",
     "estimated": "추정",
     "cost": "${{cost}}",
-    "elapsed": "경과"
+    "elapsed": "경과",
+    "child": "하위 에이전트 {{name}} 실행 중",
+    "workflowLabel": "워크플로우 런 상태",
+    "nodes": "노드 {{count}}개 끝남",
+    "node": "{{name}} 실행 중"
   },
   "connection": {
     "reconnecting": "연결이 끊겨 다시 연결하는 중 ({{attempt}}/{{max}})",
     "failed": "실시간 연결을 되살리지 못했습니다. 새로 고침해 보세요."
   },
   "list": {
-    "label": "대화",
     "empty": "메시지를 보내 대화를 시작하세요."
   },
   "role": {
-    "user": "나",
-    "assistant": "에이전트"
+    "user": "나"
   },
   "thinking": "생각 과정",
   "composer": {
@@ -57,7 +59,8 @@
       "input": "입력 받는 중",
       "ready": "실행 대기",
       "awaiting_approval": "승인 대기",
-      "running": "실행 중"
+      "running": "실행 중",
+      "child": "하위 에이전트 실행 중"
     },
     "result": {
       "ok": "완료",
@@ -66,7 +69,6 @@
       "cancelled": "취소됨",
       "rejected": "거절됨"
     },
-    "toggle": "{{name}} 자세히 보기",
     "input": "입력",
     "output": "출력",
     "noOutput": "출력 없음",
@@ -76,8 +78,7 @@
     "dropped": "앞부분 {{count}}자는 화면에서 생략했습니다.",
     "fullOutput": "전체 출력 내려받기",
     "excerpt": "실시간 출력이 없어 저장된 발췌를 보여 줍니다.",
-    "restored": "대화 기록에서 불러온 결과입니다. 모델에 전달한 내용이라 길면 잘려 있습니다.",
-    "status": "도구 상태"
+    "restored": "대화 기록에서 불러온 결과입니다. 모델에 전달한 내용이라 길면 잘려 있습니다."
   },
   "approval": {
     "title": "실행 승인 요청",
@@ -100,16 +101,14 @@
     "rejectNote": "거절 사유 (선택)",
     "rejectNotePlaceholder": "에이전트에게 전할 이유",
     "autoApprove": "이 세션에서는 묻지 않기",
-    "autoApproveHint": "켜고 승인하면 이 세션의 이후 도구 호출은 승인 없이 실행됩니다.",
-    "region": "실행 승인 요청"
+    "autoApproveHint": "켜고 승인하면 이 세션의 이후 도구 호출은 승인 없이 실행됩니다."
   },
   "question": {
     "title": "에이전트의 질문",
     "options": "고를 수 있는 답",
     "answer": "답변",
     "answerPlaceholder": "직접 답 입력",
-    "send": "답 보내기",
-    "region": "에이전트의 질문"
+    "send": "답 보내기"
   },
   "interaction": {
     "approved": "승인함",
@@ -153,6 +152,38 @@
     "title": "런이 실패했습니다",
     "retryable": "잠시 뒤 다시 보내 볼 수 있습니다."
   },
+  "child": {
+    "cardLabel": "하위 에이전트 {{agent}}",
+    "draft": "초안",
+    "draftHint": "발행 버전이 없어 이 하위 에이전트의 초안으로 실행합니다. 첨부 파일과 스킬만 있는 빈 작업공간에서 시작합니다.",
+    "steps": "스텝 {{count}}",
+    "stop": "중지",
+    "stopLabel": "{{agent}} 중지",
+    "filesPassed": "넘긴 파일 {{count}}개",
+    "approvalTitle": "{{agent}}의 승인 요청",
+    "autoApprove": "이 대화에서는 묻지 않기",
+    "autoApproveHint": "켜고 승인하면 이 대화의 지휘자와 하위 에이전트가 이후 도구 호출을 승인 없이 실행합니다.",
+    "status": {
+      "calling": "부르는 중",
+      "approval": "승인 대기",
+      "question": "답 대기"
+    },
+    "end": {
+      "succeeded": "완료",
+      "failed": "실패",
+      "cancelled": "중지됨"
+    },
+    "loading": "하위 에이전트 기록을 불러오는 중",
+    "loadFailed": "하위 에이전트의 대화를 불러오지 못했습니다.",
+    "notStarted": "하위 에이전트 런이 아직 없습니다.",
+    "result": {
+      "label": "하위 에이전트 결과",
+      "files": "결과 파일",
+      "json": "JSON 결과",
+      "toolResult": "지휘자가 받은 결과",
+      "loadFailed": "결과 파일과 JSON을 불러오지 못했습니다."
+    }
+  },
   "workspace": {
     "title": "작업공간",
     "open": "작업공간 보기",
@@ -191,7 +222,6 @@
     "resetDone": "작업공간을 초기화했습니다.",
     "path": "경로",
     "disk": "디스크",
-    "processes": "실행 중 프로세스",
-    "unavailable": "작업공간 정보는 아직 볼 수 없습니다."
+    "processes": "실행 중 프로세스"
   }
 }

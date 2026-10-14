@@ -1,7 +1,8 @@
 import { History, Rocket } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AgentOut, AgentVersionSummary } from "@/api/types";
+import { isApiError } from "@/api/http";
+import type { AgentOut } from "@/api/types";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -14,18 +15,115 @@ import { PageSpinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { usePublish, useRestoreVersion, useVersions } from "@/features/agents/api";
 import { errorMessage } from "@/lib/errors";
+import type { T } from "@/lib/formSchemas";
 import { formatDateTime } from "@/lib/format";
 
-export function PublishPanel({ agent, dirty }: { agent: AgentOut; dirty: boolean }) {
+// 발행을 막은 초안 문제(draft_invalid)는 details에 항목별 문구가 있다. "하위 에이전트 X을(를) 먼저 발행한다"처럼
+// 무엇을 고칠지가 거기 있으므로 같이 보여 준다. 에이전트는 {loc, msg}, 워크플로우는 검증 이슈 {message}다.
+export function publishErrorMessage(error: unknown, tc: T): string {
+  if (isApiError(error, 422) && error.code === "draft_invalid" && Array.isArray(error.details)) {
+    const details = (error.details as { msg?: unknown; message?: unknown }[])
+      .map((detail) =>
+        typeof detail.msg === "string"
+          ? detail.msg
+          : typeof detail.message === "string"
+            ? detail.message
+            : "",
+      )
+      .filter(Boolean);
+    if (details.length > 0) return [error.message, ...details].join(" ");
+  }
+  return errorMessage(error, tc);
+}
+
+export interface VersionItem {
+  id: string;
+  version_number: number;
+  change_note?: string | null;
+  published_at?: string | null;
+  is_current: boolean;
+}
+
+export interface PublishResult {
+  version: { version_number?: number | null };
+  warnings?: { message: string }[] | null;
+}
+
+// 에이전트와 워크플로우가 같은 발행 화면을 쓴다. 다른 것은 API와 몇몇 안내 문구뿐이다.
+export interface PublishSource {
+  versions: {
+    data: VersionItem[] | undefined;
+    isPending: boolean;
+    isError: boolean;
+    error: unknown;
+    refetch: () => unknown;
+  };
+  publish: {
+    isPending: boolean;
+    mutate: (
+      note: string | null,
+      options: { onSuccess: (result: PublishResult) => void; onError: (error: unknown) => void },
+    ) => void;
+  };
+  restore: {
+    isPending: boolean;
+    mutate: (
+      versionId: string,
+      options: { onSuccess: () => void; onError: (error: unknown) => void },
+    ) => void;
+  };
+}
+
+export function PublishPanelView({
+  source,
+  dirty,
+  beforePublish,
+  description,
+  pendingText,
+  onPublishError,
+}: {
+  source: PublishSource;
+  dirty: boolean;
+  // 있으면 저장하지 않은 변경이 있어도 버튼을 막지 않고 먼저 이것(저장)을 부른다. false면 발행하지 않는다.
+  beforePublish?: () => Promise<boolean>;
+  description?: string;
+  pendingText?: string;
+  onPublishError?: (error: unknown) => void;
+}) {
   const { t } = useTranslation("agents");
   const { t: tc } = useTranslation();
-  const versions = useVersions(agent.id);
-  const publish = usePublish(agent.id);
-  const restore = useRestoreVersion(agent.id);
+  const { versions, publish, restore } = source;
   const [note, setNote] = useState("");
-  const [restoring, setRestoring] = useState<AgentVersionSummary | null>(null);
+  const [restoring, setRestoring] = useState<VersionItem | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const blockedByDirty = dirty && !beforePublish;
 
   const published = [...(versions.data ?? [])].sort((a, b) => b.version_number - a.version_number);
+
+  async function submit() {
+    if (beforePublish) {
+      setPreparing(true);
+      const ready = await beforePublish().finally(() => setPreparing(false));
+      if (!ready) return;
+    }
+    publish.mutate(note.trim() || null, {
+      onSuccess: ({ version, warnings }) => {
+        setNote("");
+        toast.success(t("publish.published", { version: version.version_number ?? "?" }));
+        if (warnings?.length) {
+          toast.warning(
+            t("publish.warnings", {
+              messages: warnings.map((warning) => warning.message).join(" / "),
+            }),
+          );
+        }
+      },
+      onError: (error) => {
+        onPublishError?.(error);
+        toast.error(publishErrorMessage(error, tc));
+      },
+    });
+  }
 
   let history;
   if (versions.isPending) {
@@ -70,7 +168,7 @@ export function PublishPanel({ agent, dirty }: { agent: AgentOut; dirty: boolean
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel title={t("publish.title")} description={t("publish.description")}>
+      <Panel title={t("publish.title")} description={description ?? t("publish.description")}>
         <div className="flex flex-col gap-4">
           <Field label={t("publish.changeNote")}>
             <Textarea
@@ -80,24 +178,16 @@ export function PublishPanel({ agent, dirty }: { agent: AgentOut; dirty: boolean
               onChange={(event) => setNote(event.target.value)}
             />
           </Field>
-          {dirty ? <Alert tone="warn" title={t("publish.saveFirst")} /> : null}
-          {publish.isPending ? <Alert tone="info" title={t("publish.pending")} /> : null}
+          {blockedByDirty ? <Alert tone="warn" title={t("publish.saveFirst")} /> : null}
+          {publish.isPending ? (
+            <Alert tone="info" title={pendingText ?? t("publish.pending")} />
+          ) : null}
           <div>
             <Button
               variant="primary"
-              disabled={dirty}
-              loading={publish.isPending}
-              onClick={() =>
-                publish.mutate(note.trim() || null, {
-                  onSuccess: ({ version }) => {
-                    setNote("");
-                    toast.success(
-                      t("publish.published", { version: version.version_number ?? "?" }),
-                    );
-                  },
-                  onError: (error) => toast.error(errorMessage(error, tc)),
-                })
-              }
+              disabled={blockedByDirty}
+              loading={publish.isPending || preparing}
+              onClick={() => void submit()}
             >
               <Rocket className="size-4" aria-hidden />
               {t("publish.submit")}
@@ -130,4 +220,11 @@ export function PublishPanel({ agent, dirty }: { agent: AgentOut; dirty: boolean
       />
     </div>
   );
+}
+
+export function PublishPanel({ agent, dirty }: { agent: AgentOut; dirty: boolean }) {
+  const versions = useVersions(agent.id);
+  const publish = usePublish(agent.id);
+  const restore = useRestoreVersion(agent.id);
+  return <PublishPanelView source={{ versions, publish, restore }} dirty={dirty} />;
 }

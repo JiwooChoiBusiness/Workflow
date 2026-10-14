@@ -1,14 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { InteractionInput } from "@/api/run-events";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { Spinner } from "@/components/ui/spinner";
-import { sessionFileUrl } from "@/features/sessions/api";
+import { consoleSessionApi, sessionFileUrl } from "@/features/sessions/api";
+import type { ChatSessionApi } from "@/features/sessions/chatSession";
 import type { StreamStatus } from "@/lib/sse";
 import { cn } from "@/lib/cn";
 import { isRunActive, type PendingInteraction } from "@/stores/runStore";
-import { useRunStore } from "@/stores/runStoreContext";
+import { useRunActions, useRunStore } from "@/stores/runStoreContext";
 import { ApprovalPrompt } from "./ApprovalPrompt";
+import { ChildScopeContext, type ChildScope } from "./childScope";
 import { Composer, type SendResult } from "./Composer";
 import { InteractionPrompt } from "./InteractionPrompt";
 import { ConnectionNotice, MessageList } from "./MessageList";
@@ -20,6 +22,8 @@ export interface ChatPanelProps {
   sessionId?: string | null;
   // 세션 파일 내려받기 주소. 기본은 콘솔 API(웹앱은 /api/web 경로를 넘긴다).
   fileUrl?: (sessionId: string, sessionFileId: string) => string;
+  // 하위 에이전트 카드가 자식 세션을 열 때 쓰는 API. 웹앱은 /api/web 경로를 넘긴다.
+  sessionApi?: ChatSessionApi;
   onSend: (text: string, files: File[]) => SendResult | Promise<SendResult>;
   onStop: () => void;
   // POST /runs/{rid}/input 본문 그대로(설계 6.2). false면 서버가 받지 않았다.
@@ -40,6 +44,7 @@ export interface ChatPanelProps {
 export function ChatPanel({
   sessionId = null,
   fileUrl = sessionFileUrl,
+  sessionApi = consoleSessionApi,
   onSend,
   onStop,
   onRespond,
@@ -70,6 +75,15 @@ export function ChatPanel({
   const fileHref = useCallback(
     (sessionFileId: string) => (sessionId ? fileUrl(sessionId, sessionFileId) : null),
     [sessionId, fileUrl],
+  );
+  const actions = useRunActions();
+  const childScope = useMemo<ChildScope>(
+    () => ({
+      api: sessionApi,
+      fileUrl,
+      markAutoApprove: () => actions.setSessionAutoApprove(true),
+    }),
+    [sessionApi, fileUrl, actions],
   );
 
   async function respond(
@@ -147,7 +161,9 @@ export function ChatPanel({
           {t("session.loading")}
         </div>
       ) : (
-        <MessageList renderInteraction={renderInteraction} fileHref={fileHref} />
+        <ChildScopeContext value={childScope}>
+          <MessageList renderInteraction={renderInteraction} fileHref={fileHref} />
+        </ChildScopeContext>
       )}
       <FileChangeList fileHref={fileHref} />
       <Composer

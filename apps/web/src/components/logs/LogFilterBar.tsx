@@ -1,4 +1,4 @@
-import { FilterX } from "lucide-react";
+import { FilterX, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Select, type SelectOption } from "@/components/ui/select";
@@ -91,6 +91,19 @@ export function LogFilterBar({
           )}
         />
       ))}
+      {filters.tab === "runs" && filters.parent ? (
+        <span className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-surface pr-1 pl-2.5 text-sm text-ink">
+          {t("filters.parent", { id: filters.parent.slice(0, 8) })}
+          <Button
+            variant="ghost"
+            size="iconSm"
+            aria-label={t("filters.parentClear")}
+            onClick={() => onChange({ ...filters, parent: null })}
+          >
+            <X className="size-3.5" aria-hidden />
+          </Button>
+        </span>
+      ) : null}
       {active ? (
         <Button
           variant="ghost"

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/layout";
 import { Spinner } from "@/components/ui/spinner";
 import { useLogRuns, useLogSessions } from "@/features/logs/api";
-import { sessionLogPath, type LogFilters } from "@/features/logs/filters";
+import { childRunsPath, sessionLogPath, type LogFilters } from "@/features/logs/filters";
 import { formatPast } from "@/features/logs/time";
 import type { RunLogItem, SessionOut } from "@/features/logs/types";
 import { formatCost } from "@/features/settings/usage";
@@ -241,6 +241,20 @@ export function RunTable({
                 {run.session_title || t("untitled")}
               </Link>
               {run.session_deleted ? <Badge className="ml-2">{t("sessionDeleted")}</Badge> : null}
+              {run.parent_run_id ? (
+                <Badge tone="info" className="ml-2" title={t("children.badgeHint")}>
+                  {t("children.badge")}
+                </Badge>
+              ) : null}
+              {run.child_count > 0 ? (
+                <Link
+                  to={childRunsPath(run.id)}
+                  title={t("children.countHint", { count: run.child_count })}
+                  className="ml-2 inline-flex h-5 items-center rounded-sm border border-line bg-sunken px-1.5 text-xs text-ink-muted hover:text-accent"
+                >
+                  {t("children.count", { count: run.child_count })}
+                </Link>
+              ) : null}
             </td>
             {showAgent ? (
               <td className={td}>
@@ -255,6 +269,11 @@ export function RunTable({
             </td>
             <td className={td}>
               <RunStatusBadge status={run.status} />
+              {run.child ? (
+                <span className="mt-0.5 block text-xs text-ink-muted">
+                  {t("children.progress")}
+                </span>
+              ) : null}
               {run.error ? (
                 <span className="mt-0.5 block font-mono text-xs text-danger">{run.error.code}</span>
               ) : null}

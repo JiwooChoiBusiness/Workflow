@@ -12,6 +12,10 @@ export interface ApprovalPromptProps {
   onApprove: (options: { sessionAutoApprove: boolean }) => void;
   onReject: (note: string) => void;
   busy?: boolean;
+  // 하위 에이전트 카드 안에서는 어느 에이전트의 요청인지와, 자동 승인이 부모 대화 전체에 걸린다는 것을 적는다.
+  title?: string;
+  autoApproveLabel?: string;
+  autoApproveHint?: string;
 }
 
 function Block({ label, children }: { label: string; children: ReactNode }) {
@@ -105,6 +109,9 @@ export function ApprovalPrompt({
   onApprove,
   onReject,
   busy = false,
+  title,
+  autoApproveLabel,
+  autoApproveHint,
 }: ApprovalPromptProps) {
   const { t } = useTranslation("chat");
   const [note, setNote] = useState("");
@@ -126,7 +133,7 @@ export function ApprovalPrompt({
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
         <div>
           <h3 id={titleId} className="text-sm font-semibold text-ink">
-            {t("approval.title")}
+            {title ?? t("approval.title")}
           </h3>
           <p className="text-xs text-ink-muted">{t("approval.description")}</p>
         </div>
@@ -173,10 +180,10 @@ export function ApprovalPrompt({
         />
         <div>
           <label htmlFor={autoId} className="text-sm text-ink">
-            {t("approval.autoApprove")}
+            {autoApproveLabel ?? t("approval.autoApprove")}
           </label>
           <p id={`${autoId}-hint`} className="text-xs text-ink-muted">
-            {t("approval.autoApproveHint")}
+            {autoApproveHint ?? t("approval.autoApproveHint")}
           </p>
         </div>
       </div>

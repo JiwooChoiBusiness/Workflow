@@ -32,12 +32,15 @@ export default function SessionLogPage() {
       ? requestedRun
       : (runList[0]?.id ?? null);
   const focusToolCallId = searchParams.get("tool");
+  const view = searchParams.get("view") === "children" ? "children" : "steps";
 
-  const select = (runId: string, toolCallId?: string) => {
+  const select = (runId: string, toolCallId?: string, nextView?: "children") => {
     const next = new URLSearchParams(searchParams);
     next.set("run", runId);
     if (toolCallId) next.set("tool", toolCallId);
     else next.delete("tool");
+    if (nextView) next.set("view", nextView);
+    else next.delete("view");
     setSearchParams(next, { replace: true });
   };
 
@@ -93,16 +96,17 @@ export default function SessionLogPage() {
               error={runs.error}
               onRetry={() => void runs.refetch()}
               selectedRunId={selectedRunId}
-              onSelect={(runId) => select(runId)}
+              onSelect={(runId, nextView) => select(runId, undefined, nextView)}
             />
           </Panel>
           <Panel title={t("session.inspector")}>
             {selectedRunId ? (
               <RunInspector
-                key={selectedRunId}
+                key={`${selectedRunId}:${view}`}
                 runId={selectedRunId}
                 sessionId={sid}
                 focusToolCallId={focusToolCallId}
+                initialTab={view}
               />
             ) : (
               <EmptyState icon={Microscope} title={t("session.inspectorHint")} />

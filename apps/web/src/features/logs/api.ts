@@ -23,6 +23,8 @@ export const logKeys = {
   sessionRuns: (sid: string) => ["logs", "session", sid, "runs"] as const,
   files: (sid: string) => ["logs", "session", sid, "files"] as const,
   run: (rid: string) => ["logs", "run", rid] as const,
+  children: (rid: string) => ["logs", "run", rid, "children"] as const,
+  treeUsage: (rid: string) => ["logs", "run", rid, "tree-usage"] as const,
   events: (rid: string) => ["logs", "run", rid, "events"] as const,
   toolOutput: (rid: string, tcid: string) => ["logs", "run", rid, "tool-output", tcid] as const,
 };
@@ -134,6 +136,72 @@ export function useRun(rid: string | null) {
     enabled: rid !== null,
     queryFn: (): Promise<RunOut> => unwrap(api.GET("/api/console/runs/{run_id}", runPath(rid!))),
     refetchInterval: (query) => (isRunActive(query.state.data?.status) ? ACTIVE_REFRESH_MS : false),
+  });
+}
+
+// 깊이 한도(ORCHESTRATION_MAX_DEPTH)가 3까지라 한 런 아래로 세 단계면 트리 전체다.
+const MAX_CHILD_DEPTH = 3;
+const CHILD_PAGE = 200;
+
+async function fetchChildRuns(rid: string): Promise<RunLogItem[]> {
+  const body = await unwrap(
+    api.GET("/api/console/runs", { params: { query: { parent_run_id: rid, limit: CHILD_PAGE } } }),
+  );
+  // 목록은 최근 것부터다. 하위 런 탭은 부른 순서로 보여 준다.
+  return [...body.items].sort((a, b) => a.queued_at.localeCompare(b.queued_at));
+}
+
+// call_agent로 부른 자식 런(오케스트레이션 6.2). 부모가 아직 열려 있으면 몇 초마다 다시 읽는다.
+export function useChildRuns(rid: string, { live = false } = {}) {
+  return useQuery({
+    queryKey: logKeys.children(rid),
+    queryFn: () => fetchChildRuns(rid),
+    refetchInterval: (query) =>
+      live || query.state.data?.some((run) => isRunActive(run.status)) ? ACTIVE_REFRESH_MS : false,
+  });
+}
+
+export interface TreeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  // 가격표가 없는 런이 섞이면 null(알 수 없음)
+  costUsd: number | null;
+  estimated: boolean;
+  runs: number;
+}
+
+// 자식·손자 런의 사용량 합. 부모는 자식 사용량을 더하지 않으므로(3.9) 화면이 parent_run_id로 모아 더한다.
+async function fetchTreeUsage(rid: string): Promise<TreeUsage> {
+  const total: TreeUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    costUsd: 0,
+    estimated: false,
+    runs: 0,
+  };
+  let level = await fetchChildRuns(rid);
+  for (let depth = 0; depth < MAX_CHILD_DEPTH && level.length > 0; depth += 1) {
+    for (const run of level) {
+      total.inputTokens += run.usage.input_tokens ?? 0;
+      total.outputTokens += run.usage.output_tokens ?? 0;
+      const cost = run.usage.cost_usd;
+      total.costUsd =
+        cost === null || cost === undefined || total.costUsd === null ? null : total.costUsd + cost;
+      total.estimated ||= Boolean(run.usage.estimated);
+      total.runs += 1;
+    }
+    const parents = level.filter((run) => run.child_count > 0);
+    level = (await Promise.all(parents.map((run) => fetchChildRuns(run.id)))).flat();
+  }
+  return total;
+}
+
+export function useTreeUsage(rid: string, { enabled = true, live = false } = {}) {
+  return useQuery({
+    queryKey: logKeys.treeUsage(rid),
+    enabled,
+    queryFn: () => fetchTreeUsage(rid),
+    refetchInterval: live ? ACTIVE_REFRESH_MS : false,
   });
 }
 

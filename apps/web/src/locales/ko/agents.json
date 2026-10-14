@@ -45,7 +45,8 @@
       "publish": "발행",
       "api": "API"
     },
-    "tabError": "고칠 입력값이 있음"
+    "tabError": "고칠 입력값이 있음",
+    "logs": "에이전트 로그"
   },
   "settings": {
     "basics": "기본 정보",
@@ -61,7 +62,6 @@
   "model": {
     "label": "모델",
     "default": "기본 (폴백 순서대로)",
-    "defaultHint": "{{order}}",
     "fallbackRank": "폴백 {{rank}}순위",
     "notLive": "라이브 목록에 없음",
     "noCapabilities": "능력 정보 없음",
@@ -111,6 +111,59 @@
         "label": "사용자에게 묻기",
         "description": "작업 중에 질문하고 답을 기다립니다 (ask_user)"
       }
+    }
+  },
+  "subAgents": {
+    "title": "하위 에이전트",
+    "description": "고른 에이전트에게 call_agent 도구로 일을 맡깁니다. 모델은 각 에이전트의 설명을 보고 맡길 곳을 고릅니다.",
+    "loadFailed": "에이전트 목록을 불러오지 못했습니다.",
+    "none": "고를 수 있는 다른 에이전트가 없습니다.",
+    "limit": "하위 에이전트는 {{max}}개까지 고를 수 있습니다.",
+    "count": "{{count}}/{{max}}개 선택",
+    "include": "{{name}}을(를) 하위 에이전트로 쓰기",
+    "published": "v{{version}} 발행",
+    "draftOnly": "초안만",
+    "settings": "호출 설정",
+    "settingsLabel": "{{name}} 호출 설정",
+    "summary": {
+      "text": "결과: 글",
+      "jsonFixed": "결과: JSON(고정 스키마)",
+      "jsonModel": "결과: JSON(모델이 정함)",
+      "noFiles": "파일 복사 안 함",
+      "approvalOff": "승인 끔"
+    },
+    "warning": {
+      "agent_description_empty": "설명 없음",
+      "agent_unpublished": "미발행",
+      "agent_description_empty_hint": "설명이 비어 있으면 모델이 언제 이 에이전트를 부를지 알기 어렵습니다.",
+      "agent_unpublished_hint": "미리보기에서는 초안으로 돌고, 이 에이전트를 발행하려면 먼저 발행해야 합니다."
+    },
+    "saveWarnings": "하위 에이전트 경고 {{count}}건: {{messages}}",
+    "unknown": "목록에 없는(지운) 에이전트 {{count}}개가 들어 있습니다.",
+    "removeUnknown": "빼기",
+    "dialog": {
+      "title": "{{name}} 호출 설정",
+      "description": "지휘자가 이 에이전트를 부를 때 받는 결과와 승인 방식입니다.",
+      "format": "결과 형식",
+      "formatText": "글",
+      "formatTextHint": "하위 에이전트의 마지막 답과 결과 파일을 받습니다. 기본값입니다.",
+      "formatJson": "JSON",
+      "formatJsonHint": "출력 스키마에 맞춘 JSON을 받습니다. 결과를 내는 단계가 더해져 스텝과 토큰을 더 씁니다.",
+      "schemaSource": "스키마",
+      "schemaFixed": "여기서 정한 스키마",
+      "schemaFixedHint": "부를 때마다 같은 모양의 결과를 받습니다.",
+      "schemaModel": "모델이 호출 때 정함",
+      "schemaModelHint": "지휘자 모델이 call_agent의 output_schema로 그때그때 정합니다.",
+      "schema": "출력 JSON 스키마",
+      "schemaHint": "type은 object, additionalProperties는 false여야 합니다.",
+      "files": "결과 파일을 지휘자 작업공간으로 복사",
+      "filesHint": "끄면 결과에 파일 목록만 적고 파일은 하위 에이전트 세션에만 남깁니다.",
+      "approval": "승인",
+      "approvalInherit": "하위 에이전트 설정대로",
+      "approvalInheritHint": "하위 에이전트 버전의 승인 모드를 따릅니다.",
+      "approvalOff": "끄기",
+      "approvalOffHint": "이 호출에서는 하위 에이전트의 도구를 묻지 않고 실행합니다.",
+      "apply": "적용"
     }
   },
   "skills": {
@@ -199,6 +252,8 @@
     "context_budget_tokens_hint": "비우면 200,000과 모델 컨텍스트의 60% 중 작은 값",
     "tool_timeout_sec": "도구 1회 타임아웃(초)",
     "tool_timeout_sec_hint": "1~900",
+    "max_child_calls": "하위 에이전트 호출 수",
+    "max_child_calls_hint": "런 하나가 call_agent로 부를 수 있는 횟수, 0~100. 손자 호출까지 합친 상한이며 0이면 부르지 않습니다",
     "sandbox": "작업공간 프로세스",
     "memory_limit_mb": "메모리 상한(MB)",
     "memory_limit_mb_hint": "비우면 서버 설정값. 서버 설정과 둘 중 작은 값이 적용됩니다",
@@ -223,7 +278,8 @@
     "restored": "v{{version}}을(를) 현재 발행 버전으로 지정했습니다.",
     "loadFailed": "발행 이력을 불러오지 못했습니다.",
     "noNote": "메모 없음",
-    "version": "v{{version}}"
+    "version": "v{{version}}",
+    "warnings": "발행했지만 확인할 것이 있습니다: {{messages}}"
   },
   "apiKeys": {
     "title": "API 키",
@@ -245,7 +301,41 @@
     "revokeBody": "'{{name}}' 키를 폐기합니다. 이 키로 오는 호출은 바로 401을 받습니다.",
     "revokedToast": "키를 폐기했습니다.",
     "loadFailed": "API 키 목록을 불러오지 못했습니다.",
-    "notPublished": "발행한 버전이 없으면 API 호출이 실패합니다."
+    "notPublished": "아직 발행하지 않았습니다. 웹앱과 서비스 API는 발행 버전을 쓰므로 발행 탭에서 먼저 발행하세요."
+  },
+  "webapp": {
+    "title": "웹앱",
+    "description": "발행 버전과 대화하는 채팅 화면입니다. 이 서버에 로그인한 계정으로 엽니다.",
+    "publishFirst": "발행한 뒤에 웹앱으로 공개할 수 있습니다.",
+    "enable": "웹앱으로 공개",
+    "enableHint": "켜면 아래 주소에서 대화 목록과 함께 열립니다. 끄면 그 주소는 404가 됩니다.",
+    "enabled": "웹앱을 공개했습니다.",
+    "disabled": "웹앱 공개를 껐습니다.",
+    "copy": "링크 복사",
+    "open": "열기"
+  },
+  "apiExamples": {
+    "title": "호출 예시",
+    "description": "bash(Git Bash)에서 API_KEY=발급한_키 로 변수를 먼저 넣고 실행합니다. 키 원문은 만들 때 한 번만 보입니다.",
+    "copy": "{{name}} 예시 복사",
+    "items": {
+      "stream": {
+        "title": "메시지 보내기(스트리밍)",
+        "hint": "SSE로 토큰·도구 이벤트 받기"
+      },
+      "blocking": {
+        "title": "메시지 보내기(기다리기)",
+        "hint": "끝날 때까지 기다려 JSON으로 받기"
+      },
+      "conversations": {
+        "title": "대화 목록",
+        "hint": "user로 거르기"
+      },
+      "task": {
+        "title": "과업 실행",
+        "hint": "출력 스키마에 맞는 JSON 결과"
+      }
+    }
   },
   "preview": {
     "title": "미리보기",
@@ -254,8 +344,6 @@
     "resetTitle": "새 대화 시작",
     "resetBody": "진행 중인 런을 멈추고 새 미리보기 세션으로 시작합니다. 지금 대화는 로그에 남습니다.",
     "resetConfirm": "새로 시작",
-    "dirtyHint": "저장하지 않은 변경은 미리보기에 반영되지 않습니다. 미리보기는 저장된 초안으로 실행합니다.",
-    "unavailable": "미리보기 채팅은 세션·런 API가 생기면 열립니다.",
-    "devFixture": "개발용 픽스처 화면에서 채팅 패널 보기"
+    "dirtyHint": "저장하지 않은 변경은 미리보기에 반영되지 않습니다. 미리보기는 저장된 초안으로 실행합니다."
   }
 }

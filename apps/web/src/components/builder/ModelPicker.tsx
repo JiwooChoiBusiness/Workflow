@@ -9,7 +9,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/toggle";
-import { DEFAULT_MAX_OUTPUT_TOKENS, type AgentForm } from "@/features/agents/schemas";
+import { DEFAULT_MAX_OUTPUT_TOKENS } from "@/features/agents/schemas";
 import { formatNumber } from "@/lib/format";
 import { toNumber, toNumberOrNull } from "@/lib/formSchemas";
 
@@ -33,18 +33,37 @@ export function maxOutputTokensFor(entries: ModelEntry[] | undefined, modelId: s
   );
 }
 
-export function ModelPicker({
-  form,
+// 에이전트 버전의 model과 워크플로우 모델 노드(llm·분류·추출)의 model이 같은 모양이다.
+export interface ModelFields {
+  model: {
+    model_id: string | null;
+    params: {
+      temperature: number | null;
+      top_p: number | null;
+      max_output_tokens: number;
+      reasoning_effort: ReasoningEffort | null;
+    };
+  };
+  // 에이전트 빌더만 있는 저장 옵션(allow_unlisted_model)
+  allow_unlisted_model?: boolean;
+}
+
+export function ModelPicker<F extends ModelFields>({
+  form: anyForm,
   models,
   modelsError,
   onRetry,
+  unlistedOption = true,
 }: {
-  form: UseFormReturn<AgentForm>;
+  form: UseFormReturn<F>;
   models: ModelList | undefined;
   modelsError: unknown;
   onRetry: () => void;
+  // 워크플로우 노드는 모델을 실행 때 어댑터가 확인하므로 "목록에 없어도 저장" 옵션이 없다.
+  unlistedOption?: boolean;
 }) {
   const { t } = useTranslation("agents");
+  const form = anyForm as unknown as UseFormReturn<ModelFields>;
   const control = form.control;
   const modelId = useWatch({ control, name: "model.model_id" });
   const effort = useWatch({ control, name: "model.params.reasoning_effort" });
@@ -103,7 +122,7 @@ export function ModelPicker({
 
   const inFallback = selected?.fallback_index !== null && selected?.fallback_index !== undefined;
   // 서버는 폴백 목록과 받아 둔 라이브 목록에 있는 모델만 받는다. 목록에서 확인되지 않으면 저장 옵션을 보인다.
-  const unverified = modelId !== null && !inFallback && selected?.live !== true;
+  const unverified = unlistedOption && modelId !== null && !inFallback && selected?.live !== true;
   const register = form.register;
 
   return (
@@ -137,7 +156,7 @@ export function ModelPicker({
           {errors.model_id.message}
         </p>
       ) : null}
-      {unverified || allowUnlisted ? (
+      {unverified || (unlistedOption && allowUnlisted) ? (
         <Field inline label={t("model.allowUnlisted")} hint={t("model.allowUnlistedHint")}>
           <Checkbox
             className="mt-0.5"

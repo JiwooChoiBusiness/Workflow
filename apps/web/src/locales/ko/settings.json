@@ -80,7 +80,8 @@
     "group": {
       "day": "일별",
       "agent": "에이전트별",
-      "model": "모델별"
+      "model": "모델별",
+      "workflow": "워크플로우별"
     },
     "periodLabel": "기간",
     "period": {
@@ -95,6 +96,7 @@
       "day": "날짜",
       "agent": "에이전트",
       "model": "모델",
+      "workflow": "워크플로우",
       "runs": "런",
       "input": "입력 토큰",
       "output": "출력 토큰",
@@ -105,6 +107,10 @@
     "total": "합계",
     "unknownAgent": "알 수 없는 에이전트",
     "deletedAgent": "{{name}} (삭제됨)",
+    "workflowRuns": "워크플로우 런",
+    "agentRuns": "에이전트 런",
+    "unknownWorkflow": "알 수 없는 워크플로우",
+    "deletedWorkflow": "{{name}} (삭제됨)",
     "unknownModel": "알 수 없음",
     "estimated": "추정",
     "estimatedHint": "응답에 사용량이 없어 글자 수로 추정한 토큰이 섞여 있습니다.",
@@ -192,8 +198,6 @@
       "processes": "실행 중",
       "lastActivity": "마지막 활동",
       "actions": "작업"
-    },
-    "placeholder": "작업공간 목록과 디스크 사용량은 아직 볼 수 없습니다.",
-    "placeholderHint": "세션 실행 기능이 들어오면 세션별 폴더, 디스크, 마지막 활동이 여기에 나옵니다."
+    }
   }
 }

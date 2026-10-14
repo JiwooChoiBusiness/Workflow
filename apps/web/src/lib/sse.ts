@@ -1,5 +1,5 @@
 import { apiFetch, ApiError, toApiError } from "@/api/http";
-import { RUN_END_EVENT, type RunEvent } from "@/api/run-events";
+import { isTerminalEventType, type RunEvent } from "@/api/run-events";
 
 export interface SseMessage {
   // 마지막으로 받은 id 필드 값. SSE 규약상 이후 이벤트에도 그대로 이어진다.
@@ -156,10 +156,11 @@ function toRunEvent(message: SseMessage): RunEvent | null {
   return { ...record, type, seq } as RunEvent;
 }
 
-// 서버는 run.completed(입력 대기 포함) 뒤에 연결을 닫는다. run.error 뒤에는 run.completed(failed)가 온다.
-// 재생 중에는 run.completed(waiting_input) 뒤에 재개된 이벤트가 이어지므로 마지막 이벤트로 판단한다.
+// 서버는 완료 이벤트(run.completed·workflow.completed, 입력 대기 포함) 뒤에 연결을 닫는다. run.error 뒤에는
+// run.completed(failed)가 온다. 재생 중에는 완료 이벤트(waiting_input) 뒤에 재개된 이벤트가 이어지므로 마지막
+// 이벤트로 판단한다.
 function isTerminal(event: RunEvent): boolean {
-  return event.type === RUN_END_EVENT;
+  return isTerminalEventType(event.type);
 }
 
 function isRetryableStatus(status: number): boolean {

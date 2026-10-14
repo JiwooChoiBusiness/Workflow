@@ -189,4 +189,50 @@ describe("런 인스펙터 모델", () => {
     expect(run.steps[0].toolCalls[0]).toMatchObject({ id: "orphan", timedOut: true });
     expect(inspectRun([]).steps).toEqual([]);
   });
+
+  it("call_agent 호출에 하위 에이전트 런을 붙이고 child_run 이벤트는 알림으로 따로 두지 않는다", () => {
+    const run = inspectRun(
+      events(
+        ["step.started", { step: 1 }],
+        ["tool_call.started", { tool_call_id: "call_a", name: "call_agent" }],
+        [
+          "child_run.started",
+          {
+            tool_call_id: "call_a",
+            child_run_id: "child-1",
+            child_session_id: "child-session",
+            agent_id: "agent-2",
+            agent_slug: "researcher",
+            agent_name: "조사",
+            version: "draft",
+            depth: 1,
+            result_format: "text",
+            task_preview: "조사한다",
+          },
+        ],
+        [
+          "child_run.completed",
+          {
+            tool_call_id: "call_a",
+            child_run_id: "child-1",
+            status: "succeeded",
+            steps: 2,
+            usage_total: {},
+            duration_ms: 900,
+            files: 0,
+          },
+        ],
+      ),
+    );
+    const [call] = run.steps[0].toolCalls;
+    expect(call.child).toEqual({
+      runId: "child-1",
+      sessionId: "child-session",
+      agentSlug: "researcher",
+      agentName: "조사",
+      version: "draft",
+      status: "succeeded",
+    });
+    expect(run.steps[0].notices).toEqual([]);
+  });
 });

@@ -1,9 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type { AgentOut, ApiKeyCreated, ApiKeyOut } from "@/api/types";
+import type { AgentOut, ApiKeyCreate, ApiKeyCreated, ApiKeyOut } from "@/api/types";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -17,33 +17,42 @@ import { PageSpinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "@/features/agents/api";
 import { makeApiKeyCreateSchema, type ApiKeyCreateForm } from "@/features/agents/schemas";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, isMissingEndpoint } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
+import { ApiExampleList } from "./ApiExamples";
 
-function curlExample(key: string): string {
-  const origin = typeof window === "undefined" ? "http://127.0.0.1:8500" : window.location.origin;
-  return [
-    `curl -N ${origin}/api/v1/chat-messages \\`,
-    `  -H "Authorization: Bearer ${key}" \\`,
-    `  -H "Content-Type: application/json" \\`,
-    `  -d '{"query": "안녕하세요", "response_mode": "streaming"}'`,
-  ].join("\n");
+// 에이전트와 워크플로우가 같은 키 목록 화면을 쓴다. 대상마다 다른 것은 API 호출과 예시뿐이다.
+export interface ApiKeySource {
+  keys: {
+    data: ApiKeyOut[] | undefined;
+    isPending: boolean;
+    isError: boolean;
+    error: unknown;
+    refetch: () => unknown;
+  };
+  create: (body: ApiKeyCreate) => Promise<ApiKeyCreated>;
+  revoke: {
+    isPending: boolean;
+    mutate: (
+      keyId: string,
+      options: { onSuccess: () => void; onError: (error: unknown) => void },
+    ) => void;
+  };
 }
 
 function CreateKeyDialog({
-  agentId,
+  create,
   open,
   onOpenChange,
   onCreated,
 }: {
-  agentId: string;
+  create: ApiKeySource["create"];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (key: ApiKeyCreated) => void;
 }) {
   const { t } = useTranslation("agents");
   const { t: tc } = useTranslation();
-  const create = useCreateApiKey(agentId);
   const schema = useMemo(() => makeApiKeyCreateSchema(tc), [tc]);
   const form = useForm<ApiKeyCreateForm>({
     resolver: zodResolver(schema),
@@ -51,7 +60,7 @@ function CreateKeyDialog({
   });
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await create.mutateAsync(values);
+      const created = await create(values);
       form.reset();
       onOpenChange(false);
       onCreated(created);
@@ -81,14 +90,24 @@ function CreateKeyDialog({
   );
 }
 
-export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
+export function ApiKeyPanelView({
+  source,
+  description,
+  renderExamples,
+}: {
+  source: ApiKeySource;
+  description?: string;
+  // 만든 키를 넣은 호출 예시
+  renderExamples: (apiKey: string) => ReactNode;
+}) {
   const { t } = useTranslation("agents");
   const { t: tc } = useTranslation();
-  const keys = useApiKeys(agent.id);
-  const revoke = useRevokeApiKey(agent.id);
+  const { keys, revoke } = source;
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<ApiKeyCreated | null>(null);
   const [revoking, setRevoking] = useState<ApiKeyOut | null>(null);
+  // 키 경로가 없는 서버(워크플로우 키 대상 변경 전)에서는 만들기를 막는다.
+  const unavailable = keys.isError && isMissingEndpoint(keys.error);
 
   let body;
   if (keys.isPending) {
@@ -98,10 +117,10 @@ export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
       <ErrorAlert
         error={keys.error}
         title={t("apiKeys.loadFailed")}
-        onRetry={() => void keys.refetch()}
+        onRetry={unavailable ? undefined : () => void keys.refetch()}
       />
     );
-  } else if (keys.data.length === 0) {
+  } else if (!keys.data || keys.data.length === 0) {
     body = <EmptyState icon={KeyRound} title={t("apiKeys.empty")} />;
   } else {
     body = (
@@ -141,13 +160,12 @@ export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {!agent.published_version_id ? <Alert tone="info" title={t("apiKeys.notPublished")} /> : null}
+    <>
       <Panel
         title={t("apiKeys.title")}
-        description={t("apiKeys.description")}
+        description={description ?? t("apiKeys.description")}
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button size="sm" disabled={unavailable} onClick={() => setCreating(true)}>
             <Plus className="size-3.5" aria-hidden />
             {t("apiKeys.create")}
           </Button>
@@ -156,7 +174,7 @@ export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
         {body}
       </Panel>
       <CreateKeyDialog
-        agentId={agent.id}
+        create={source.create}
         open={creating}
         onOpenChange={setCreating}
         onCreated={setCreated}
@@ -181,13 +199,8 @@ export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
                 <CopyButton value={created.key} />
               </div>
               <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-sm font-medium text-ink">{t("apiKeys.example")}</span>
-                  <CopyButton value={curlExample(created.key)} size="iconSm" variant="ghost" />
-                </div>
-                <pre className="overflow-x-auto rounded-md bg-code p-3 font-mono text-xs text-code-ink">
-                  {curlExample(created.key)}
-                </pre>
+                <h3 className="mb-2 text-sm font-semibold text-ink">{t("apiKeys.example")}</h3>
+                {renderExamples(created.key)}
               </div>
             </div>
           ) : null}
@@ -213,6 +226,18 @@ export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
           });
         }}
       />
-    </div>
+    </>
+  );
+}
+
+export function ApiKeyPanel({ agent }: { agent: AgentOut }) {
+  const keys = useApiKeys(agent.id);
+  const create = useCreateApiKey(agent.id);
+  const revoke = useRevokeApiKey(agent.id);
+  return (
+    <ApiKeyPanelView
+      source={{ keys, create: create.mutateAsync, revoke }}
+      renderExamples={(apiKey) => <ApiExampleList apiKey={apiKey} />}
+    />
   );
 }

@@ -58,6 +58,7 @@ export function workspaceToForm(workspace: WorkspaceOut): WorkspaceSettingsForm 
       max_cost_usd: limits.max_cost_usd ?? null,
       context_budget_tokens: limits.context_budget_tokens ?? null,
       tool_timeout_sec: limits.tool_timeout_sec,
+      max_child_calls: limits.max_child_calls,
     },
     run_event_retention_days: settings.run_event_retention_days,
     model_prices: Object.entries(settings.model_prices ?? {}).map(([model, price]) => ({

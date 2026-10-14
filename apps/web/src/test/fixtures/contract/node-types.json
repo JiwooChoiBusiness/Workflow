@@ -1,0 +1,1534 @@
+{
+  "items": [
+    {
+      "type": "start",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "StartField": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "type": {
+                "default": "string",
+                "enum": ["string", "number", "boolean", "select", "file", "file_list", "paragraph"],
+                "title": "Type",
+                "type": "string"
+              },
+              "label": {
+                "default": "",
+                "title": "Label",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "title": "Required",
+                "type": "boolean"
+              },
+              "default": {
+                "default": null,
+                "title": "Default"
+              },
+              "options": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Options"
+              },
+              "max_length": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Max Length"
+              }
+            },
+            "required": ["name"],
+            "title": "StartField",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/$defs/StartField"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "title": "StartConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false
+    },
+    {
+      "type": "end",
+      "version": 1,
+      "kinds": ["workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "EndOutput": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "var": {
+                "title": "Var",
+                "type": "string"
+              }
+            },
+            "required": ["name", "var"],
+            "title": "EndOutput",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "outputs": {
+            "items": {
+              "$ref": "#/$defs/EndOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          }
+        },
+        "title": "EndConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "answer",
+      "version": 1,
+      "kinds": ["chatflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "AnswerConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "template",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "TemplateVar": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "var": {
+                "title": "Var",
+                "type": "string"
+              }
+            },
+            "required": ["name", "var"],
+            "title": "TemplateVar",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "template": {
+            "default": "",
+            "title": "Template",
+            "type": "string"
+          },
+          "vars": {
+            "items": {
+              "$ref": "#/$defs/TemplateVar"
+            },
+            "title": "Vars",
+            "type": "array"
+          }
+        },
+        "title": "TemplateConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "output",
+          "type": "string"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "if_else",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "Case": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "pattern": "^[A-Za-z0-9_]{1,32}$",
+                "title": "Id",
+                "type": "string"
+              },
+              "logical": {
+                "default": "and",
+                "enum": ["and", "or"],
+                "title": "Logical",
+                "type": "string"
+              },
+              "conditions": {
+                "items": {
+                  "$ref": "#/$defs/Condition"
+                },
+                "minItems": 1,
+                "title": "Conditions",
+                "type": "array"
+              }
+            },
+            "required": ["id", "conditions"],
+            "title": "Case",
+            "type": "object"
+          },
+          "Condition": {
+            "additionalProperties": false,
+            "properties": {
+              "var": {
+                "title": "Var",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "=",
+                  "≠",
+                  "contains",
+                  "not_contains",
+                  "starts_with",
+                  "ends_with",
+                  "is_empty",
+                  "is_not_empty",
+                  ">",
+                  "<",
+                  "≥",
+                  "≤",
+                  "in",
+                  "not_in",
+                  "regex"
+                ],
+                "title": "Op",
+                "type": "string"
+              },
+              "value": {
+                "default": null,
+                "title": "Value"
+              }
+            },
+            "required": ["var", "op"],
+            "title": "Condition",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/$defs/Case"
+            },
+            "minItems": 1,
+            "title": "Cases",
+            "type": "array"
+          }
+        },
+        "required": ["cases"],
+        "title": "IfElseConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": false,
+      "branching": true
+    },
+    {
+      "type": "variable_aggregator",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "vars": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Vars",
+            "type": "array"
+          },
+          "output_type": {
+            "default": "any",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "object",
+              "file",
+              "array[string]",
+              "array[number]",
+              "array[boolean]",
+              "array[object]",
+              "array[file]",
+              "array[any]",
+              "any"
+            ],
+            "title": "Output Type",
+            "type": "string"
+          }
+        },
+        "required": ["vars"],
+        "title": "AggregatorConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false
+    },
+    {
+      "type": "variable_assigner",
+      "version": 1,
+      "kinds": ["chatflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "AssignItem": {
+            "additionalProperties": false,
+            "properties": {
+              "target": {
+                "title": "Target",
+                "type": "string"
+              },
+              "op": {
+                "default": "overwrite",
+                "enum": ["overwrite", "append", "clear", "+=", "-="],
+                "title": "Op",
+                "type": "string"
+              },
+              "var": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Var"
+              },
+              "value": {
+                "default": null,
+                "title": "Value"
+              }
+            },
+            "required": ["target"],
+            "title": "AssignItem",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/AssignItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": ["items"],
+        "title": "AssignerConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "llm",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "MemoryConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "default": false,
+                "title": "Enabled",
+                "type": "boolean"
+              },
+              "window_turns": {
+                "default": 10,
+                "maximum": 50,
+                "minimum": 1,
+                "title": "Window Turns",
+                "type": "integer"
+              }
+            },
+            "title": "MemoryConfig",
+            "type": "object"
+          },
+          "ModelConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "model_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Model Id"
+              },
+              "params": {
+                "$ref": "#/$defs/ModelParamsConfig"
+              }
+            },
+            "title": "ModelConfig",
+            "type": "object"
+          },
+          "ModelParamsConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "temperature": {
+                "anyOf": [
+                  {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Temperature"
+              },
+              "top_p": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "maximum": 1,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Top P"
+              },
+              "max_output_tokens": {
+                "default": 16000,
+                "minimum": 1,
+                "title": "Max Output Tokens",
+                "type": "integer"
+              },
+              "reasoning_effort": {
+                "anyOf": [
+                  {
+                    "enum": ["minimal", "low", "medium", "high"],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reasoning Effort"
+              }
+            },
+            "title": "ModelParamsConfig",
+            "type": "object"
+          },
+          "PromptMessage": {
+            "additionalProperties": false,
+            "properties": {
+              "role": {
+                "default": "user",
+                "enum": ["system", "user", "assistant"],
+                "title": "Role",
+                "type": "string"
+              },
+              "text": {
+                "default": "",
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "title": "PromptMessage",
+            "type": "object"
+          },
+          "VisionConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "default": false,
+                "title": "Enabled",
+                "type": "boolean"
+              },
+              "var": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Var"
+              }
+            },
+            "title": "VisionConfig",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/$defs/ModelConfig"
+          },
+          "prompt": {
+            "items": {
+              "$ref": "#/$defs/PromptMessage"
+            },
+            "title": "Prompt",
+            "type": "array"
+          },
+          "memory": {
+            "$ref": "#/$defs/MemoryConfig"
+          },
+          "vision": {
+            "$ref": "#/$defs/VisionConfig"
+          },
+          "json_mode": {
+            "default": false,
+            "title": "Json Mode",
+            "type": "boolean"
+          },
+          "output_schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Output Schema"
+          }
+        },
+        "title": "LlmConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "json",
+          "type": "object"
+        },
+        {
+          "name": "usage",
+          "type": "object"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "http_request",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "HttpAuth": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "default": "none",
+                "enum": ["none", "bearer", "basic", "header"],
+                "title": "Type",
+                "type": "string"
+              },
+              "value": {
+                "default": "",
+                "title": "Value",
+                "type": "string"
+              },
+              "header": {
+                "default": "",
+                "title": "Header",
+                "type": "string"
+              }
+            },
+            "title": "HttpAuth",
+            "type": "object"
+          },
+          "HttpBody": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "default": "none",
+                "enum": ["none", "json", "form", "raw", "file"],
+                "title": "Type",
+                "type": "string"
+              },
+              "content": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/KeyValue"
+                    },
+                    "type": "array"
+                  }
+                ],
+                "default": "",
+                "title": "Content"
+              }
+            },
+            "title": "HttpBody",
+            "type": "object"
+          },
+          "KeyValue": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "Name",
+                "type": "string"
+              },
+              "value": {
+                "default": "",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": ["name"],
+            "title": "KeyValue",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "default": "GET",
+            "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+            "title": "Method",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/$defs/KeyValue"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/$defs/KeyValue"
+            },
+            "title": "Params",
+            "type": "array"
+          },
+          "body": {
+            "$ref": "#/$defs/HttpBody"
+          },
+          "auth": {
+            "$ref": "#/$defs/HttpAuth"
+          },
+          "timeout_sec": {
+            "default": 60,
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Timeout Sec",
+            "type": "integer"
+          },
+          "max_body_bytes": {
+            "default": 5242880,
+            "maximum": 5242880,
+            "minimum": 1,
+            "title": "Max Body Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "HttpConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "status_code",
+          "type": "number"
+        },
+        {
+          "name": "headers",
+          "type": "object"
+        },
+        {
+          "name": "files",
+          "type": "array[file]"
+        },
+        {
+          "name": "body",
+          "type": "string"
+        },
+        {
+          "name": "json",
+          "type": "object"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "code",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "CodeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "var": {
+                "title": "Var",
+                "type": "string"
+              }
+            },
+            "required": ["name", "var"],
+            "title": "CodeInput",
+            "type": "object"
+          },
+          "CodeOutput": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "type": {
+                "default": "any",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "object",
+                  "file",
+                  "array[string]",
+                  "array[number]",
+                  "array[boolean]",
+                  "array[object]",
+                  "array[file]",
+                  "array[any]",
+                  "any"
+                ],
+                "title": "Type",
+                "type": "string"
+              }
+            },
+            "required": ["name"],
+            "title": "CodeOutput",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "default": "",
+            "title": "Code",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/$defs/CodeInput"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/$defs/CodeOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "timeout_sec": {
+            "anyOf": [
+              {
+                "maximum": 60,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout Sec"
+          }
+        },
+        "title": "CodeConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false
+    },
+    {
+      "type": "question_classifier",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "ClassItem": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "pattern": "^[A-Za-z0-9_]{1,32}$",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "title": "Name",
+                "type": "string"
+              },
+              "description": {
+                "default": "",
+                "maxLength": 2000,
+                "title": "Description",
+                "type": "string"
+              }
+            },
+            "required": ["id", "name"],
+            "title": "ClassItem",
+            "type": "object"
+          },
+          "ModelConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "model_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Model Id"
+              },
+              "params": {
+                "$ref": "#/$defs/ModelParamsConfig"
+              }
+            },
+            "title": "ModelConfig",
+            "type": "object"
+          },
+          "ModelParamsConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "temperature": {
+                "anyOf": [
+                  {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Temperature"
+              },
+              "top_p": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "maximum": 1,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Top P"
+              },
+              "max_output_tokens": {
+                "default": 16000,
+                "minimum": 1,
+                "title": "Max Output Tokens",
+                "type": "integer"
+              },
+              "reasoning_effort": {
+                "anyOf": [
+                  {
+                    "enum": ["minimal", "low", "medium", "high"],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reasoning Effort"
+              }
+            },
+            "title": "ModelParamsConfig",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/$defs/ModelConfig"
+          },
+          "query_var": {
+            "title": "Query Var",
+            "type": "string"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/$defs/ClassItem"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Classes",
+            "type": "array"
+          },
+          "instruction": {
+            "default": "",
+            "title": "Instruction",
+            "type": "string"
+          },
+          "on_parse_failure": {
+            "default": "first_class",
+            "enum": ["first_class", "fail"],
+            "title": "On Parse Failure",
+            "type": "string"
+          }
+        },
+        "required": ["query_var", "classes"],
+        "title": "ClassifierConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "class_name",
+          "type": "string"
+        },
+        {
+          "name": "class_label",
+          "type": "string"
+        },
+        {
+          "name": "class_id",
+          "type": "string"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": true
+    },
+    {
+      "type": "parameter_extractor",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "ExtractParam": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "type": {
+                "default": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "object",
+                  "array[string]",
+                  "array[number]",
+                  "array[boolean]",
+                  "array[object]"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "description": {
+                "default": "",
+                "maxLength": 2000,
+                "title": "Description",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "title": "Required",
+                "type": "boolean"
+              },
+              "enum": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Enum"
+              }
+            },
+            "required": ["name"],
+            "title": "ExtractParam",
+            "type": "object"
+          },
+          "ModelConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "model_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Model Id"
+              },
+              "params": {
+                "$ref": "#/$defs/ModelParamsConfig"
+              }
+            },
+            "title": "ModelConfig",
+            "type": "object"
+          },
+          "ModelParamsConfig": {
+            "additionalProperties": false,
+            "properties": {
+              "temperature": {
+                "anyOf": [
+                  {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Temperature"
+              },
+              "top_p": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "maximum": 1,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Top P"
+              },
+              "max_output_tokens": {
+                "default": 16000,
+                "minimum": 1,
+                "title": "Max Output Tokens",
+                "type": "integer"
+              },
+              "reasoning_effort": {
+                "anyOf": [
+                  {
+                    "enum": ["minimal", "low", "medium", "high"],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reasoning Effort"
+              }
+            },
+            "title": "ModelParamsConfig",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/$defs/ModelConfig"
+          },
+          "query_var": {
+            "title": "Query Var",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/ExtractParam"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Parameters",
+            "type": "array"
+          },
+          "instruction": {
+            "default": "",
+            "title": "Instruction",
+            "type": "string"
+          },
+          "reasoning_mode": {
+            "default": "tool_call",
+            "enum": ["tool_call", "prompt"],
+            "title": "Reasoning Mode",
+            "type": "string"
+          }
+        },
+        "required": ["query_var", "parameters"],
+        "title": "ExtractorConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false
+    },
+    {
+      "type": "agent",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "AgentInput": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "var": {
+                "title": "Var",
+                "type": "string"
+              }
+            },
+            "required": ["name", "var"],
+            "title": "AgentInput",
+            "type": "object"
+          },
+          "ResultSpec": {
+            "additionalProperties": false,
+            "description": "하위 에이전트 호출 하나가 돌려주는 모양(오케스트레이션 2.2).\n\n2단계 agent 노드의 결과 설정도 같은 구조다.",
+            "properties": {
+              "format": {
+                "default": "text",
+                "enum": ["text", "json"],
+                "title": "Format",
+                "type": "string"
+              },
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Schema"
+              },
+              "files": {
+                "default": true,
+                "title": "Files",
+                "type": "boolean"
+              }
+            },
+            "title": "ResultSpec",
+            "type": "object"
+          },
+          "RunLimits": {
+            "additionalProperties": false,
+            "properties": {
+              "max_steps": {
+                "default": 30,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Max Steps",
+                "type": "integer"
+              },
+              "max_run_seconds": {
+                "default": 1800,
+                "maximum": 7200,
+                "minimum": 60,
+                "title": "Max Run Seconds",
+                "type": "integer"
+              },
+              "max_total_tokens": {
+                "default": 2000000,
+                "minimum": 1,
+                "title": "Max Total Tokens",
+                "type": "integer"
+              },
+              "max_cost_usd": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Max Cost Usd"
+              },
+              "context_budget_tokens": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Context Budget Tokens"
+              },
+              "tool_timeout_sec": {
+                "default": 120,
+                "maximum": 900,
+                "minimum": 1,
+                "title": "Tool Timeout Sec",
+                "type": "integer"
+              },
+              "max_child_calls": {
+                "default": 20,
+                "maximum": 100,
+                "minimum": 0,
+                "title": "Max Child Calls",
+                "type": "integer"
+              }
+            },
+            "title": "RunLimits",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "format": "uuid",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Agent Version Id"
+          },
+          "instruction": {
+            "default": "",
+            "title": "Instruction",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/$defs/AgentInput"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "files_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Files Var"
+          },
+          "result": {
+            "$ref": "#/$defs/ResultSpec"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RunLimits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "approval_mode": {
+            "default": "inherit",
+            "enum": ["inherit", "off"],
+            "title": "Approval Mode",
+            "type": "string"
+          },
+          "session_mode": {
+            "default": "ephemeral",
+            "enum": ["ephemeral", "per_conversation"],
+            "title": "Session Mode",
+            "type": "string"
+          }
+        },
+        "required": ["agent_id"],
+        "title": "AgentConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "result",
+          "type": "object"
+        },
+        {
+          "name": "files",
+          "type": "array[file]"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "usage",
+          "type": "object"
+        },
+        {
+          "name": "child_run_id",
+          "type": "string"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "iteration",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "input_var": {
+            "title": "Input Var",
+            "type": "string"
+          },
+          "output_var": {
+            "title": "Output Var",
+            "type": "string"
+          },
+          "parallel": {
+            "default": false,
+            "title": "Parallel",
+            "type": "boolean"
+          },
+          "max_parallel": {
+            "default": 1,
+            "maximum": 4,
+            "minimum": 1,
+            "title": "Max Parallel",
+            "type": "integer"
+          },
+          "error_mode": {
+            "default": "terminate",
+            "enum": ["terminate", "continue", "remove"],
+            "title": "Error Mode",
+            "type": "string"
+          }
+        },
+        "required": ["input_var", "output_var"],
+        "title": "IterationConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "output",
+          "type": "array[any]"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        },
+        {
+          "name": "failed_count",
+          "type": "number"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    },
+    {
+      "type": "iteration_start",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EmptyConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "item",
+          "type": "any"
+        },
+        {
+          "name": "index",
+          "type": "number"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false
+    }
+  ]
+}

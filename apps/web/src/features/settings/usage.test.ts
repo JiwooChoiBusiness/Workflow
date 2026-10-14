@@ -98,6 +98,28 @@ describe("사용량 표 서식", () => {
     expect(new Set(models.rows.map((row) => row.key)).size).toBe(2);
   });
 
+  it("워크플로우로 묶으면 에이전트 런이, 에이전트로 묶으면 워크플로우 런이 키 없는 한 행이다", () => {
+    const workflows = buildUsageTable(
+      report("workflow", [
+        { ...empty, key: "w1", label: "요약 흐름", deleted: false, runs: 2 },
+        { ...empty, key: "w2", label: "옛 흐름", deleted: true, runs: 1 },
+        { ...empty, key: null, label: null, deleted: false, runs: 4 },
+      ]),
+      t,
+    );
+    expect(workflows.rows.map((row) => row.label)).toEqual([
+      "요약 흐름",
+      "옛 흐름 (삭제됨)",
+      "에이전트 런",
+    ]);
+
+    const agents = buildUsageTable(
+      report("agent", [{ ...empty, key: null, label: null, deleted: false, runs: 3 }]),
+      t,
+    );
+    expect(agents.rows.map((row) => row.label)).toEqual(["워크플로우 런"]);
+  });
+
   it("비용은 기록된 것만 더하고, 빠진 런이 있으면 일부라고 표시한다", () => {
     const table = buildUsageTable(
       report("model", [

@@ -2,6 +2,7 @@ import { Check, CircleAlert, Info, MessageSquareReply, Paperclip, X } from "luci
 import { memo, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/ui/alert";
+import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/format";
 import { RECONNECT_MAX_RETRIES } from "@/lib/sse";
 import type { AttachmentView, PendingInteraction, TimelineItem } from "@/stores/runStore";
@@ -147,10 +148,12 @@ const TimelineEntry = memo(function TimelineEntry({
 export function MessageList({
   renderInteraction,
   fileHref,
+  className,
 }: {
   renderInteraction: (interaction: PendingInteraction) => ReactNode;
   // 첨부 파일 내려받기 주소. 콘솔과 웹앱의 경로가 다르다.
   fileHref?: FileHref;
+  className?: string;
 }) {
   const { t } = useTranslation("chat");
   const items = useRunStore((state) => state.items);
@@ -179,7 +182,9 @@ export function MessageList({
   return (
     <div
       ref={scrollRef}
-      className="min-h-0 flex-1 overflow-y-auto"
+      // relative가 없으면 메시지 안의 absolute 요소(sr-only 라벨 등)가 이 스크롤 영역에 잡히지 않고
+      // 바깥 컨테이너의 스크롤 높이를 늘려 채팅을 넘기면 페이지가 밀렸다.
+      className={cn("relative min-h-0 flex-1 overflow-y-auto", className)}
       onScroll={(event) => {
         const el = event.currentTarget;
         stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;

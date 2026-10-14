@@ -11,4 +11,6 @@ export function ContextBarActions({ children }: { children: ReactNode }) {
 
 export interface RouteHandle {
   crumb?: (params: Record<string, string | undefined>) => ReactNode;
+  // collapsed면 내비게이션 레일을 접은 채로 연다(캔버스 편집기처럼 화면이 넓어야 하는 곳).
+  rail?: "collapsed";
 }

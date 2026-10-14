@@ -1,0 +1,1861 @@
+{
+  "send": [
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 1,
+      "ts": "2026-10-14T04:48:31.202Z",
+      "type": "run.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 2,
+      "ts": "2026-10-14T04:48:31.227Z",
+      "type": "run.started",
+      "data": {
+        "step_limit": 30,
+        "model": "gemini-3.8-flash",
+        "workspace_instance_id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+        "resumed": false,
+        "approval_mode": "all_shell"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 3,
+      "ts": "2026-10-14T04:48:31.309Z",
+      "type": "step.started",
+      "data": {
+        "step": 1
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 4,
+      "ts": "2026-10-14T04:48:31.312Z",
+      "type": "message.delta",
+      "data": {
+        "message_id": "01a138bd-964e-7b2e-9eb4-a48dc7c8ee30",
+        "text": "하위 에이전트 둘에게 차례로 맡긴다."
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 5,
+      "ts": "2026-10-14T04:48:31.313Z",
+      "type": "tool_call.started",
+      "data": {
+        "tool_call_id": "call_shellbot",
+        "name": "call_agent"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 6,
+      "ts": "2026-10-14T04:48:31.313Z",
+      "type": "tool_call.input_delta",
+      "data": {
+        "tool_call_id": "call_shellbot",
+        "json_fragment": "{\"agent\": \"shellbot\", \"task\": \"셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\\n보고서는 outputs/report.md에 쓴다.\\n셋째 줄은 접힌 카드에서 보이지 않는다.\"}"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 7,
+      "ts": "2026-10-14T04:48:31.313Z",
+      "type": "tool_call.ready",
+      "data": {
+        "tool_call_id": "call_shellbot",
+        "name": "call_agent",
+        "input": {
+          "agent": "shellbot",
+          "task": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다."
+        }
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 8,
+      "ts": "2026-10-14T04:48:31.314Z",
+      "type": "usage",
+      "data": {
+        "step": 1,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1354,
+        "output_tokens": 40,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 9,
+      "ts": "2026-10-14T04:48:31.325Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a138bd-964e-7b2e-9eb4-a48dc7c8ee30",
+        "text": "하위 에이전트 둘에게 차례로 맡긴다.",
+        "stop_reason": "tool_use",
+        "files": []
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 10,
+      "ts": "2026-10-14T04:48:31.350Z",
+      "type": "child_run.started",
+      "data": {
+        "tool_call_id": "call_shellbot",
+        "child_run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "child_session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "agent_id": "01a138ab-d6fd-7f96-922f-e3fb547f636a",
+        "agent_slug": "shellbot",
+        "agent_name": "셸 담당",
+        "version": "published",
+        "depth": 1,
+        "result_format": "text",
+        "task_preview": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다."
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 11,
+      "ts": "2026-10-14T04:48:32.608Z",
+      "type": "child_run.completed",
+      "data": {
+        "tool_call_id": "call_shellbot",
+        "child_run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "status": "succeeded",
+        "error": null,
+        "steps": 3,
+        "usage_total": {
+          "input_tokens": 5018,
+          "output_tokens": 39,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "duration_ms": 1249,
+        "files": 1
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 12,
+      "ts": "2026-10-14T04:48:32.608Z",
+      "type": "run.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 13,
+      "ts": "2026-10-14T04:48:32.615Z",
+      "type": "run.resumed",
+      "data": {
+        "interaction_id": "01a138bd-9676-76d9-8e85-a1655fcc6f15"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 14,
+      "ts": "2026-10-14T04:48:32.615Z",
+      "type": "run.started",
+      "data": {
+        "step_limit": 30,
+        "model": "gemini-3.8-flash",
+        "workspace_instance_id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+        "resumed": true,
+        "approval_mode": "off"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 15,
+      "ts": "2026-10-14T04:48:32.644Z",
+      "type": "tool_call.completed",
+      "data": {
+        "tool_call_id": "call_shellbot",
+        "status": "ok",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 1249,
+        "peak_memory_bytes": null,
+        "output_excerpt": "[하위 에이전트 shellbot(셸 담당) 완료: succeeded, 스텝 3, run_id 01a138bd-9670-7d8c-9157-cdce401ff705]\n결과 파일(부모 작업공간 상대 경로):\n- agents/shellbot/01a138bd-9670-7d8c-9157-cdce401ff705/outputs/report.md (22바이트)\n---\n셸 결과: child-ok. 보고서를 outputs/report.md에 썼다.",
+        "output_bytes": 320,
+        "output_storage_key": null,
+        "child_run_id": "01a138bd-9670-7d8c-9157-cdce401ff705"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 16,
+      "ts": "2026-10-14T04:48:32.644Z",
+      "type": "step.started",
+      "data": {
+        "step": 2
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 17,
+      "ts": "2026-10-14T04:48:32.644Z",
+      "type": "tool_call.started",
+      "data": {
+        "tool_call_id": "call_extract",
+        "name": "call_agent"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 18,
+      "ts": "2026-10-14T04:48:32.644Z",
+      "type": "tool_call.input_delta",
+      "data": {
+        "tool_call_id": "call_extract",
+        "json_fragment": "{\"agent\": \"extractor\", \"task\": \"문서 제목과 항목 수를 JSON으로 낸다\"}"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 19,
+      "ts": "2026-10-14T04:48:32.644Z",
+      "type": "tool_call.ready",
+      "data": {
+        "tool_call_id": "call_extract",
+        "name": "call_agent",
+        "input": {
+          "agent": "extractor",
+          "task": "문서 제목과 항목 수를 JSON으로 낸다"
+        }
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 20,
+      "ts": "2026-10-14T04:48:32.644Z",
+      "type": "usage",
+      "data": {
+        "step": 2,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1487,
+        "output_tokens": 16,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 21,
+      "ts": "2026-10-14T04:48:32.652Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a138bd-9b84-78e1-9938-cf3cd0696615",
+        "text": "",
+        "stop_reason": "tool_use",
+        "files": []
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 22,
+      "ts": "2026-10-14T04:48:32.668Z",
+      "type": "child_run.started",
+      "data": {
+        "tool_call_id": "call_extract",
+        "child_run_id": "01a138bd-9b99-7416-bc7c-a95a2d5b1cb0",
+        "child_session_id": "01a138bd-9b97-7db7-9621-3d4597b4e4be",
+        "agent_id": "01a138ab-d70d-7f1a-a012-e7e1d861336b",
+        "agent_slug": "extractor",
+        "agent_name": "추출 담당",
+        "version": "draft",
+        "depth": 1,
+        "result_format": "json",
+        "task_preview": "문서 제목과 항목 수를 JSON으로 낸다"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 23,
+      "ts": "2026-10-14T04:48:32.768Z",
+      "type": "child_run.completed",
+      "data": {
+        "tool_call_id": "call_extract",
+        "child_run_id": "01a138bd-9b99-7416-bc7c-a95a2d5b1cb0",
+        "status": "succeeded",
+        "error": null,
+        "steps": 1,
+        "usage_total": {
+          "input_tokens": 1789,
+          "output_tokens": 9,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "duration_ms": 92,
+        "files": 0
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 24,
+      "ts": "2026-10-14T04:48:32.768Z",
+      "type": "run.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 25,
+      "ts": "2026-10-14T04:48:32.774Z",
+      "type": "run.resumed",
+      "data": {
+        "interaction_id": "01a138bd-9b9c-7432-b8af-658f6417e76a"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 26,
+      "ts": "2026-10-14T04:48:32.774Z",
+      "type": "run.started",
+      "data": {
+        "step_limit": 30,
+        "model": "gemini-3.8-flash",
+        "workspace_instance_id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+        "resumed": true,
+        "approval_mode": "off"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 27,
+      "ts": "2026-10-14T04:48:32.788Z",
+      "type": "tool_call.completed",
+      "data": {
+        "tool_call_id": "call_extract",
+        "status": "ok",
+        "exit_code": null,
+        "timed_out": false,
+        "duration_ms": 92,
+        "peak_memory_bytes": null,
+        "output_excerpt": "[하위 에이전트 extractor(추출 담당) 완료: succeeded, 스텝 1, run_id 01a138bd-9b99-7416-bc7c-a95a2d5b1cb0]\n---\n{\n  \"title\": \"분기 보고서\",\n  \"count\": 3\n}",
+        "output_bytes": 171,
+        "output_storage_key": null,
+        "child_run_id": "01a138bd-9b99-7416-bc7c-a95a2d5b1cb0"
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 28,
+      "ts": "2026-10-14T04:48:32.789Z",
+      "type": "step.started",
+      "data": {
+        "step": 3
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 29,
+      "ts": "2026-10-14T04:48:32.789Z",
+      "type": "message.delta",
+      "data": {
+        "message_id": "01a138bd-9c15-77f5-ae7e-d2e9c386e6d7",
+        "text": "두 하위 에이전트의 결과를 합쳤다. 보고서와 JSON 결과를 확인했다."
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 30,
+      "ts": "2026-10-14T04:48:32.789Z",
+      "type": "usage",
+      "data": {
+        "step": 3,
+        "model": "fake-model",
+        "key_index": null,
+        "input_tokens": 1560,
+        "output_tokens": 12,
+        "reasoning_tokens": null,
+        "cached_input_tokens": null,
+        "estimated": true,
+        "cost_usd": null
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 31,
+      "ts": "2026-10-14T04:48:32.811Z",
+      "type": "file.changed",
+      "data": {
+        "path": "agents/shellbot/01a138bd-9670-7d8c-9157-cdce401ff705/outputs/report.md",
+        "size": 22,
+        "session_file_id": "01a138bd-9c28-718a-b490-6df1a92ad885",
+        "downloadable": true,
+        "reason": null
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 32,
+      "ts": "2026-10-14T04:48:32.811Z",
+      "type": "message.completed",
+      "data": {
+        "message_id": "01a138bd-9c15-77f5-ae7e-d2e9c386e6d7",
+        "text": "두 하위 에이전트의 결과를 합쳤다. 보고서와 JSON 결과를 확인했다.",
+        "stop_reason": "end_turn",
+        "files": [
+          {
+            "session_file_id": "01a138bd-9c28-718a-b490-6df1a92ad885",
+            "path": "agents/shellbot/01a138bd-9670-7d8c-9157-cdce401ff705/outputs/report.md",
+            "size": 22,
+            "downloadable": true,
+            "filename": "report.md",
+            "mime": "text/markdown"
+          }
+        ]
+      }
+    },
+    {
+      "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "seq": 33,
+      "ts": "2026-10-14T04:48:32.816Z",
+      "type": "run.completed",
+      "data": {
+        "status": "succeeded",
+        "usage_total": {
+          "input_tokens": 4401,
+          "output_tokens": 68,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "steps": 3,
+        "changes_truncated": false,
+        "limit": null,
+        "output": null,
+        "error": null
+      }
+    }
+  ],
+  "parentDetailWaiting": {
+    "id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+    "agent_id": "01a138bd-9553-7e3b-b8ff-e55809b4f07c",
+    "agent_version_id": "01a138bd-9558-7575-b823-ec249e0e0b89",
+    "source": "preview",
+    "title": "두 에이전트에게 맡겨 줘",
+    "status": "active",
+    "approval_override": null,
+    "external_user": null,
+    "api_key_id": null,
+    "workspace_instance_id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+    "message_count": 2,
+    "last_message_at": "2026-10-14T04:48:31.324655Z",
+    "created_at": "2026-10-14T04:48:31.157426Z",
+    "updated_at": "2026-10-14T04:48:31.324655Z",
+    "active_run": {
+      "id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "agent_version_id": "01a138bd-9558-7575-b823-ec249e0e0b89",
+      "trigger": "chat",
+      "status": "running",
+      "user_message_id": "01a138bd-95cf-7f46-8ee3-7a74af48eadd",
+      "assistant_message_id": "01a138bd-964e-7b2e-9eb4-a48dc7c8ee30",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120,
+        "max_child_calls": 20
+      },
+      "approval_mode": "all_shell",
+      "steps": 1,
+      "usage": {
+        "input_tokens": 1354,
+        "output_tokens": 40,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": null,
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T04:48:31.170418Z",
+      "started_at": "2026-10-14T04:48:31.212720Z",
+      "ended_at": null,
+      "created_at": "2026-10-14T04:48:31.191428Z",
+      "updated_at": "2026-10-14T04:48:31.365444Z",
+      "parent_run_id": null,
+      "depth": 0,
+      "child": {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "agent_id": "01a138ab-d6fd-7f96-922f-e3fb547f636a",
+        "agent_slug": "shellbot",
+        "agent_name": "셸 담당",
+        "tool_call_id": "call_shellbot",
+        "version": "published",
+        "since": "2026-10-14T04:48:31.350942Z"
+      }
+    },
+    "last_run": {
+      "id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "agent_version_id": "01a138bd-9558-7575-b823-ec249e0e0b89",
+      "trigger": "chat",
+      "status": "running",
+      "user_message_id": "01a138bd-95cf-7f46-8ee3-7a74af48eadd",
+      "assistant_message_id": "01a138bd-964e-7b2e-9eb4-a48dc7c8ee30",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120,
+        "max_child_calls": 20
+      },
+      "approval_mode": "all_shell",
+      "steps": 1,
+      "usage": {
+        "input_tokens": 1354,
+        "output_tokens": 40,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": null,
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T04:48:31.170418Z",
+      "started_at": "2026-10-14T04:48:31.212720Z",
+      "ended_at": null,
+      "created_at": "2026-10-14T04:48:31.191428Z",
+      "updated_at": "2026-10-14T04:48:31.365444Z",
+      "parent_run_id": null,
+      "depth": 0,
+      "child": {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "agent_id": "01a138ab-d6fd-7f96-922f-e3fb547f636a",
+        "agent_slug": "shellbot",
+        "agent_name": "셸 담당",
+        "tool_call_id": "call_shellbot",
+        "version": "published",
+        "since": "2026-10-14T04:48:31.350942Z"
+      }
+    },
+    "workspace": {
+      "id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "backend": "local",
+      "root_path": "C:\\wf-data\\workspaces\\01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "status": "ready",
+      "disk_bytes": 593,
+      "disk_estimated": false,
+      "disk_measured_at": "2026-10-14T04:48:31.361434Z",
+      "last_activity_at": "2026-10-14T04:48:31.361434Z",
+      "created_at": "2026-10-14T04:48:31.242342Z",
+      "session_title": "두 에이전트에게 맡겨 줘",
+      "agent_id": "01a138bd-9553-7e3b-b8ff-e55809b4f07c",
+      "session_source": "preview"
+    }
+  },
+  "childShell": {
+    "detailWaiting": {
+      "id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+      "agent_id": "01a138ab-d6fd-7f96-922f-e3fb547f636a",
+      "agent_version_id": "01a138ab-d734-7110-9b87-798d82d671f4",
+      "source": "task",
+      "title": "지휘자 1791953311 → 셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.",
+      "status": "active",
+      "approval_override": null,
+      "external_user": null,
+      "api_key_id": null,
+      "workspace_instance_id": "01a138bd-96bb-74d1-a1b5-f85edef41900",
+      "message_count": 2,
+      "last_message_at": "2026-10-14T04:48:31.481941Z",
+      "created_at": "2026-10-14T04:48:31.341823Z",
+      "updated_at": "2026-10-14T04:48:31.481941Z",
+      "active_run": {
+        "id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "agent_version_id": "01a138ab-d734-7110-9b87-798d82d671f4",
+        "trigger": "task",
+        "status": "waiting_input",
+        "user_message_id": "01a138bd-966f-7380-9c6e-f236629eb7e1",
+        "assistant_message_id": "01a138bd-96f2-713b-840b-1dbf879ee04e",
+        "model": {
+          "model_id": null,
+          "used": "fake-model",
+          "fallback_used": true
+        },
+        "limits": {
+          "max_steps": 30,
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "context_budget_tokens": null,
+          "tool_timeout_sec": 120,
+          "max_child_calls": 19
+        },
+        "approval_mode": "all_shell",
+        "steps": 1,
+        "usage": {
+          "input_tokens": 1636,
+          "output_tokens": 8,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "error": null,
+        "pending_interaction": {
+          "interaction_id": "01a138bd-96fb-740b-b3d3-a50f8d2f013f",
+          "kind": "approval",
+          "tool_call_id": "call_echo",
+          "tool_name": "shell",
+          "question": null,
+          "options": null,
+          "allow_free_text": null,
+          "input": {
+            "command": "echo child-ok"
+          },
+          "cwd": ".",
+          "timeout_sec": 120,
+          "created_at": "2026-10-14T04:48:31.484942Z"
+        },
+        "output": null,
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T04:48:31.338665Z",
+        "started_at": "2026-10-14T04:48:31.414029Z",
+        "ended_at": null,
+        "created_at": "2026-10-14T04:48:31.346067Z",
+        "updated_at": "2026-10-14T04:48:31.487947Z",
+        "parent_run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "depth": 1,
+        "child": null
+      },
+      "last_run": {
+        "id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "agent_version_id": "01a138ab-d734-7110-9b87-798d82d671f4",
+        "trigger": "task",
+        "status": "waiting_input",
+        "user_message_id": "01a138bd-966f-7380-9c6e-f236629eb7e1",
+        "assistant_message_id": "01a138bd-96f2-713b-840b-1dbf879ee04e",
+        "model": {
+          "model_id": null,
+          "used": "fake-model",
+          "fallback_used": true
+        },
+        "limits": {
+          "max_steps": 30,
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "context_budget_tokens": null,
+          "tool_timeout_sec": 120,
+          "max_child_calls": 19
+        },
+        "approval_mode": "all_shell",
+        "steps": 1,
+        "usage": {
+          "input_tokens": 1636,
+          "output_tokens": 8,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "error": null,
+        "pending_interaction": {
+          "interaction_id": "01a138bd-96fb-740b-b3d3-a50f8d2f013f",
+          "kind": "approval",
+          "tool_call_id": "call_echo",
+          "tool_name": "shell",
+          "question": null,
+          "options": null,
+          "allow_free_text": null,
+          "input": {
+            "command": "echo child-ok"
+          },
+          "cwd": ".",
+          "timeout_sec": 120,
+          "created_at": "2026-10-14T04:48:31.484942Z"
+        },
+        "output": null,
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T04:48:31.338665Z",
+        "started_at": "2026-10-14T04:48:31.414029Z",
+        "ended_at": null,
+        "created_at": "2026-10-14T04:48:31.346067Z",
+        "updated_at": "2026-10-14T04:48:31.487947Z",
+        "parent_run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "depth": 1,
+        "child": null
+      },
+      "workspace": {
+        "id": "01a138bd-96bb-74d1-a1b5-f85edef41900",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "backend": "local",
+        "root_path": "C:\\wf-data\\workspaces\\01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "status": "ready",
+        "disk_bytes": 595,
+        "disk_estimated": false,
+        "disk_measured_at": "2026-10-14T04:48:31.485941Z",
+        "last_activity_at": "2026-10-14T04:48:31.485941Z",
+        "created_at": "2026-10-14T04:48:31.423336Z",
+        "session_title": "지휘자 1791953311 → 셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.",
+        "agent_id": "01a138ab-d6fd-7f96-922f-e3fb547f636a",
+        "session_source": "task"
+      }
+    },
+    "messagesWaiting": {
+      "items": [
+        {
+          "id": "01a138bd-966f-7380-9c6e-f236629eb7e1",
+          "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+          "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+          "seq": 1,
+          "role": "user",
+          "blocks": [
+            {
+              "type": "text",
+              "text": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다."
+            },
+            {
+              "type": "text",
+              "text": "<context>\n현재 시각: 2026-10-14T13:48:31+09:00\n세션 소스: task\n</context>",
+              "kind": "context"
+            }
+          ],
+          "text": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다.",
+          "stop_reason": null,
+          "files": [],
+          "usage": null,
+          "created_at": "2026-10-14T04:48:31.344068Z"
+        },
+        {
+          "id": "01a138bd-96f2-713b-840b-1dbf879ee04e",
+          "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+          "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+          "seq": 2,
+          "role": "assistant",
+          "blocks": [
+            {
+              "type": "tool_use",
+              "id": "call_echo",
+              "name": "shell",
+              "input": {
+                "command": "echo child-ok"
+              }
+            }
+          ],
+          "text": "",
+          "stop_reason": "tool_use",
+          "files": [],
+          "usage": {
+            "model": "fake-model",
+            "key_index": null,
+            "input_tokens": 1636,
+            "output_tokens": 8,
+            "reasoning_tokens": null,
+            "cached_input_tokens": null,
+            "estimated": true,
+            "cost_usd": null
+          },
+          "created_at": "2026-10-14T04:48:31.479927Z"
+        }
+      ],
+      "has_more": false
+    },
+    "eventsWaiting": [
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 1,
+        "ts": "2026-10-14T04:48:31.410Z",
+        "type": "run.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 2,
+        "ts": "2026-10-14T04:48:31.419Z",
+        "type": "run.started",
+        "data": {
+          "step_limit": 30,
+          "model": "gemini-3.8-flash",
+          "workspace_instance_id": "01a138bd-96bb-74d1-a1b5-f85edef41900",
+          "resumed": false,
+          "approval_mode": "all_shell"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 3,
+        "ts": "2026-10-14T04:48:31.473Z",
+        "type": "step.started",
+        "data": {
+          "step": 1
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 4,
+        "ts": "2026-10-14T04:48:31.474Z",
+        "type": "tool_call.started",
+        "data": {
+          "tool_call_id": "call_echo",
+          "name": "shell"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 5,
+        "ts": "2026-10-14T04:48:31.474Z",
+        "type": "tool_call.input_delta",
+        "data": {
+          "tool_call_id": "call_echo",
+          "json_fragment": "{\"command\": \"echo child-ok\"}"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 6,
+        "ts": "2026-10-14T04:48:31.474Z",
+        "type": "tool_call.ready",
+        "data": {
+          "tool_call_id": "call_echo",
+          "name": "shell",
+          "input": {
+            "command": "echo child-ok"
+          }
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 7,
+        "ts": "2026-10-14T04:48:31.474Z",
+        "type": "usage",
+        "data": {
+          "step": 1,
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1636,
+          "output_tokens": 8,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 8,
+        "ts": "2026-10-14T04:48:31.482Z",
+        "type": "message.completed",
+        "data": {
+          "message_id": "01a138bd-96f2-713b-840b-1dbf879ee04e",
+          "text": "",
+          "stop_reason": "tool_use",
+          "files": []
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 9,
+        "ts": "2026-10-14T04:48:31.484Z",
+        "type": "run.waiting_input",
+        "data": {
+          "interaction_id": "01a138bd-96fb-740b-b3d3-a50f8d2f013f",
+          "kind": "approval",
+          "tool_call_id": "call_echo",
+          "tool_name": "shell",
+          "input": {
+            "command": "echo child-ok"
+          },
+          "cwd": ".",
+          "timeout_sec": 120
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 10,
+        "ts": "2026-10-14T04:48:31.489Z",
+        "type": "run.completed",
+        "data": {
+          "status": "waiting_input",
+          "usage_total": {
+            "input_tokens": 1636,
+            "output_tokens": 8,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "steps": 1,
+          "changes_truncated": null,
+          "limit": null,
+          "output": null,
+          "error": null
+        }
+      }
+    ],
+    "input": {
+      "id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+      "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+      "agent_version_id": "01a138ab-d734-7110-9b87-798d82d671f4",
+      "trigger": "task",
+      "status": "queued",
+      "user_message_id": "01a138bd-966f-7380-9c6e-f236629eb7e1",
+      "assistant_message_id": "01a138bd-96f2-713b-840b-1dbf879ee04e",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120,
+        "max_child_calls": 19
+      },
+      "approval_mode": "all_shell",
+      "steps": 1,
+      "usage": {
+        "input_tokens": 1636,
+        "output_tokens": 8,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": {
+        "interaction_id": "01a138bd-96fb-740b-b3d3-a50f8d2f013f",
+        "kind": "approval",
+        "tool_call_id": "call_echo",
+        "tool_name": "shell",
+        "question": null,
+        "options": null,
+        "allow_free_text": null,
+        "input": {
+          "command": "echo child-ok"
+        },
+        "cwd": ".",
+        "timeout_sec": 120,
+        "created_at": "2026-10-14T04:48:31.484942Z"
+      },
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T04:48:31.338665Z",
+      "started_at": "2026-10-14T04:48:31.414029Z",
+      "ended_at": null,
+      "created_at": "2026-10-14T04:48:31.346067Z",
+      "updated_at": "2026-10-14T04:48:31.911522Z",
+      "parent_run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "depth": 1,
+      "child": null
+    },
+    "resume": [
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 11,
+        "ts": "2026-10-14T04:48:31.911Z",
+        "type": "interaction.resolved",
+        "data": {
+          "interaction_id": "01a138bd-96fb-740b-b3d3-a50f8d2f013f",
+          "kind": "approval",
+          "decision": "approve",
+          "note": null,
+          "session_auto_approve": true
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 12,
+        "ts": "2026-10-14T04:48:31.913Z",
+        "type": "run.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 13,
+        "ts": "2026-10-14T04:48:31.923Z",
+        "type": "run.resumed",
+        "data": {
+          "interaction_id": "01a138bd-96fb-740b-b3d3-a50f8d2f013f"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 14,
+        "ts": "2026-10-14T04:48:31.923Z",
+        "type": "run.started",
+        "data": {
+          "step_limit": 30,
+          "model": "gemini-3.8-flash",
+          "workspace_instance_id": "01a138bd-96bb-74d1-a1b5-f85edef41900",
+          "resumed": true,
+          "approval_mode": "off"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 15,
+        "ts": "2026-10-14T04:48:32.499Z",
+        "type": "tool_call.output_delta",
+        "data": {
+          "tool_call_id": "call_echo",
+          "stream": "stdout",
+          "text": "child-ok\n"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 16,
+        "ts": "2026-10-14T04:48:32.527Z",
+        "type": "tool_call.completed",
+        "data": {
+          "tool_call_id": "call_echo",
+          "status": "ok",
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_ms": 563,
+          "peak_memory_bytes": 66428928,
+          "output_excerpt": "child-ok\n",
+          "output_bytes": 9,
+          "output_storage_key": null
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 17,
+        "ts": "2026-10-14T04:48:32.527Z",
+        "type": "step.started",
+        "data": {
+          "step": 2
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 18,
+        "ts": "2026-10-14T04:48:32.528Z",
+        "type": "tool_call.started",
+        "data": {
+          "tool_call_id": "call_report",
+          "name": "write_file"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 19,
+        "ts": "2026-10-14T04:48:32.528Z",
+        "type": "tool_call.input_delta",
+        "data": {
+          "tool_call_id": "call_report",
+          "json_fragment": "{\"path\": \"outputs/report.md\", \"content\": \"# 보고서\\n\\nchild-ok\\n\"}"
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 20,
+        "ts": "2026-10-14T04:48:32.528Z",
+        "type": "tool_call.ready",
+        "data": {
+          "tool_call_id": "call_report",
+          "name": "write_file",
+          "input": {
+            "path": "outputs/report.md",
+            "content": "# 보고서\n\nchild-ok\n"
+          }
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 21,
+        "ts": "2026-10-14T04:48:32.528Z",
+        "type": "usage",
+        "data": {
+          "step": 2,
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1668,
+          "output_tokens": 18,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 22,
+        "ts": "2026-10-14T04:48:32.536Z",
+        "type": "message.completed",
+        "data": {
+          "message_id": "01a138bd-9b10-7216-b3aa-98f01d18534e",
+          "text": "",
+          "stop_reason": "tool_use",
+          "files": []
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 23,
+        "ts": "2026-10-14T04:48:32.541Z",
+        "type": "tool_call.completed",
+        "data": {
+          "tool_call_id": "call_report",
+          "status": "ok",
+          "exit_code": null,
+          "timed_out": false,
+          "duration_ms": 0,
+          "peak_memory_bytes": null,
+          "output_excerpt": "outputs/report.md에 22바이트를 썼다.",
+          "output_bytes": 43,
+          "output_storage_key": null
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 24,
+        "ts": "2026-10-14T04:48:32.541Z",
+        "type": "step.started",
+        "data": {
+          "step": 3
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 25,
+        "ts": "2026-10-14T04:48:32.542Z",
+        "type": "message.delta",
+        "data": {
+          "message_id": "01a138bd-9b1d-7a1c-8afd-32a613069aa0",
+          "text": "셸 결과: child-ok. 보고서를 outputs/report.md에 썼다."
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 26,
+        "ts": "2026-10-14T04:48:32.542Z",
+        "type": "usage",
+        "data": {
+          "step": 3,
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1714,
+          "output_tokens": 13,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 27,
+        "ts": "2026-10-14T04:48:32.586Z",
+        "type": "file.changed",
+        "data": {
+          "path": "outputs/report.md",
+          "size": 22,
+          "session_file_id": "01a138bd-9b46-7ad2-86eb-81097e4601f5",
+          "downloadable": true,
+          "reason": null
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 28,
+        "ts": "2026-10-14T04:48:32.587Z",
+        "type": "message.completed",
+        "data": {
+          "message_id": "01a138bd-9b1d-7a1c-8afd-32a613069aa0",
+          "text": "셸 결과: child-ok. 보고서를 outputs/report.md에 썼다.",
+          "stop_reason": "end_turn",
+          "files": [
+            {
+              "session_file_id": "01a138bd-9b46-7ad2-86eb-81097e4601f5",
+              "path": "outputs/report.md",
+              "size": 22,
+              "downloadable": true,
+              "filename": "report.md",
+              "mime": "text/markdown"
+            }
+          ]
+        }
+      },
+      {
+        "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "seq": 29,
+        "ts": "2026-10-14T04:48:32.607Z",
+        "type": "run.completed",
+        "data": {
+          "status": "succeeded",
+          "usage_total": {
+            "input_tokens": 5018,
+            "output_tokens": 39,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "steps": 3,
+          "changes_truncated": false,
+          "limit": null,
+          "output": {
+            "status": "succeeded",
+            "result": null,
+            "text": "셸 결과: child-ok. 보고서를 outputs/report.md에 썼다.",
+            "files": [
+              {
+                "id": "01a138bd-9b46-7ad2-86eb-81097e4601f5",
+                "path": "outputs/report.md",
+                "filename": "report.md",
+                "mime": "text/markdown",
+                "size_bytes": 22,
+                "sha256": "910e02c8fcf7a630150d7ed90f244a15ff85cbc4239395524f7c7c4cefedb9b3",
+                "downloadable": true
+              }
+            ],
+            "usage": {
+              "input_tokens": 5018,
+              "output_tokens": 39,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            }
+          },
+          "error": null
+        }
+      }
+    ],
+    "detailDone": {
+      "id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+      "agent_id": "01a138ab-d6fd-7f96-922f-e3fb547f636a",
+      "agent_version_id": "01a138ab-d734-7110-9b87-798d82d671f4",
+      "source": "task",
+      "title": "지휘자 1791953311 → 셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.",
+      "status": "active",
+      "approval_override": "off",
+      "external_user": null,
+      "api_key_id": null,
+      "workspace_instance_id": null,
+      "message_count": 4,
+      "last_message_at": "2026-10-14T04:48:32.548753Z",
+      "created_at": "2026-10-14T04:48:31.341823Z",
+      "updated_at": "2026-10-14T04:48:32.603368Z",
+      "active_run": null,
+      "last_run": {
+        "id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+        "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+        "agent_version_id": "01a138ab-d734-7110-9b87-798d82d671f4",
+        "trigger": "task",
+        "status": "succeeded",
+        "user_message_id": "01a138bd-966f-7380-9c6e-f236629eb7e1",
+        "assistant_message_id": "01a138bd-9b1d-7a1c-8afd-32a613069aa0",
+        "model": {
+          "model_id": null,
+          "used": "fake-model",
+          "fallback_used": true
+        },
+        "limits": {
+          "max_steps": 30,
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "context_budget_tokens": null,
+          "tool_timeout_sec": 120,
+          "max_child_calls": 19
+        },
+        "approval_mode": "all_shell",
+        "steps": 3,
+        "usage": {
+          "input_tokens": 5018,
+          "output_tokens": 39,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "error": null,
+        "pending_interaction": null,
+        "output": {
+          "status": "succeeded",
+          "result": null,
+          "text": "셸 결과: child-ok. 보고서를 outputs/report.md에 썼다.",
+          "files": [
+            {
+              "id": "01a138bd-9b46-7ad2-86eb-81097e4601f5",
+              "path": "outputs/report.md",
+              "filename": "report.md",
+              "mime": "text/markdown",
+              "size_bytes": 22,
+              "sha256": "910e02c8fcf7a630150d7ed90f244a15ff85cbc4239395524f7c7c4cefedb9b3",
+              "downloadable": true
+            }
+          ],
+          "usage": {
+            "input_tokens": 5018,
+            "output_tokens": 39,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          }
+        },
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T04:48:31.338665Z",
+        "started_at": "2026-10-14T04:48:31.414029Z",
+        "ended_at": "2026-10-14T04:48:32.587776Z",
+        "created_at": "2026-10-14T04:48:31.346067Z",
+        "updated_at": "2026-10-14T04:48:32.592880Z",
+        "parent_run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "depth": 1,
+        "child": null
+      },
+      "workspace": null
+    },
+    "messagesDone": {
+      "items": [
+        {
+          "id": "01a138bd-966f-7380-9c6e-f236629eb7e1",
+          "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+          "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+          "seq": 1,
+          "role": "user",
+          "blocks": [
+            {
+              "type": "text",
+              "text": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다."
+            },
+            {
+              "type": "text",
+              "text": "<context>\n현재 시각: 2026-10-14T13:48:31+09:00\n세션 소스: task\n</context>",
+              "kind": "context"
+            }
+          ],
+          "text": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다.",
+          "stop_reason": null,
+          "files": [],
+          "usage": null,
+          "created_at": "2026-10-14T04:48:31.344068Z"
+        },
+        {
+          "id": "01a138bd-96f2-713b-840b-1dbf879ee04e",
+          "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+          "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+          "seq": 2,
+          "role": "assistant",
+          "blocks": [
+            {
+              "type": "tool_use",
+              "id": "call_echo",
+              "name": "shell",
+              "input": {
+                "command": "echo child-ok"
+              }
+            },
+            {
+              "type": "tool_result",
+              "tool_use_id": "call_echo",
+              "content": "[종료 코드 0]\nchild-ok\n",
+              "is_error": false
+            }
+          ],
+          "text": "",
+          "stop_reason": "tool_use",
+          "files": [],
+          "usage": {
+            "model": "fake-model",
+            "key_index": null,
+            "input_tokens": 1636,
+            "output_tokens": 8,
+            "reasoning_tokens": null,
+            "cached_input_tokens": null,
+            "estimated": true,
+            "cost_usd": null
+          },
+          "created_at": "2026-10-14T04:48:31.479927Z"
+        },
+        {
+          "id": "01a138bd-9b10-7216-b3aa-98f01d18534e",
+          "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+          "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+          "seq": 3,
+          "role": "assistant",
+          "blocks": [
+            {
+              "type": "tool_use",
+              "id": "call_report",
+              "name": "write_file",
+              "input": {
+                "path": "outputs/report.md",
+                "content": "# 보고서\n\nchild-ok\n"
+              }
+            },
+            {
+              "type": "tool_result",
+              "tool_use_id": "call_report",
+              "content": "outputs/report.md에 22바이트를 썼다.",
+              "is_error": false
+            }
+          ],
+          "text": "",
+          "stop_reason": "tool_use",
+          "files": [],
+          "usage": {
+            "model": "fake-model",
+            "key_index": null,
+            "input_tokens": 1668,
+            "output_tokens": 18,
+            "reasoning_tokens": null,
+            "cached_input_tokens": null,
+            "estimated": true,
+            "cost_usd": null
+          },
+          "created_at": "2026-10-14T04:48:32.533586Z"
+        },
+        {
+          "id": "01a138bd-9b1d-7a1c-8afd-32a613069aa0",
+          "session_id": "01a138bd-966c-7e0a-bf39-7c62b39cfece",
+          "run_id": "01a138bd-9670-7d8c-9157-cdce401ff705",
+          "seq": 4,
+          "role": "assistant",
+          "blocks": [
+            {
+              "type": "text",
+              "text": "셸 결과: child-ok. 보고서를 outputs/report.md에 썼다."
+            }
+          ],
+          "text": "셸 결과: child-ok. 보고서를 outputs/report.md에 썼다.",
+          "stop_reason": "end_turn",
+          "files": [
+            {
+              "session_file_id": "01a138bd-9b46-7ad2-86eb-81097e4601f5",
+              "path": "outputs/report.md",
+              "size": 22,
+              "downloadable": true,
+              "filename": "report.md",
+              "mime": "text/markdown"
+            }
+          ],
+          "usage": {
+            "model": "fake-model",
+            "key_index": null,
+            "input_tokens": 1714,
+            "output_tokens": 13,
+            "reasoning_tokens": null,
+            "cached_input_tokens": null,
+            "estimated": true,
+            "cost_usd": null
+          },
+          "created_at": "2026-10-14T04:48:32.546754Z"
+        }
+      ],
+      "has_more": false
+    }
+  },
+  "parentDetailDone": {
+    "id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+    "agent_id": "01a138bd-9553-7e3b-b8ff-e55809b4f07c",
+    "agent_version_id": "01a138bd-9558-7575-b823-ec249e0e0b89",
+    "source": "preview",
+    "title": "두 에이전트에게 맡겨 줘",
+    "status": "active",
+    "approval_override": "off",
+    "external_user": null,
+    "api_key_id": null,
+    "workspace_instance_id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+    "message_count": 4,
+    "last_message_at": "2026-10-14T04:48:32.797032Z",
+    "created_at": "2026-10-14T04:48:31.157426Z",
+    "updated_at": "2026-10-14T04:48:32.797032Z",
+    "active_run": null,
+    "last_run": {
+      "id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "agent_version_id": "01a138bd-9558-7575-b823-ec249e0e0b89",
+      "trigger": "chat",
+      "status": "succeeded",
+      "user_message_id": "01a138bd-95cf-7f46-8ee3-7a74af48eadd",
+      "assistant_message_id": "01a138bd-9c15-77f5-ae7e-d2e9c386e6d7",
+      "model": {
+        "model_id": null,
+        "used": "fake-model",
+        "fallback_used": true
+      },
+      "limits": {
+        "max_steps": 30,
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "context_budget_tokens": null,
+        "tool_timeout_sec": 120,
+        "max_child_calls": 20
+      },
+      "approval_mode": "all_shell",
+      "steps": 3,
+      "usage": {
+        "input_tokens": 4401,
+        "output_tokens": 68,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "error": null,
+      "pending_interaction": null,
+      "output": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T04:48:31.170418Z",
+      "started_at": "2026-10-14T04:48:31.212720Z",
+      "ended_at": "2026-10-14T04:48:32.812544Z",
+      "created_at": "2026-10-14T04:48:31.191428Z",
+      "updated_at": "2026-10-14T04:48:32.814543Z",
+      "parent_run_id": null,
+      "depth": 0,
+      "child": null
+    },
+    "workspace": {
+      "id": "01a138bd-95fa-785c-8cba-3dafa37c5be4",
+      "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "backend": "local",
+      "root_path": "C:\\wf-data\\workspaces\\01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+      "status": "ready",
+      "disk_bytes": 615,
+      "disk_estimated": false,
+      "disk_measured_at": "2026-10-14T04:48:32.812544Z",
+      "last_activity_at": "2026-10-14T04:48:32.812544Z",
+      "created_at": "2026-10-14T04:48:31.242342Z",
+      "session_title": "두 에이전트에게 맡겨 줘",
+      "agent_id": "01a138bd-9553-7e3b-b8ff-e55809b4f07c",
+      "session_source": "preview"
+    }
+  },
+  "parentMessagesDone": {
+    "items": [
+      {
+        "id": "01a138bd-95cf-7f46-8ee3-7a74af48eadd",
+        "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+        "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "seq": 1,
+        "role": "user",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "두 에이전트에게 맡겨 줘"
+          },
+          {
+            "type": "text",
+            "text": "<context>\n현재 시각: 2026-10-14T13:48:31+09:00\n세션 소스: preview\n</context>",
+            "kind": "context"
+          }
+        ],
+        "text": "두 에이전트에게 맡겨 줘",
+        "stop_reason": null,
+        "files": [],
+        "usage": null,
+        "created_at": "2026-10-14T04:48:31.187423Z"
+      },
+      {
+        "id": "01a138bd-964e-7b2e-9eb4-a48dc7c8ee30",
+        "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+        "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "seq": 2,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "하위 에이전트 둘에게 차례로 맡긴다."
+          },
+          {
+            "type": "tool_use",
+            "id": "call_shellbot",
+            "name": "call_agent",
+            "input": {
+              "agent": "shellbot",
+              "task": "셸로 echo를 한 번 실행하고 결과를 보고서 파일로 남긴다.\n보고서는 outputs/report.md에 쓴다.\n셋째 줄은 접힌 카드에서 보이지 않는다."
+            }
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_shellbot",
+            "content": "[하위 에이전트 shellbot(셸 담당) 완료: succeeded, 스텝 3, run_id 01a138bd-9670-7d8c-9157-cdce401ff705]\n결과 파일(부모 작업공간 상대 경로):\n- agents/shellbot/01a138bd-9670-7d8c-9157-cdce401ff705/outputs/report.md (22바이트)\n---\n셸 결과: child-ok. 보고서를 outputs/report.md에 썼다.",
+            "is_error": false
+          }
+        ],
+        "text": "하위 에이전트 둘에게 차례로 맡긴다.",
+        "stop_reason": "tool_use",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1354,
+          "output_tokens": 40,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-14T04:48:31.320567Z"
+      },
+      {
+        "id": "01a138bd-9b84-78e1-9938-cf3cd0696615",
+        "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+        "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "seq": 3,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "tool_use",
+            "id": "call_extract",
+            "name": "call_agent",
+            "input": {
+              "agent": "extractor",
+              "task": "문서 제목과 항목 수를 JSON으로 낸다"
+            }
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_extract",
+            "content": "[하위 에이전트 extractor(추출 담당) 완료: succeeded, 스텝 1, run_id 01a138bd-9b99-7416-bc7c-a95a2d5b1cb0]\n---\n{\n  \"title\": \"분기 보고서\",\n  \"count\": 3\n}",
+            "is_error": false
+          }
+        ],
+        "text": "",
+        "stop_reason": "tool_use",
+        "files": [],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1487,
+          "output_tokens": 16,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-14T04:48:32.649104Z"
+      },
+      {
+        "id": "01a138bd-9c15-77f5-ae7e-d2e9c386e6d7",
+        "session_id": "01a138bd-95b2-7df1-99e5-e76e9921dcb2",
+        "run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "seq": 4,
+        "role": "assistant",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "두 하위 에이전트의 결과를 합쳤다. 보고서와 JSON 결과를 확인했다."
+          }
+        ],
+        "text": "두 하위 에이전트의 결과를 합쳤다. 보고서와 JSON 결과를 확인했다.",
+        "stop_reason": "end_turn",
+        "files": [
+          {
+            "session_file_id": "01a138bd-9c28-718a-b490-6df1a92ad885",
+            "path": "agents/shellbot/01a138bd-9670-7d8c-9157-cdce401ff705/outputs/report.md",
+            "size": 22,
+            "downloadable": true,
+            "filename": "report.md",
+            "mime": "text/markdown"
+          }
+        ],
+        "usage": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 1560,
+          "output_tokens": 12,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null
+        },
+        "created_at": "2026-10-14T04:48:32.794034Z"
+      }
+    ],
+    "has_more": false
+  },
+  "childJson": {
+    "detailDone": {
+      "id": "01a138bd-9b97-7db7-9621-3d4597b4e4be",
+      "agent_id": "01a138ab-d70d-7f1a-a012-e7e1d861336b",
+      "agent_version_id": "01a138ab-d70e-7395-95aa-c2dda67a6aee",
+      "source": "task",
+      "title": "지휘자 1791953311 → 문서 제목과 항목 수를 JSON으로 낸다",
+      "status": "active",
+      "approval_override": "off",
+      "external_user": null,
+      "api_key_id": null,
+      "workspace_instance_id": null,
+      "message_count": 2,
+      "last_message_at": "2026-10-14T04:48:32.747923Z",
+      "created_at": "2026-10-14T04:48:32.663796Z",
+      "updated_at": "2026-10-14T04:48:32.765089Z",
+      "active_run": null,
+      "last_run": {
+        "id": "01a138bd-9b99-7416-bc7c-a95a2d5b1cb0",
+        "session_id": "01a138bd-9b97-7db7-9621-3d4597b4e4be",
+        "agent_version_id": "01a138ab-d70e-7395-95aa-c2dda67a6aee",
+        "trigger": "task",
+        "status": "succeeded",
+        "user_message_id": "01a138bd-9b98-76ae-b5cf-e0cc6bfaa90f",
+        "assistant_message_id": "01a138bd-9be2-761b-8bf3-fcbb3b054958",
+        "model": {
+          "model_id": null,
+          "used": "fake-model",
+          "fallback_used": true
+        },
+        "limits": {
+          "max_steps": 30,
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "context_budget_tokens": null,
+          "tool_timeout_sec": 120,
+          "max_child_calls": 18
+        },
+        "approval_mode": "all_shell",
+        "steps": 1,
+        "usage": {
+          "input_tokens": 1789,
+          "output_tokens": 9,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "error": null,
+        "pending_interaction": null,
+        "output": {
+          "status": "succeeded",
+          "result": {
+            "title": "분기 보고서",
+            "count": 3
+          },
+          "text": "",
+          "files": [],
+          "usage": {
+            "input_tokens": 1789,
+            "output_tokens": 9,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          }
+        },
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T04:48:32.661796Z",
+        "started_at": "2026-10-14T04:48:32.688380Z",
+        "ended_at": "2026-10-14T04:48:32.754009Z",
+        "created_at": "2026-10-14T04:48:32.666069Z",
+        "updated_at": "2026-10-14T04:48:32.758017Z",
+        "parent_run_id": "01a138bd-95d0-7f42-b813-56943d7b548a",
+        "depth": 1,
+        "child": null
+      },
+      "workspace": null
+    }
+  }
+}

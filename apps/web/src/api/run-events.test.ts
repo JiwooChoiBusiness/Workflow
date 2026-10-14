@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import schema from "../../../../packages/event-schema/run-events.schema.json";
 import { contract } from "@/test/contract";
 import { fixtures } from "@/test/events";
-import { isKnownEventType, type RunEvent } from "./run-events";
-import { RUN_EVENT_TYPES, TERMINAL_EVENT_TYPE, TRANSIENT_EVENT_TYPES } from "./run-events.gen";
+import { isKnownEventType, isTerminalEventType, type RunEvent } from "./run-events";
+import { RUN_EVENT_TYPES, TERMINAL_EVENT_TYPES, TRANSIENT_EVENT_TYPES } from "./run-events.gen";
 
 interface Node {
   type?: string;
@@ -77,7 +77,10 @@ function check(events: readonly RunEvent[]): string[] {
 describe("런 이벤트 스키마(packages/event-schema)와 화면 타입", () => {
   it("생성한 타입의 이벤트 목록·종료 이벤트·저장하지 않는 이벤트가 스키마와 같다", () => {
     expect([...RUN_EVENT_TYPES]).toEqual([...variants.keys()]);
-    expect(TERMINAL_EVENT_TYPE).toBe(schema["x-terminal-type"]);
+    expect([...TERMINAL_EVENT_TYPES]).toEqual(schema["x-terminal-types"]);
+    expect(isTerminalEventType("run.completed")).toBe(true);
+    expect(isTerminalEventType("workflow.completed")).toBe(true);
+    expect(isTerminalEventType("run.error")).toBe(false);
     expect([...TRANSIENT_EVENT_TYPES]).toEqual(schema["x-transient-types"]);
     for (const type of RUN_EVENT_TYPES) expect(isKnownEventType(type)).toBe(true);
     expect(isKnownEventType("something.new")).toBe(false);
