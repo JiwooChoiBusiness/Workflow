@@ -428,7 +428,7 @@ POSIX(`app/sandbox/proc_posix.py`, CI 전용): `start_new_session=True`(setsid),
 
 ### 3.13 변경 파일 수집
 
-런 종료 시 러너가 `changes(h, since=run.started_at - 2초)`로 변경 파일을 받는다. 구현은 `os.scandir` 재귀 mtime 스캔이며 3.4 표의 "변경 수집 대상"이 아니오인 폴더를 건너뛴다. 시간 예산 3초를 넘기면 거기까지만 수집하고 `run.completed.changes_truncated=true`.
+런 종료 시 러너가 `changes(h, since=기준선)`으로 변경 파일을 받는다. 기준선(`file_collector.changes_since`)은 작업공간 준비(스냅샷 복원·첨부 복사)를 마친 시각 − 50ms와 앞 런 종료·작업공간 초기화 시각(`workspace_instance.last_activity_at`) + 1ms 중 늦은 쪽이다. 복원·복사로 새로 찍힌 mtime과 앞 런이 이미 알린 파일을 다시 잡지 않기 위해서다. 승인·질문으로 멈춘 런은 처음 정한 기준선을 `pending_interaction.changes_since`에 두고 재개 뒤에도 이어 쓴다. 구현은 `os.scandir` 재귀 mtime 스캔이며 3.4 표의 "변경 수집 대상"이 아니오인 폴더를 건너뛴다. 시간 예산 3초를 넘기면 거기까지만 수집하고 `run.completed.changes_truncated=true`.
 
 수집 규칙: 파일당 50MB, 런당 200MB·200개까지 `data/storage/session-files/<session_id>/<run_id>/<상대경로>`로 복사하고 `session_file(kind=output)` 행과 `file.changed` 이벤트를 만든다. 한도를 넘는 파일은 `storage_key=null, reason=too_large`로 목록에만 남는다. 다운로드는 항상 storage 복사본에서 하므로 작업공간 폴더가 지워져도 된다(A5).
 
@@ -860,7 +860,7 @@ v2와 같다. `user`는 모든 엔드포인트에서 선택이며 주면 `sessio
 
 - Vite + React 19 + TypeScript(strict). M1의 `apps/web` 그대로. 빌드 결과(`apps/web/dist`)를 FastAPI가 서빙하므로(6.6) 별도 웹 서버가 없다.
 - 개발 중에는 `corepack pnpm dev`(5173)가 `/api`를 `http://127.0.0.1:<SERVER_PORT>`로 프록시한다. `localhost`가 아니라 `127.0.0.1`을 쓰는 이유: Node가 `localhost`를 `::1`로 먼저 해석하면 127.0.0.1에만 바인드한 서버에 연결하지 못한다. 포트는 `vite.config.ts`가 `.env`의 `SERVER_PORT`를 읽는다(기본 8500).
-- 라우팅 React Router v7(라이브러리 모드), 서버 상태 TanStack Query v5, 클라이언트 상태 Zustand(런 스트림 스토어, UI 상태), 폼 react-hook-form + zod, 스타일 Tailwind CSS v4 + Radix 기반 자체 컴포넌트(`src/components/ui`), 아이콘 lucide-react, 에디터 CodeMirror 6(지시문·SKILL.md·JSON), 마크다운 react-markdown + remark-gfm + rehype-highlight, i18n i18next(1단계 `ko`만).
+- 라우팅 React Router v7(라이브러리 모드), 서버 상태 TanStack Query v5, 클라이언트 상태 Zustand(런 스트림 스토어, UI 상태), 폼 react-hook-form + zod, 스타일 Tailwind CSS v4 + Radix 기반 자체 컴포넌트(`src/components/ui`), 아이콘 lucide-react, 에디터 CodeMirror 6(지시문·SKILL.md·JSON), 마크다운 react-markdown + remark-gfm + 자체 rehype 플러그인(lowlight, highlight.js 언어 부분집합에 PowerShell 포함), i18n i18next(1단계 `ko`만).
 - API 타입: FastAPI OpenAPI → `openapi-typescript`로 `src/api/schema.d.ts` 생성, 호출은 `openapi-fetch`. 수동 타입 중복 금지.
 - 레이아웃 원칙: Dify 화면을 참고하지 않고 "좌측 좁은 내비게이션 레일 + 상단 컨텍스트 바 + 본문" 뼈대에 우리 디자인 토큰(`src/styles/tokens.css`)을 적용하며, 빌더는 탭형 설정 폼과 열고 닫는 미리보기 패널로 구성한다.
 
@@ -1065,6 +1065,8 @@ GEMINI_KEY_COOLDOWN_SEC=60
 # true면 가짜 어댑터(테스트·memcheck용). LLM_FAKE_SCRIPT는 각본 JSON 경로(비우면 기본 각본)
 LLM_FAKE=false
 LLM_FAKE_SCRIPT=
+# 가짜 어댑터가 모델 호출(스텝)마다 기다리는 초. e2e에서 실행 중인 런의 새로 고침·중지를 시험할 때 쓴다
+LLM_FAKE_DELAY_SEC=0
 
 # E2B 백엔드(미구현, 자리만)
 E2B_API_KEY=
@@ -1174,8 +1176,127 @@ E2B_TEMPLATE=
 
 ### M10. 하드닝과 운영
 
-- 생성·수정: `app/cli.py`의 `backup`, `docs/ops/{install,operations,backup-restore,security,sandbox-windows-check}.md`, 보존 정리 태스크 완성, 로그 마스킹 검증 테스트, `scripts/memcheck.py` 시나리오(런 1개 실행 중 측정)와 CI 연결, 11장 체크리스트 각 항목의 자동 테스트 또는 수동 절차 기록, Playwright e2e 확장, `pip-audit`·`pnpm audit` CI 단계.
-- 검증: 11장 체크리스트 전 항목에 "확인 방법·결과" 기입, A1·A11·A12·A15·A16 재확인, `data/`를 비운 상태에서 설치 문서만으로 설치 성공, memcheck 최대 RSS 300MB 이하(Windows 실측).
+M1~M9와 후속 정리가 끝난 상태에서 남은 것은 백업 명령, 보존 정리의 빈자리, 개발용 리로더, 메모리 검증, 11장 체크리스트의 확인 기록, 운영 문서다. 아래 M10.1의 결정은 그대로 따르고, M10.2의 단위는 서로 파일이 겹치지 않으므로 병렬로 진행한다. 검증용 서버는 사용자가 쓰는 8500을 건드리지 않고 단위마다 정한 포트와 `DATA_DIR`을 쓴다. 저장소 루트의 `.env`는 어느 단위도 읽거나 복사하지 않는다.
+
+#### M10.1 결정
+
+**(1) `platform backup`.** `uv run platform backup [--out <폴더>] [--with-workspaces] [--keep N]`. 기본 결과는 저장소 루트 `backups/<YYYYMMDD-HHMMSS>/`(2.8, `.gitignore`에 있음)이고 폴더 구조는 `DATA_DIR`과 같다. 그래서 복구는 이 폴더를 `DATA_DIR`로 지정하는 것으로 끝난다(A15).
+
+| 항목 | 결정 |
+|---|---|
+| `app.db` | 파이썬 `sqlite3.Connection.backup(dst, pages=-1)`로 한 번에 복사한다. WAL에서 읽기는 쓰기를 막지 않으므로 서버가 떠 있어도 되고, 복사본에는 WAL 내용까지 합쳐진다. 복사 뒤 복사본에 `PRAGMA quick_check`와 `wal_checkpoint(TRUNCATE)`를 실행하고 닫아 `-wal`·`-shm`이 남지 않게 한다 |
+| `storage/`, `allowlist.txt` | `shutil.copytree`(`*.part` 제외)로 복사. 실행 중인 런이 쓰는 중인 파일은 다음 백업에 들어간다 |
+| `workspaces/` | `--with-workspaces`일 때만(`.deleted-*` 제외). 패키지 때문에 클 수 있고 결과 파일은 이미 `storage/session-files`에 있다(2.10) |
+| 빼는 것 | `cache/`, `logs/`, `app.db-wal`, `app.db-shm`, `.env`(S16) |
+| `manifest.json` | `created_at`, `source_data_dir`, `alembic_revision`(복사본의 `alembic_version`), `with_workspaces`, `files`, `bytes`, `quick_check`, `encryption_key_fingerprint`(설정된 키 32바이트의 sha256 앞 8자, 없으면 null). 복구 때 `platform doctor`가 보여 주는 fingerprint와 비교한다 |
+| 원자성 | `<폴더>.part`에 쓰고 끝나면 이름을 바꾼다. 실패하면 `.part`를 지운다 |
+| 보존 | `--keep`(기본 5). 기본 폴더 `backups/`에서 이름이 타임스탬프 꼴이고 `manifest.json`이 있는 폴더만 세어 오래된 것을 지운다. `--out`을 주면 정리하지 않는다 |
+| 서버 상태 | `sysinfo.check_port`로 서버가 떠 있으면 "실행 중 런이 있으면 storage와 DB가 어긋날 수 있다" 경고 한 줄을 내고 계속한다 |
+| 주기 백업 | 서버에 넣지 않는다. 백업 시점은 사용자가 정하는 것이 맞고, storage가 수 GB면 매시 복사는 낭비다. 운영 문서에 작업 스케줄러(`schtasks`) 등록 예시만 적는다 |
+
+복구 절차(`docs/ops/backup-restore.md`): 서버 종료 → `.env`의 `DATA_DIR`을 백업 폴더로 바꾸거나 백업 내용을 빈 폴더에 복사 → `uv run platform doctor`로 fingerprint 비교 → `uv run platform serve`(오래된 스키마는 기동 시 마이그레이션) → 에이전트·세션·스냅샷·세션 파일 확인. 별도 restore 명령은 두지 않는다. `ENCRYPTION_KEY`는 백업에 없으므로 따로 보관하고, 키가 달라지면 그 에이전트의 비밀 환경변수만 복호화 실패로 런이 실패하니(`services/agents.py`의 안내 메시지) 빌더에서 값을 다시 넣는다. 구현은 `app/backup.py`(동기 함수, 표준 라이브러리만)에 두고 `app/cli.py`는 인자와 출력만 맡는다. `platform doctor`에 "암호화 키" 항목(설정 여부와 fingerprint)을 더한다.
+
+**(2) 보존 정리 완성.** 5.4·3.14·2.9와 현재 `housekeeping.py`·`services/runs.py`를 대조한 결과, 로그인 세션 만료, 입력 대기 TTL, 런 이벤트·tool-outputs 보존 기간(워크스페이스 설정 우선), 미참조 첨부·스킬 7일, 지운 세션의 첨부와 고아 업로드 폴더, 고아 작업공간 행·폴더, `.deleted-*` 재삭제, RSS 경고는 이미 있다. 빠진 것은 아래 넷이고 모두 매시 작업에 넣는다.
+
+| 추가 | 내용 | 안전 조건 |
+|---|---|---|
+| WAL 체크포인트(2.9) | `Database.checkpoint(mode)`를 추가하고(`close`의 TRUNCATE도 이것을 쓴다) `run_hourly` 끝에 `PASSIVE` 체크포인트 | PASSIVE는 읽기·쓰기를 막지 않는다. 쓰기 락 밖에서 실행 |
+| 디스크 크기 로그(3.14) | `data/workspaces` 합계와 `cache/pip` 크기를 `disk.measure`(예산 3초)로 재서 `housekeeping.hourly`에 `workspaces_mb`, `pip_cache_mb`, `disk_estimated` | 측정만 한다. `to_thread` |
+| ephemeral 과업 작업공간 | 서버 종료 중에 끝나 지우지 못한 것. `source=task` 세션 중 `workspace_instance`가 있고 마지막 런의 입력이 `session_mode=ephemeral`이며 그 런이 끝났고 세션에 열린 런(queued·running·waiting_input)이 없으면 `release_session_workspace` | 열린 런이 하나라도 있으면 건너뛴다. reuse 세션은 대상이 아니다 |
+| tool-outputs 고아 폴더 | `storage/tool-outputs/<run_id>` 중 run 행이 없거나 `ended_at`이 보존 기간보다 오래된 폴더 삭제 | 이벤트는 지웠는데 파일 삭제가 실패해 남은 것만 해당. 끝나지 않은 런은 건너뛴다 |
+
+하지 않는 것: 끝난 세션의 작업공간 폴더 정리(12.2 "세션 삭제까지 유지"), 세션 결과 파일 삭제(5.3), 소프트 삭제된 에이전트의 스냅샷 삭제(로그·롤백용), `cache/pip` 자동 삭제(문서에 수동 삭제 안내). 백업 보존은 하우스키핑이 아니라 `backup --keep`이다.
+
+**(3) `serve --reload`.** watchfiles 기반 자체 리로더를 넣는다(`app/runner/reloader.py`). uvicorn 리로더는 Windows에서 Selector 루프를 넘겨 도구 실행이 안 되고(12.2 M3), 사용자는 Windows에서만 쓰므로 "있지만 안 되는 옵션"을 두는 것보다 낫다. watchfiles는 `uvicorn[standard]`에 이미 들어 있어 의존성이 늘지 않고, 부모는 uvicorn·FastAPI를 import하지 않는 맨 인터프리터(RSS 20MB 안팎)라 `--reload`를 명시한 개발 중에만 그만큼 더 쓴다. 동작: 부모가 `apps/api/app`과 `apps/api/migrations`의 `.py` 변경을 `watchfiles.watch`(디바운스 0.5초)로 보고, 자식 `platform serve`(같은 설정, 환경 `PLATFORM_RELOAD_CHILD=1`)를 Windows에서는 `CREATE_NEW_PROCESS_GROUP`으로 띄운다. 변경 시 자식에 `CTRL_BREAK_EVENT`(Windows)·SIGTERM(POSIX)을 보내 10초 기다리고 안 끝나면 kill한 뒤 다시 띄운다. 부모의 Ctrl+C도 같은 절차로 자식을 끝내고 나간다(`scripts/memcheck.py`의 `_stop`과 같은 방식). 자식은 평소와 같은 Proactor 루프라 도구가 실행된다. `uvicorn.run(reload=...)` 경로와 `winconsole.reload_warning`, 그 테스트는 지운다. `.vscode/launch.json`은 바꾸지 않는다.
+
+**(4) `app/logging.py` 이름.** `app/logsetup.py`로 바꾼다. 표준 `logging`을 가리는 문제의 근본 해결이고 `main.py` 상단의 `sys.path` 보호 블록(과 `# ruff: noqa: E402`)을 없앨 수 있다. 영향 범위: import 9곳(`cli.py`, `main.py`, `migrations/env.py`, `tests/integration/conftest.py`, `test_migrations.py`, `test_recovery.py`, `tests/unit/test_cli_serve.py`, `test_health.py`, `test_logging.py`→`test_logsetup.py`)과 `security/tokens.py`의 주석. 8.1·8.2의 `logging.py` 표기는 이 결정으로 대체한다(본문은 고치지 않고 12.2에 적는다). 이름 변경은 단위 A의 첫 작업이며, 다른 단위가 같은 작업 트리에서 돌면 이 변경이 끝난 뒤 시작한다.
+
+**(5) 메모리 예산 검증.** `scripts/memcheck.py`에 런 시나리오를 넣는다. 서버를 `LLM_FAKE=true`, `LLM_FAKE_DELAY_SEC=1`(런이 2초 넘게 가도록), 빈 포트, 임시 `DATA_DIR`로 띄우고 표준 라이브러리만으로 `POST /api/console/setup` → 로그인(쿠키는 `Set-Cookie`에서 직접) → `POST /agents` → `POST /agents/{id}/preview/sessions` → `PATCH /sessions/{sid}` `approval_override=off`(승인 단계 생략) → `POST /sessions/{sid}/messages`(streaming)를 `run.completed`까지 읽는다. 그동안 스레드가 0.5초마다 `/healthz`를 샘플링한다. 출력은 `RSS 최대 X MB (유휴 Y, 런 중 Z, 런 뒤 W)`이고 최댓값이 `MEMORY_BUDGET_MB`(기본 300)를 넘으면 종료 코드 1. 옵션 `--seconds`(유휴 샘플 시간, 기본 5), `--idle-only`. 셸은 Windows면 PowerShell, Linux면 `effective_shell`이 bash로 바꾸므로 CI에서 환경변수가 더 필요 없다. CI의 `python`(ubuntu)·`windows` 잡 끝에 `python scripts/memcheck.py`를 넣고, Windows 값이 기준이다(2.7).
+
+**(6) 11장 체크리스트 기록.** 결과는 `docs/ops/security.md`에 표(S#, 대응 요약, 자동 테스트 `파일::함수`, 수동 절차, 결과·날짜)로 적고 11장의 "확인" 열은 그대로 둔다. 이미 있는 테스트가 덮는 범위는 아래와 같다(경로는 `apps/api/tests/` 기준).
+
+| # | 자동 테스트(있는 것) | M10에서 더하는 것 | 수동 절차(security.md에 기록) |
+|---|---|---|---|
+| S1 | `unit/agent/test_interactions.py::test_all_shell_requires_approval_for_processes`, `unit/agent/test_loop.py::test_approval_in_the_middle_of_a_batch_pauses_and_resumes`·`test_rejected_approval_tells_the_model`·`test_approve_with_session_auto_approve_skips_later_approvals`·`test_cancel_kills_the_running_tool`, `integration/test_run_stream.py::test_approval_tool_output_files_and_download`·`test_stop_kills_the_tool_and_finishes_cancelled`, `sandbox/test_local_backend.py::test_timeout_kills_the_command`·`test_kill_ends_the_whole_process_tree`·`test_memory_limit_turns_big_allocation_into_memory_error`, `sandbox/test_windows_job.py::test_start_process_grandchild_dies_with_the_call`·`test_memory_error_leaves_the_platform_alone`·`test_active_process_limit` | e2e 승인 거절 | A11(b)(c)(d)를 미리보기에서. 악성 지시가 든 파일을 읽게 한 뒤 승인 카드에 외부 전송 명령이 그대로 보이는지 |
+| S2 | `unit/sandbox/test_paths.py` 전부, `sandbox/test_local_backend.py::test_file_tool_errors`·`test_links_are_listed_but_not_followed`, `sandbox/test_windows_job.py::test_junction_made_by_the_shell_cannot_be_read_through` | - | A11(a) (`..\..\app.db`, `C:\Windows\win.ini`, 정션) |
+| S3 | `sandbox/test_http_client.py` 전부, `unit/sandbox/test_allowlist.py` | - | A11(e) (`http://127.0.0.1:8500/healthz`, 허용 목록 밖 도메인) |
+| S4 | `unit/test_logging.py`(→`test_logsetup.py`), `unit/test_config.py::test_secret_values_collects_every_secret`, `sandbox/test_local_backend.py::test_environment_is_minimal`·`test_platform_venv_is_not_on_the_tool_path`, `unit/sandbox/test_shell_script.py::test_windows_env_is_built_from_a_short_list`, `integration/test_agents.py::test_env_vars_are_encrypted_and_secrets_hidden`·`test_env_vars_need_encryption_key`, `integration/test_llm_status.py::test_status_shows_only_index_and_last4`·`test_auth_error_stops_and_masks_key`, `integration/test_setup.py::test_setup_validation_does_not_echo_password` | 마스킹 테스트 확장(7) | A3: `sqlite3 app.db .dump`와 `data/logs/`에서 `AIza`·`AQ.` 0건, 미리보기에서 `Get-ChildItem env:`에 GEMINI 없음 |
+| S5 | `unit/agent/test_prompt_builder.py::test_preamble_has_workspace_rules_and_no_placeholders` | - | S1과 같은 인젝션 시나리오 |
+| S6 | `integration/test_auth.py::test_login_sets_http_only_cookie_and_stores_only_hash`·`test_csrf_rejects`·`test_csrf_allows_same_origin_and_dev_server`·`test_login_rate_limit`·`test_me_requires_login`, `integration/test_setup.py::test_setup_status_before_and_after`, `integration/test_agents.py::test_delete_requires_csrf_header`, `integration/test_skills.py::test_upload_needs_multipart_and_csrf_header`, `integration/test_sessions_api.py::test_session_api_requires_login_and_json` | `test_auth.py::test_foreign_host_is_rejected`(`Host: evil.example` → 400. 지금은 `smoke.sh`만 본다) | curl로 Host·Origin 변조(A2) |
+| S7 | `integration/test_api_keys.py` 전부, `integration/test_service_api.py::test_requests_need_a_valid_bearer_key`·`test_rate_limit_blocks_the_61st_request_per_key`, `unit/test_crypto.py::test_tokens` | e2e 키 발급·폐기 | - |
+| S8 | `unit/test_logging.py::test_mask_secrets_by_key_and_value`, `sandbox/test_http_client.py::test_response_headers_are_capped_and_sensitive_ones_masked` | `unit/agent/test_http_request_tool.py`: 모델이 준 `Authorization` 헤더가 `tool_call.started`의 input과 승인 카드 입력에서 `***`인지(없으면 추가) | - |
+| S9 | `unit/test_skill_package.py` 전부, `sandbox/test_snapshot.py::test_restore_rejects_zip_slip_entries`·`test_restore_stops_zip_bombs`·`test_restore_rejects_files_that_are_not_zips`, `integration/test_files.py::test_unsafe_names_are_cleaned_on_upload`·`test_file_size_limits`, `integration/test_sessions_api.py::test_session_files_and_safe_download_headers`, `integration/test_skills.py::test_rejected_packages`·`test_upload_size_header_is_checked_before_reading` | - | - |
+| S10 | S1의 샌드박스 테스트, `integration/test_sessions_api.py::test_disk_limit_rejects_new_runs`, `integration/test_workspaces.py::test_over_limit_is_flagged_and_new_runs_are_refused`, `integration/test_publish_snapshot.py::test_snapshot_over_the_limit_is_refused_and_leaves_nothing`, `unit/streaming/test_event_bus.py::test_deltas_are_split_into_4kb_pieces`·`test_evicted_buffer_falls_back_to_persisted_events`, `unit/agent/test_loop.py::test_step_limit_appends_notice_and_succeeds`·`test_token_budget_stops_the_run`·`test_run_time_limit_fails_with_timeout`·`test_large_output_is_cut_for_the_model_and_spilled`, `sandbox/test_http_client.py::test_oversized_bodies_are_refused_and_not_kept`·`test_request_body_limit` | - | A11(c)(d) |
+| S11 | `unit/test_repositories_scope.py` 전부, `integration/test_service_api.py::test_keys_only_reach_their_agent_and_scopes`, `integration/test_api_keys.py::test_keys_are_scoped_to_their_agent`, `integration/test_webapp.py::test_webapp_api_only_reaches_webapp_sessions_of_enabled_apps` | - | - |
+| S12 | `apps/web/src/components/chat/AssistantMessage.test.tsx`(코드 강조만) | 같은 파일에 raw HTML(`<script>`, `<img onerror>`)이 텍스트로 남고 링크가 `rel=noopener`인지 | 미리보기에서 가짜 어댑터 각본으로 HTML 섞인 답을 받아 확인 |
+| S13 | - | CI `pip-audit`·`pnpm audit`(9) | 경고가 나오면 사용자에게 보고 |
+| S14 | `integration/test_sessions_api.py::test_runs_list_detail_events_and_small_tool_output`, `integration/test_logs_api.py` 전부, `unit/streaming/test_event_bus.py::test_persisted_events_are_written_in_batches`, `sandbox/test_windows_job.py::test_runner_assigns_terminates_and_reports_peak_memory` | e2e 로그 화면 | A10 |
+| S15 | `sandbox/test_local_backend.py::test_run_python_isolation`·`test_platform_venv_is_not_on_the_tool_path`, `unit/sandbox/test_pip_spec.py::test_run_python_argv`·`test_bootstrap_appends_packages_after_the_standard_library` | - | 미리보기에서 `run_python "import openai"` → ImportError |
+| S16 | - | `integration/test_backup.py::test_backup_carries_no_key_material`(`.env`가 복사되지 않고 manifest에 키 값이 없다) | `git check-ignore backups/x`, 키 보관 안내 확인 |
+
+**(7) 로그 마스킹 검증 테스트.** `tests/unit/test_logsetup.py`에 파라미터화 테스트를 더한다. 값은 모두 실행 시에 조립한 가짜다(`"AIza" + 35자`, `"AQ" + "." + 20자 이상`, `sk-wf-` + 32바이트 꼴, `Bearer x.y`, 설정값(base64라 `+/=`가 든 `ENCRYPTION_KEY` 꼴 포함)). 확인하는 것: 문자열·중첩 dict·list·예외 텍스트·uvicorn access 로그 줄에서 모두 `***`가 되고 원문이 파일에 없다, `AQ.` 뒤가 20자 미만이면 가리지 않는다, `storage_key`·`input_tokens`·`Accept`는 그대로다, `secret_values()`가 Gemini 키·`ENCRYPTION_KEY`·E2B 키를 모두 돌려준다. 실제 키 값은 테스트·문서·픽스처 어디에도 쓰지 않는다.
+
+**(8) Playwright e2e 확장.** 지금은 세 스펙에 7개(login 1, preview 5, webapp 1)다. 메모리를 생각해 7개만 더해 14개로 하고 `workers: 1`은 유지한다. 가짜 어댑터 기본 각본(`fake_adapter.auto_turn`)에 접두 표시 두 가지를 더해 흐름을 결정적으로 만든다: 메시지가 `질문:`으로 시작하면 `ask_user{question: 나머지, options: ["예","아니오"]}`를 부르고 답(tool_result)을 받은 뒤 `답을 확인했습니다: <답>`을 낸다. `파일:`로 시작하면 `write_file{path: "outputs/결과.txt", content: 나머지}`를 부르고 `파일을 썼습니다.`를 낸다. 그 밖의 메시지는 지금처럼 셸 1회 + 텍스트다(memcheck·스모크·기존 테스트 영향 없음).
+
+| 스펙 | 추가 시험 | 확인하는 것 |
+|---|---|---|
+| `preview.spec.ts` | 승인 거절 | 거절 사유 입력 → 도구 카드 "거절됨", `interaction.rejectedNote`, 답 표시, 런 상태 "완료" |
+| `preview.spec.ts` | 질문 응답 | `질문: …` → 질문 카드(`question.title`)와 선택지 → 답 보내기 → `interaction.answered`, 답이 든 응답. 기존 미리보기 시험의 "변경된 파일" 분기는 `파일:` 메시지로 바꿔 항상 내려받기까지 확인한다 |
+| `webapp.spec.ts` | API 키 발급·폐기 | API 탭에서 키 만들기 → 한 번만 보이는 대화상자(`apiKeys.createdBody`)의 키 원문으로 `GET /api/v1/info` 200 → 목록에 접두만 → 폐기 → 401 |
+| `webapp.spec.ts` | 이전 발행 버전 배지 | 웹앱 대화(v1) 뒤 빌더에서 다시 발행(v2) → 그 대화를 열면 `olderVersion` 배지, 새 대화는 `v2` 배지 |
+| `logs.spec.ts`(신규) | 로그 화면 | 미리보기 런 뒤 `/logs` 세션 탭에 세션이 보이고 → 세션 상세에서 런 목록·승인 결정 "승인함" → 런 탭 상태 필터 |
+| `workspace.spec.ts`(신규) | 작업공간 패널 | `workspace.open` → 상태 "대기"와 디스크 표시 → "작업공간 초기화" 확인 대화 → `resetDone` 토스트 → 같은 세션에서 다음 메시지가 된다 |
+| `settings.spec.ts`(신규) | 설정 | LLM 페이지에 `llm.fake` 안내, HTTP 허용 목록 페이지에 `pypi.org`, 워크스페이스 설정의 보관 기간을 바꿔 저장(`workspace.saved`)하고 원복 |
+
+**(9) CI.** `python` 잡: pytest 뒤에 `uv export --frozen --no-hashes --no-emit-workspace -o requirements-audit.txt` → `uvx pip-audit -r requirements-audit.txt`(`continue-on-error: true`) → `python scripts/memcheck.py`. `windows` 잡: pytest 뒤에 `python scripts/memcheck.py`. `web` 잡: install 뒤에 `pnpm audit`(`continue-on-error: true`). 경고는 실패로 만들지 않고 사용자에게 보고한다. uv 0.13.0 고정과 `packageManager`의 pnpm 12, 액션 버전은 그대로 둔다.
+
+**(10) 자잘한 후속.** `app/sandbox/snapshot.py`의 `snapshot_too_large` 메시지 세 곳(생성 한도, 복원 선언 크기, 복원 중 초과)과 큰 폴더 목록에 `disk.format_size`를 쓰고 `tests/sandbox/test_snapshot.py::test_snapshot_limits_name_the_biggest_folders`로 형식을 확인한다. `apps/web/src/features/sessions/api.ts`의 `useSessionDetail`은 참조가 없으므로 `useQuery` import와 함께 지운다. "이전 발행 버전" 배지는 (8)의 e2e로 확인한다. `file_collector.MTIME_TOLERANCE` 50ms는 `tests/unit/agent/test_file_collector.py::test_mtime_lag_stays_inside_the_tolerance`로 확인한다: 파일 200개를 쓰면서 쓰기 직전 `time.time()`과 `st_mtime`의 차이를 재어 최댓값이 50ms 미만인지 보고 최댓값을 assert 메시지에 남긴다. ubuntu·windows CI 양쪽에서 돌아 수치가 남고, 이미 Linux CI를 통과하는 `test_run_stream.py::test_files_from_the_previous_run_are_not_reported_again`·`test_publish_snapshot.py::test_restored_files_are_not_reported_as_run_changes`가 현재 근거다.
+
+**(11) 메모리 완화(빌드·테스트).** 이 PC에서 pytest와 동시에 돌린 vitest·build가 `WebAssembly.instantiate(): Out of memory`로 죽었고, build(Vite 8, rolldown) 혼자서도 "memory allocation of N bytes failed"로 두 번 죽었다(커밋 여유 약 2GB, 물리 여유 0.6GB). `NODE_OPTIONS=--max-old-space-size=1024`를 주면 1.7초 만에 성공했고, vitest는 `--no-file-parallelism`으로 115개가 통과했다. 또 build는 시작하면서 `apps/web/dist`를 비우므로 실패하면 서빙할 화면이 사라진다.
+
+| 항목 | 결정 |
+|---|---|
+| vitest | `vite.config.ts`의 `test`에 `fileParallelism: false`(파일을 한 워커에서 차례로). CI도 같은 설정이고 수십 초 느려지는 것은 감수한다 |
+| build | `apps/web/scripts/build.ts`(Node 24 타입 스트리핑, `gen-run-events.ts`와 같은 방식)가 `tsc -b` 뒤 `vite build --outDir dist.next`를 `NODE_OPTIONS=--max-old-space-size=1024`(기존 값 뒤에 덧붙임)로 자식 프로세스로 돌리고, 성공하면 `dist`→`dist.old` 이름 변경, `dist.next`→`dist`, `dist.old` 삭제. 실패하면 `dist`는 그대로다. `package.json`의 `build`는 `node scripts/build.ts`, `.gitignore`에 `dist.next/`·`dist.old/`. 서버의 `mount_web`는 기동 때 `index.html` 유무만 보고 요청마다 파일을 읽으므로 떠 있는 서버는 새로 고침만 하면 새 화면을 낸다 |
+| 실행 순서 | README에 "검증은 순서대로" 한 문단: pytest → ruff·pyright → web lint·typecheck·test → build. 둘 이상을 동시에 띄우지 않는다. e2e는 build와 서버 기동 뒤에만 |
+| typecheck | `tsc -b`는 지금 그대로 돈다. 죽으면 build와 같은 `NODE_OPTIONS`를 준다 |
+
+**(12) 운영 문서.** README는 지금 길이를 유지하고 ops 문서 링크, backup 명령 한 줄, "검증은 순서대로" 문단만 더한다. 상세는 `docs/ops/`로 보낸다. `sandbox-windows-check.md`는 그대로 둔다.
+
+| 문서 | 목차 |
+|---|---|
+| `install.md` | 요구 사항(Windows 11, Python 3.12, uv, Node 24+corepack, Git Bash는 선택) → uv 설치와 PATH 확인 → 저장소 받기 → `.env` 만들기(`ENCRYPTION_KEY` 생성, `GEMINI_API_KEYS`, `DATA_DIR=C:\wf-data`, 키 없이 써 보려면 `LLM_FAKE=true`) → `uv sync` → `corepack pnpm --dir apps/web install`·`build` → `uv run platform doctor` → `uv run platform serve` → 첫 화면 초기 설정 → 백신 검사 제외(`data\workspaces`) → 흔한 문제(uv 없음, 실행 정책, 긴 경로, 포트 사용 중, 화면 미빌드, 콘솔 코드 페이지) |
+| `operations.md` | 기동·종료·재시작(Ctrl+C, 창 닫기, VS Code ▶) → 로그(`data/logs/app.log`, JSON, 회전, 마스킹) → 헬스(`/healthz`·`/readyz`, `rss_mb`) → 하우스키핑이 하는 일과 시각(기동 직후와 매시) → 보존 기간(워크스페이스 설정 화면, `RUN_EVENT_RETENTION_DAYS`) → 디스크(작업공간 한도, 패키지 삭제·초기화, `cache/pip` 수동 삭제) → 메모리(예산, memcheck, 초과 시 12.3 순서) → 비밀번호 재설정 → Gemini 키 교체(재기동) → 허용 목록 편집 → 개발 모드(`--reload`, vite dev) → 스모크 스크립트 → 작업 스케줄러로 백업 예시 |
+| `backup-restore.md` | 무엇이 들어가고 안 들어가는지(표) → 명령과 옵션 → 보존(`--keep`) → 서버가 떠 있을 때의 주의 → 복구 단계 → `ENCRYPTION_KEY` 보관과 fingerprint 비교 → 복구 뒤 확인(A15 항목) → 다른 PC로 옮기기(경로, `.env`) → 키가 다를 때 나는 메시지 |
+| `security.md` | 위협 모델 요약(11장 링크) → S1~S16 표(6) → 수동 절차 상세(S1·S5 인젝션 시나리오, S2 A11(a), S3 A11(e), S4 env·dump·로그 grep, S12 XSS, S15 import openai) → 운영 시 지킬 것(`.env` 보관, 포트, 승인 모드 off 주의, 허용 목록) |
+
+설치 문서 검증은 실제 `.env`를 건드리지 않도록 `C:\wf-scratch-m10c\repo`에 새로 clone한 저장소에서 한다. 문서만 보고 `.env`를 만들되 `SERVER_PORT=8503`, `DATA_DIR=C:\wf-scratch-m10c\data`, `LLM_FAKE=true`로 두고 초기 설정 → 로그인 → 에이전트 생성 → 미리보기 런까지 되면 통과다. 끝나면 clone을 지운다.
+
+#### M10.2 구현 단위
+
+| 단위 | 생성 | 수정 | 완료 기준 | 서버 |
+|---|---|---|---|---|
+| A. 백엔드 운영 명령 (1)(3)(4)(7), S6·S8·S16 테스트 | `app/backup.py`, `app/runner/reloader.py`, `app/logsetup.py`(이름 변경), `tests/integration/test_backup.py`, `tests/unit/test_reloader.py`, `tests/unit/test_logsetup.py`(이름 변경), `tests/unit/agent/test_http_request_tool.py` | `app/cli.py`(backup, serve --reload, `_NOT_YET` 제거), `app/main.py`(보호 블록 제거, import), `app/sysinfo.py`(암호화 키 항목), `app/runner/winconsole.py`(reload_warning 제거), `migrations/env.py`, `security/tokens.py` 주석, `tests/integration/conftest.py`·`test_migrations.py`·`test_recovery.py`·`test_auth.py`(Host 400), `tests/unit/test_cli_serve.py`·`test_health.py` | 위 테스트와 `uv run pytest` 통과. 8501 서버를 띄운 채 `uv run platform backup --out C:\wf-scratch-m10a\backup`이 manifest와 `-wal` 없는 `app.db`를 만들고, 그 폴더를 `DATA_DIR`로 다시 띄우면 에이전트·세션·파일이 보인다(A15). `--reload`로 띄워 파일을 고치면 `server.ready` 로그가 다시 나오고 미리보기에서 셸 도구가 실행된다. `git grep -n 'app\.logging'` 0건. `uv run python apps/api/app/main.py`로도 뜬다 | 8501, `C:\wf-scratch-m10a` |
+| B. 하우스키핑·메모리·CI (2)(5)(9)(10) | `tests/unit/agent/test_file_collector.py`의 mtime 시험(파일은 있음) | `app/housekeeping.py`, `app/services/runs.py`(RunMaintenance), `app/db/engine.py`(checkpoint), `app/db/repositories/{sessions,runs}.py`(필요한 조회만), `app/sandbox/snapshot.py`, `scripts/memcheck.py`, `.github/workflows/ci.yml`, `tests/integration/test_housekeeping.py`·`test_housekeeping_retention.py`·`test_run_maintenance.py`, `tests/unit/test_engine_pragma.py`, `tests/sandbox/test_snapshot.py` | 위 테스트 통과. `python scripts/memcheck.py`가 Windows에서 유휴·런 중·런 뒤 값을 내고 최댓값이 300MB 이하. `uvx pip-audit -r`과 `corepack pnpm --dir apps/web audit`을 로컬에서 한 번 돌려 명령이 맞는지 확인. 8503 서버의 `housekeeping.hourly` 로그에 새 필드가 보인다 | 8503, `C:\wf-scratch-m10c` |
+| C. 웹 (8)(10)(11), S12 테스트 | `apps/web/scripts/build.ts`, `apps/web/e2e/{logs,workspace,settings}.spec.ts` | `apps/web/package.json`, `vite.config.ts`, `.gitignore`, `e2e/preview.spec.ts`·`webapp.spec.ts`·`support.ts`, `src/features/sessions/api.ts`, `src/components/chat/AssistantMessage.test.tsx`, `app/llm/fake_adapter.py`(접두 표시), `tests/unit/llm/test_fake.py`, `.env.example`의 `LLM_FAKE` 주석 | `lint`·`typecheck`·`test`·`build`를 하나씩 통과. build를 두 번 돌려 `dist.old`·`dist.next`가 남지 않고 `dist/index.html`이 갱신된다. 8502 서버(`LLM_FAKE=true`)로 `corepack pnpm --dir apps/web e2e` 14개 통과. `uv run pytest apps/api/tests/unit/llm` 통과 | 8502, `C:\wf-scratch-m10b` |
+| D. 문서 (12) | `docs/ops/{install,operations,backup-restore,security}.md` | `README.md` | 네 문서가 (12)의 목차를 갖추고 (6)의 표가 `security.md`에 들어 있다(결과 열은 비워 둔다). README 70줄 이하. 문서 안의 상대 링크와 명령이 실제 파일·옵션과 맞는다(A·C의 결정은 이 절에서 읽는다). `git grep -n -E 'AQ\.Ab8RN6' -- . ':!.env'` 0건 | 없음 |
+| E. 통합 검증 | - | `docs/ops/security.md`(결과·날짜 열), 12.2에 결과 한 줄 | M10.3 전부 수행하고 결과를 기록. 발견한 문제는 고치되 큰 변경은 해당 단위로 돌려보낸다 | 8502(e2e), 8503(설치 검증) |
+
+단위 간 접점: A의 `logsetup` 이름 변경 뒤에 B·C가 새로 쓰는 코드는 `app.logsetup`을 import한다. B는 `main.py`를 고치지 않으므로 하우스키핑의 새 의존성은 기존 생성자 인자(`db`, `storage`, `backend`, `settings`) 안에서 해결한다. C의 `fake_adapter` 변경은 접두 표시가 없는 메시지에는 영향이 없어 B의 memcheck와 독립이다. D는 A·C의 명령·옵션 이름을 이 절에서 읽고 쓰며, E가 실제 동작과 대조한다.
+
+#### M10.3 검증 절차
+
+통합 단위가 아래를 순서대로 수행한다. 메모리 때문에 한 번에 하나씩만 돌린다.
+
+1. `uv run pytest`(Windows, 기본 마커) → `uv run pytest -m windows`.
+2. `uv run ruff check . && uv run ruff format --check . && uv run pyright`(Windows). Linux의 pyright·pytest는 CI 결과로 본다.
+3. `corepack pnpm --dir apps/web lint` → `format:check` → `typecheck` → `test` → `build`. pytest와 겹쳐 돌리지 않는다.
+4. `SERVER_PORT=8502 DATA_DIR=C:\wf-scratch-m10b LLM_FAKE=true uv run platform serve`를 띄우고 `corepack pnpm --dir apps/web e2e` 14개 통과.
+5. `python scripts/memcheck.py`(Windows 실측): 유휴·런 중·런 뒤 모두 300MB 이하. 값을 `security.md`가 아니라 12.2 결과 줄에 적는다.
+6. 수동 재확인: A1(설치 문서로 10분 내 기동, 종료 뒤 `Get-Process python,powershell` 없음), A11(a)~(e), A12(런 도중 Ctrl+C → 재기동 → `failed(shutdown)`), A15(백업 폴더로 기동), A16(5번). 절차와 결과는 `security.md`의 해당 행과 `backup-restore.md`에 적는다.
+7. 설치 검증: (12) 끝의 clone 절차. 실제 `.env`는 읽지도 옮기지도 않는다.
+8. 키 문자열 스캔: `git grep -n -E 'AQ\.Ab8RN6' -- . ':!.env'`와 `git grep -n -E 'AIza[0-9A-Za-z_-]{35}' -- . ':!.env'` 모두 0건(테스트의 가짜 값은 실행 시 조립되므로 걸리지 않아야 한다).
+9. 커밋은 하지 않고 사용자에게 보고한다. CI는 사용자가 푸시한 뒤 python·windows·web 잡과 audit 경고를 확인한다.
 
 ## 11. 보안 체크리스트
 
@@ -1243,6 +1364,10 @@ M10에서 각 항목에 확인 방법과 결과를 기입한다. "대응"은 설
 - M6 이후 확정(2026-10-13): 실패 런은 항상 `run.error` 직후 `run.completed(failed, error)`로 끝나고 서버가 SSE를 닫는다(입력 대기 만료만 `run.completed(cancelled, input_timeout)`). 모든 이벤트는 `{run_id, session_id, seq, ts, type, data}`, 메시지 스트림 첫 이벤트는 `run.queued`(seq 1), 응답 헤더 `X-Run-Id`·`X-Session-Id`. `/input`은 202 + RunOut(queued)이며 재접속 첫 이벤트는 `interaction.resolved`. 메시지는 스텝마다 assistant 행 하나(blocks: text, tool_use, tool_result 순), user 행 끝의 `kind:"context"` 블록은 화면에서 숨김. `GET /sessions/{sid}`에 `active_run`(pending_interaction 포함)·`last_run`·`workspace`. 승인 대기 중 새 메시지는 409(유지). 런 종료 뒤 링버퍼는 구독자 유무와 관계없이 60초 유지로 바꾼다(M9). `session-files` 저장 키는 `session-files/<run_id>/<상대경로>`로 줄인다(Windows 260자 한계, M9). 압축은 현재 요청까지 요약 1개로 바꾸고 요약 프롬프트가 최근 요청 원문을 옮긴다. 종료 신호 처리기가 Supervisor 종료를 먼저 시작한다(uvicorn이 열린 SSE 연결 종료를 기다리는 문제). 큐 키는 `<workspace_id>:<run_id>`. M8 확장 지점: `PromptBuilder.build(task_block=)`, 종료형 도구(`Tool.terminal`·`ToolResult.output` → `run.output`), 독촉 tool_choice 강제는 `AgentLoop._step`의 end_turn 분기, 스냅샷 복원은 `RunExecutor._execute`의 `snapshot=` 인자.
 - M8 이후 확정(2026-10-13): 발행 스냅샷은 폴더가 남아 있는 미리보기 작업공간 중 가장 최근 것에서 뜨고(그 세션에 실행 중 런이 있으면 409), 없으면 현재 발행본의 스냅샷을 잇는다(롤백 상태면 롤백한 버전의 것). 발행 시 초안 재검증 실패는 422 `draft_invalid`. `PublishOut.snapshot`에 파일 수·크기·inherited. 웹앱·API 세션은 만든 시점의 발행 버전에 고정된다. 웹앱 API는 콘솔 세션 API와 같은 응답 모양이고 `GET /api/web/apps/{slug}`는 `WebAppOut{agent_id, slug, name, icon, description, version_id, version_number, published_at, approval_mode}`, `GET /api/web/sessions/{sid}`(active_run 포함)와 `PATCH`(제목·approval_override)가 있다. 서비스 API: conversation_id 없이 파일을 올리면 빈 대화를 만들어 conversation_id를 돌려주고, 메시지 없는 빈 대화는 목록에 안 보인다. inputs는 그 메시지의 `<context>`에, metadata는 session.metadata에. 키 권한은 chat=api 세션, tasks=task 세션(아니면 403 `scope_not_allowed`). cursor는 불투명 문자열, 기본 response_mode는 chat=streaming, 과업=blocking. 과업 모드: 검증 실패 누적 3회면 `output_invalid`, 결과 없이 스텝 한도면 `output_missing`, 독촉 글은 DB에 남기지 않음, ephemeral은 런 종료·대기 중 중지·만료 때 작업공간을 지우되 서버 종료 때는 남긴다. `AgentTaskService`는 13.1 그대로이며 run_id만 받는 메서드는 1단계의 유일한 워크스페이스를 쓴다(2단계에서 workspace_id 인자 추가 검토).
 - M7 2차 이후 확정(2026-10-13): 종료 판정은 `run.completed`만(`run.error`는 종료가 아님). 새 런 id는 응답 헤더 `X-Run-Id` 우선, 첫 이벤트는 예비. 미리보기 세션 id는 localStorage(`wf.preview-session.<agentId>`)에 두고 첫 메시지 때 세션을 만든다. 세션 초기화는 열린 런을 확인 뒤 중지하고 옛 세션은 로그에 남긴다. 중지 버튼은 입력 대기 중에도 둔다. ChatPanel은 `onSend(text, files)`·`onRespond`가 성공 여부를 돌려주고 `attachments`·`loading`·`sending`·`stopping`·`fileUrl`을 받는다. 후속(M10 전 정리)으로: (1) 도구 결과를 붙인 뒤 assistant 행의 stop_reason·usage가 null이 되는 문제, (2) 이전 런이 만든 파일을 다음 런이 다시 `file.changed`로 보고하는 문제(mtime 기준선), (3) 가짜 어댑터 지연 옵션 `LLM_FAKE_DELAY_SEC`, (4) 세션 작업공간 훅 중복 제거(`features/workspaces` 쪽으로 통일하고 런 종료 시 그 키도 무효화), (5) highlight.js 언어 부분집합, (6) 안 쓰는 로케일 키 정리.
+- 후속 정리 이후 확정(2026-10-13): 위 (1)~(6)은 처리했다. 변경 파일 기준선은 3.13 본문대로 고쳤고(앞 런 종료·초기화 시각이 바닥, 재개 시 `pending_interaction.changes_since`를 이어 씀), assistant 행의 stop_reason·usage는 `StoredMessage`가 함께 읽어 재개 저장 때 지워지지 않는다. `LLM_FAKE_DELAY_SEC`는 스텝마다 기다리는 초다. 디스크 한도 메시지는 `sandbox.disk.format_size`로 단위를 고르고 스냅샷 한도 메시지도 M10에서 같은 함수로 맞춘다. 스킬 목록(`SkillOut.versions`)에 버전 요약(기존 `SkillVersionSummary` 그대로)을 넣고 SKILL.md 본문·manifest는 지연 로드한다. 웹앱 공개(`webapp_enabled`)는 발행과 별개로 빌더 API 탭의 스위치로 켜며 기본은 꺼짐이다. `/api/web/sessions/{sid}`는 webapp 세션이고 그 에이전트가 발행·공개 상태인지만 확인하며 어느 앱의 세션인지는 서버가 보지 않는다(URL에 slug가 없고 1인 사용이라 모두 같은 사용자 소유). 화면은 세션의 agent_id가 다르면 404로 보여 준다. 코드 강조는 rehype-highlight 대신 lowlight를 직접 쓴다(7.1 갱신). 빌더의 로그 링크 이름은 "에이전트 로그". 쓰는 곳이 없는 `SessionService.list_workspaces`, `WorkspaceList`, `WorkspaceInstanceRepository.list_all`, `SkillVersionRepository.get_many`는 지웠고 `useSessionDetail` 훅은 M10에서 지운다. 웹앱 화면의 "이전 발행 버전" 배지와 Linux에서 50ms 허용 오차의 적정성은 M10 검증 항목으로 넘긴다.
+- M10 계획 확정(2026-10-13, 10장 M10 참고): `app/logging.py`는 `app/logsetup.py`로 바꾸며 8.1·8.2의 표기는 이 이름으로 읽는다(`main.py`의 sys.path 보호 블록 삭제). `platform backup`은 `sqlite3` 온라인 백업 API로 서버가 떠 있어도 `backups/<타임스탬프>/`에 `DATA_DIR`과 같은 구조로 만들고 `--keep`(기본 5)으로 정리하며, 주기 백업·restore 명령은 두지 않는다. `ENCRYPTION_KEY`는 백업에 넣지 않고 `platform doctor`와 `manifest.json`의 fingerprint(sha256 앞 8자)로 일치만 확인한다. `serve --reload`는 uvicorn 리로더 대신 watchfiles 기반 자체 리로더(부모 프로세스 + `platform serve` 자식)로 바꿔 Windows에서도 도구가 실행된다. 하우스키핑에 WAL PASSIVE 체크포인트, 작업공간·pip 캐시 크기 로그, 서버 종료 때 남은 ephemeral 과업 작업공간, tool-outputs 고아 폴더 정리를 더한다. memcheck는 가짜 어댑터로 런 1개를 돌리며 재고 CI(ubuntu·windows)에서도 돈다. 가짜 어댑터 기본 각본에 `질문:`(ask_user)·`파일:`(write_file) 접두 표시를 둔다. vitest는 `fileParallelism: false`, 웹 build는 `scripts/build.ts`가 힙 상한 1024MB로 `dist.next`에 빌드한 뒤 `dist`와 바꿔치기한다(실패해도 `dist` 유지). CI에 `pip-audit`·`pnpm audit`을 경고로만 둔다.
+- M10 구현 이후 확정(2026-10-13): backup은 `shutil.copytree` 대신 scandir 기반 복사다(정션·링크를 따라가지 않고, 복사 중 사라진 파일은 건너뛰어 센다). 긴 경로는 `sysinfo.long_path`의 `\\?\` 접두로 처리한다. 대상 폴더가 이미 있거나 `.part`가 남았거나 `storage/`·`workspaces/` 안이면 거부하고, quick_check 실패 시 `--keep` 정리를 하지 않으며, `HTTP_ALLOWLIST_FILE`이 `DATA_DIR` 밖이면 백업에 넣지 않는다. 리로더 자식은 `python -m app.cli serve --reload`에 `PLATFORM_RELOAD_CHILD=1`을 붙여 띄우고 부모는 Ctrl+Break·SIGTERM도 Ctrl+C처럼 처리한다(디바운스 500ms, 부모 RSS 25MB. `cli.py`가 설정·로그·asyncio를 명령 안에서 import). 하우스키핑 `run_hourly`는 요약 dict를 돌려주고 로그에 `wal_frames`·`wal_checkpointed`를 남긴다. pip 캐시 경로는 `workspaces_dir.parent/cache/pip`로 잇고, ephemeral 정리는 읽기 트랜잭션에서 후보를 고른 뒤 쓰기 안에서 조건을 다시 본다(지운 세션은 `purge_orphan_workspaces` 몫). memcheck는 런 중 구간에 setup·로그인·생성을 포함하고 런 뒤 구간도 `--seconds`만큼 재며 시나리오 실패는 종료 코드 2다. CI는 `uv run python scripts/memcheck.py`로 부른다. 가짜 어댑터 접두는 뒤가 비면 셸 흐름으로 가고 write_file이 실패하면 일반 문구를 낸다. e2e는 `support.ts`의 `setupFakeServer()`로 로그인·skip을 공유하고 시험 대상이 아닌 준비는 API로 하며, 시험 서버는 `GEMINI_API_KEYS=,`로 띄워 실제 키를 싣지 않는다(빈 값은 `.env`를 다시 읽는다). 운영 문서의 수동 절차는 실제 모델 방식에 `LLM_FAKE_SCRIPT` 각본 방식을 병행하고, 정션 시험은 `C:\wf-scratch\outside`의 표식 파일로, DB 덤프는 `iterdump`로 한다(sqlite3 CLI 없음). `install.md`의 저장소 주소는 그대로 둔다. 한계로 둔 것: `tool_call.input_delta`(영속하지 않는 SSE)에는 모델이 준 헤더 원문이 그대로 나가고 `display_input`은 헤더만 가린다. 콘솔 창을 닫으면 런처의 Job이 서버를 정상 종료 전에 끝내므로 Ctrl+C로 끈다. mintty의 실제 Ctrl+C 전파는 사용자 터미널에서 확인한다. S8의 "요청 본문 미기록"은 http_request 도구에는 적용하지 않는다. 승인과 사후 추적(S1·S14)에 URL·본문이 필요하므로 이벤트와 대화 기록에 남기고 헤더만 가린다(통합 검증에서 확인한 한계로 security.md에 기록). CLI 한글 출력은 코드에서 인코딩을 바꾸지 않고(PowerShell 파이프라인이 깨질 수 있음) Git Bash에서는 `PYTHONUTF8=1`을 쓰라고 install.md에 안내한다.
+- M10 검증 결과(2026-10-13): pytest 1,114개 통과(건너뜀 2)와 `-m windows` 10개 통과, ruff·ruff format·pyright(Windows와 `--pythonplatform Linux`) 오류 0, 웹 lint·format:check·typecheck 통과, vitest 117개 통과, build를 두 번 돌려 `dist.next`·`dist.old`가 남지 않음, e2e 14개 통과(1.3분). memcheck(Windows)는 유휴 107.9MB, 런 중 116.3MB, 최대 116.3MB(예산 300MB). 설치 검증은 GitHub main에 M10이 없어 작업 트리 복사본에서 했고 install.md만 보고 `.env` 작성부터 미리보기 런까지 약 3분(uv·pnpm 캐시가 있는 PC). 수동 A11(a)~(e)·A12·A15와 S1~S16 결과는 `docs/ops/security.md`·`backup-restore.md`에 적었다. 검증 중 고친 것은 가짜 어댑터의 접두 판정(앞 런이 답 없이 끝나 user 행이 합쳐지면 맨 뒤에 쓴 글을 본다)과 문서다. 미확인: mintty(Git Bash)에서 진짜 Ctrl+C로 `serve --reload` 끄기, GitHub CI 실제 실행(python·windows·web 잡과 audit 단계), 저장소 clone 명령.
 
 ### 12.3 리스크
 

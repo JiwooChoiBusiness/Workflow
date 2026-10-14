@@ -58,4 +58,4 @@ asyncio.run(main())
 - PowerShell 5.1의 `$input`은 표준 입력을 시작 시점의 콘솔 코드 페이지(CP949)로 읽어서, `ExecSpec.stdin`으로 넘긴 한글이 깨진다. 프리앰블이 인코딩을 바꾼 뒤 다시 만들어지는 `[Console]::In`과 파이썬의 `sys.stdin`은 UTF-8로 제대로 읽는다. 지금 도구 스키마(4.4)에는 stdin이 없어 영향은 없다.
 - PowerShell 5.1의 `Start-Process -ArgumentList`는 배열을 따옴표 없이 공백으로 잇는다. `'-c','import time; time.sleep(30)'`처럼 주면 파이썬이 `-c import`만 받아 바로 끝난다. 샌드박스 문제는 아니지만 모델이 만든 명령이 조용히 실패하는 흔한 원인이다.
 - 콘솔 프로그램마다 따라오는 `conhost.exe`도 Job 계정(`ActiveProcesses`)에 잡힌다. 상한 8로 시험했을 때 PowerShell과 파이썬 7개가 뜬 뒤 생성이 실패했고, 그때 Job이 보고한 활성 프로세스는 16개였다.
-- `platform serve --reload`로 띄우면 uvicorn이 Windows에서 SelectorEventLoop를 써서 서브프로세스를 만들 수 없다. 이때 셸·파이썬 도구는 `sandbox_unavailable`("--reload 없이 서버를 띄운다")로 실패한다. 실제로 SelectorEventLoop에서 실행해 확인했다.
+- uvicorn의 리로더는 Windows에서 SelectorEventLoop를 써서 서브프로세스를 만들 수 없고, 그 루프에서는 셸·파이썬 도구가 `sandbox_unavailable`로 실패한다. 실제로 SelectorEventLoop에서 실행해 확인했다. 그래서 M10에서 `platform serve --reload`를 자체 리로더로 바꿨다. 감시 프로세스는 파일만 지켜보고 서버는 평소와 같은 Proactor 루프로 다시 띄우므로 이 모드에서도 도구가 실행된다.
