@@ -168,12 +168,6 @@ async def test_console_handler_installs_and_uninstalls() -> None:
     uninstall()
 
 
-def test_reload_warning_only_on_windows() -> None:
-    warning = winconsole.reload_warning()
-
-    assert (warning is not None) == (sys.platform == "win32")
-
-
 @pytest.mark.skipif(sys.platform != "win32", reason="이벤트 루프 정책 차이는 Windows에만 있다")
 def test_ensure_proactor_loop_policy_undoes_a_selector_policy() -> None:
     assert sys.platform == "win32"

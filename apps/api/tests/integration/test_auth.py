@@ -228,6 +228,17 @@ async def test_csrf_allows_same_origin_and_dev_server(
     assert response.status_code == 204
 
 
+@pytest.mark.parametrize("host", ["evil.example", "127.0.0.1.evil.example:8500"])
+async def test_foreign_host_is_rejected(client: AsyncClient, host: str) -> None:
+    # DNS 리바인딩으로 들어온 요청은 Host가 공격자 도메인이다(S6). 로그인 전 경로도 막는다.
+    for path in ("/healthz", "/api/console/setup", "/api/console/auth/me"):
+        response = await client.get(path, headers={"Host": host})
+
+        assert response.status_code == 400, path
+
+    assert (await client.get("/healthz", headers={"Host": "localhost:8500"})).status_code == 200
+
+
 async def test_reset_password_cli(
     logged_in: AsyncClient,
     make_client: Callable[[], AsyncClient],

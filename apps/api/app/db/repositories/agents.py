@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Collection
 
 from app.db.models import Agent
 from app.db.repositories.base import WorkspaceScopedRepository
@@ -18,6 +19,13 @@ class AgentRepository(WorkspaceScopedRepository[Agent]):
             self._select()
             .where(Agent.deleted_at.is_(None))
             .order_by(Agent.created_at.desc(), Agent.id.desc())
+        )
+
+    async def get_many_active(self, agent_ids: Collection[uuid.UUID]) -> list[Agent]:
+        if not agent_ids:
+            return []
+        return await self._scalars(
+            self._select().where(Agent.id.in_(list(agent_ids)), Agent.deleted_at.is_(None))
         )
 
     async def get_active_by_slug(self, slug: str) -> Agent | None:

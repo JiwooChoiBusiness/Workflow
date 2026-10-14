@@ -1,0 +1,74 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "title": "시작",
+      "config": {
+        "fields": [{ "name": "score", "type": "number", "label": "점수", "required": true }]
+      }
+    },
+    {
+      "id": "if_else_1",
+      "type": "if_else",
+      "title": "등급 가르기",
+      "config": {
+        "cases": [
+          {
+            "id": "high",
+            "logical": "and",
+            "conditions": [{ "var": "start.score", "op": "≥", "value": 80 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "template_high",
+      "type": "template",
+      "title": "상",
+      "config": { "template": "상", "vars": [] }
+    },
+    {
+      "id": "template_low",
+      "type": "template",
+      "title": "하",
+      "config": { "template": "하", "vars": [] }
+    },
+    {
+      "id": "variable_aggregator_1",
+      "type": "variable_aggregator",
+      "title": "합류",
+      "config": {
+        "vars": ["template_high.output", "template_low.output"],
+        "output_type": "string"
+      }
+    },
+    {
+      "id": "template_join",
+      "type": "template",
+      "title": "등급 문구",
+      "config": {
+        "template": "{{ score }}점은 {{ grade }} 등급",
+        "vars": [
+          { "name": "score", "var": "start.score" },
+          { "name": "grade", "var": "variable_aggregator_1.output" }
+        ]
+      }
+    },
+    {
+      "id": "end_1",
+      "type": "end",
+      "title": "끝",
+      "config": { "outputs": [{ "name": "grade", "var": "template_join.output" }] }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "if_else_1" },
+    { "id": "e2", "source": "if_else_1", "source_handle": "case_high", "target": "template_high" },
+    { "id": "e3", "source": "if_else_1", "source_handle": "else", "target": "template_low" },
+    { "id": "e4", "source": "template_high", "target": "variable_aggregator_1" },
+    { "id": "e5", "source": "template_low", "target": "variable_aggregator_1" },
+    { "id": "e6", "source": "variable_aggregator_1", "target": "template_join" },
+    { "id": "e7", "source": "template_join", "target": "end_1" }
+  ]
+}

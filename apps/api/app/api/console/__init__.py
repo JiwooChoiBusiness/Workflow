@@ -12,6 +12,9 @@ from app.api.console import (
     setup,
     skills,
     stats,
+    wf_runs,
+    workflow_dsl,
+    workflows,
     workspace,
     workspaces,
 )
@@ -41,5 +44,8 @@ for module in (
     workspaces,
     stats,
     settings,
+    workflows,
+    workflow_dsl,
+    wf_runs,
 ):
     router.include_router(module.router)

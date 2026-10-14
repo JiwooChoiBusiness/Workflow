@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 SESSION_TOKEN_BYTES = 32
 API_KEY_BYTES = 32
-# sk- 접두는 로그 마스킹 패턴(app/logging.py)에 걸리게 하려는 것이다.
+# sk- 접두는 로그 마스킹 패턴(app/logsetup.py)에 걸리게 하려는 것이다.
 API_KEY_PREFIX = "sk-wf-"
 API_KEY_DISPLAY_CHARS = 12
 

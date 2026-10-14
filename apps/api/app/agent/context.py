@@ -51,6 +51,9 @@ class StoredMessage(BaseModel):
     role: Literal["user", "assistant", "system_summary"]
     blocks: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
     text: str = ""
+    # 재개한 스텝에 도구 결과를 붙여 다시 저장할 때 행의 값을 지우지 않도록 함께 읽는다.
+    stop_reason: str | None = None
+    usage: dict[str, Any] | None = None
 
 
 class StepMessage(BaseModel):
@@ -131,7 +134,13 @@ def decode_blocks(raw: Sequence[Mapping[str, Any]]) -> tuple[list[Block], dict[s
 
 def decode_step(stored: StoredMessage) -> StepMessage:
     blocks, extra = decode_blocks(stored.blocks)
-    return StepMessage(id=stored.id, blocks=blocks, provider_extra=extra)
+    return StepMessage(
+        id=stored.id,
+        blocks=blocks,
+        provider_extra=extra,
+        stop_reason=stored.stop_reason,
+        usage=stored.usage,
+    )
 
 
 def summary_user_text(summary: str) -> str:

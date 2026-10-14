@@ -61,7 +61,21 @@ def test_tools_go_through_the_sandbox_backend(path: Path) -> None:
     assert "pathlib.Path" not in modules
 
 
+# 워크플로우 엔진도 DB·HTTP 계층을 모르고 ports.EnginePorts로만 밖을 본다(2단계 설계 3.1, 12장).
+# app.agent에서는 과업 인터페이스(task_service)만 쓴다.
+@pytest.mark.parametrize(
+    "path", files_under("workflow"), ids=lambda path: path.relative_to(APP).as_posix()
+)
+def test_workflow_does_not_know_http_or_db(path: Path) -> None:
+    modules = imported_modules(path)
+
+    assert forbidden(modules, ("app.api", "app.auth", "app.db", "app.services")) == []
+    agent = set(forbidden(modules, ("app.agent",)))
+    assert sorted(agent - set(forbidden(agent, ("app.agent.task_service",)))) == []
+
+
 def test_the_rule_sees_real_imports() -> None:
     # 규칙이 아무것도 못 잡는 상태(경로 오타 등)가 아님을 확인한다.
-    assert files_under("agent") and files_under("streaming")
+    assert files_under("agent") and files_under("streaming") and files_under("workflow")
     assert "app.db.engine" in imported_modules(APP / "streaming" / "event_bus.py")
+    assert "app.agent.task_service" in imported_modules(APP / "workflow" / "ports.py")

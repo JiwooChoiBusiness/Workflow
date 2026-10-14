@@ -15,6 +15,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.agent.child_runs import SubAgentChoice
+from app.agent.tools.call_agent import available_agents_block
 from app.llm.types import ToolSpec
 from app.schemas.common import ApprovalMode
 
@@ -53,6 +55,16 @@ _SKILLS_GUIDE = (
     "작업이 아래 스킬의 설명에 해당하면 먼저 그 스킬의 SKILL.md를 read_file로 읽고 지시를 따른다. "
     "스킬의 스크립트는 run_python이나 셸로 실행한다."
 )
+# 하위 에이전트를 골라 두었지만 깊이·호출 수 한도에 닿아 call_agent가 없는 런(오케스트레이션 3.9).
+_SUB_AGENTS_UNAVAILABLE = (
+    "# 하위 에이전트\n\n"
+    "이 런은 하위 에이전트를 부를 수 없는 깊이(또는 호출 수 한도)에 있다. 맡기려던 일도 직접 한다."
+)
+_CHILD_TASK_LINE = (
+    "- 이 과업은 상위 에이전트 {parent}이(가) 맡긴 것이다. 결과는 상위 에이전트가 읽는다. "
+    "사용자에게 직접 물을 수 없으므로 확인이 필요한 것은 짐작으로 진행하지 말고 결과 글의 "
+    "'확인이 필요한 것' 항목에 적어 돌려준다."
+)
 
 
 class SkillPrompt(BaseModel):
@@ -89,8 +101,14 @@ class PromptBuilder:
         skills: Sequence[SkillPrompt],
         workspace: WorkspacePromptInfo,
         task_block: str | None = None,
+        sub_agents: Sequence[SubAgentChoice] | None = None,
+        sub_agents_unavailable: bool = False,
     ) -> str:
-        """서문 → 에이전트 지시문 → 스킬 목록 → 과업 지시(M8) 순서."""
+        """서문 → 에이전트 지시문 → 스킬 목록 → 과업 지시(M8) → 하위 에이전트 순서.
+
+        sub_agents는 call_agent가 붙는 런에만 준다. 골라 둔 하위 에이전트가 있는데 깊이·호출 수
+        한도로 도구를 붙이지 않는 런은 sub_agents_unavailable로 한 줄만 남긴다.
+        """
         preamble = _fill(
             load_prompt("system_preamble.md"),
             {
@@ -114,14 +132,28 @@ class PromptBuilder:
             parts.append("\n".join(lines))
         if task_block:
             parts.append(task_block.strip())
+        if sub_agents:
+            parts.append(
+                _fill(
+                    load_prompt("sub_agents.md"),
+                    {"available_agents": available_agents_block(sub_agents)},
+                ).strip()
+            )
+        elif sub_agents_unavailable:
+            parts.append(_SUB_AGENTS_UNAVAILABLE)
         return "\n\n".join(parts) + "\n"
 
 
-def task_block(output_schema: Mapping[str, Any] | None, *, submit_tool: str) -> str:
+def task_block(
+    output_schema: Mapping[str, Any] | None,
+    *,
+    submit_tool: str,
+    parent_agent: str | None = None,
+) -> str:
     """과업 모드(4.10)의 지시.
 
     출력 스키마는 도구 입력 스키마로도 보내지만 모델에 보내는 쪽은 일부 키를 빼므로(model_schema)
-    전체를 여기에도 적는다.
+    전체를 여기에도 적는다. parent_agent는 call_agent로 맡겨진 과업일 때 상위 에이전트 이름이다.
     """
     lines = [
         "# 과업",
@@ -132,6 +164,8 @@ def task_block(output_schema: Mapping[str, Any] | None, *, submit_tool: str) -> 
         "이 폴더는 고치지 않는다.",
         "- 결과 파일은 `outputs/`에 둔다.",
     ]
+    if parent_agent is not None:
+        lines.append(_CHILD_TASK_LINE.format(parent=parent_agent or "(이름 없음)"))
     if output_schema is None:
         lines.append("- 작업을 마치면 결과를 마지막 답변 하나로 정리한다.")
         return "\n".join(lines)

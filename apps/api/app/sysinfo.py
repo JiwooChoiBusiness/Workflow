@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import binascii
+import hashlib
 import os
 import shutil
 import socket
@@ -14,6 +17,8 @@ DATA_DIR_MAX_LENGTH = 80
 # 그룹 정책이 이 값을 강제하면 -ExecutionPolicy Bypass를 줘도 -File 실행이 막힌다.
 _BLOCKING_POLICIES = {"AllSigned", "Restricted"}
 SUBPROCESS_CHECK_TIMEOUT_SEC = 10.0
+# app/security/crypto.py의 KEY_BYTES. cryptography를 끌어오지 않으려고 따로 둔다.
+ENCRYPTION_KEY_BYTES = 32
 
 
 @dataclass(frozen=True)
@@ -82,6 +87,17 @@ def long_paths_enabled() -> bool | None:
     except OSError:
         return False
     return value == 1
+
+
+def long_path(path: Path) -> str:
+    # 긴 경로 정책이 꺼진 Windows에서도 260자를 넘는 경로를 다루게 확장 길이 접두를 붙인다.
+    # 접두가 붙은 경로는 OS가 정규화하지 않으므로 abspath로 먼저 정리한다.
+    absolute = os.path.abspath(path)
+    if sys.platform != "win32" or absolute.startswith("\\\\?\\"):
+        return absolute
+    if absolute.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + absolute[2:]
+    return "\\\\?\\" + absolute
 
 
 def default_sandbox_python() -> Path:
@@ -200,6 +216,38 @@ def check_port(port: int) -> Check:
     )
 
 
+def _decode_encryption_key(value: str) -> bytes | None:
+    # SecretCipher.from_base64와 같은 규칙(앞뒤 공백 무시, 엄격한 base64)으로 읽는다.
+    try:
+        key = base64.b64decode(value.strip().encode("ascii"), validate=True)
+    except (binascii.Error, UnicodeEncodeError):
+        return None
+    return key if len(key) == ENCRYPTION_KEY_BYTES else None
+
+
+def encryption_key_fingerprint(settings: Settings) -> str | None:
+    """키 32바이트의 sha256 앞 8자. 백업 manifest와 doctor가 이 값으로 키가 같은지 맞춰 본다."""
+    if settings.encryption_key is None:
+        return None
+    key = _decode_encryption_key(settings.encryption_key.get_secret_value())
+    return None if key is None else hashlib.sha256(key).hexdigest()[:8]
+
+
+def check_encryption_key(settings: Settings) -> Check:
+    name = "암호화 키"
+    if settings.encryption_key is None:
+        return Check(name, False, "ENCRYPTION_KEY가 비어 있다. 비밀 환경변수를 저장할 수 없다")
+    fingerprint = encryption_key_fingerprint(settings)
+    if fingerprint is None:
+        return Check(
+            name,
+            False,
+            f"ENCRYPTION_KEY가 {ENCRYPTION_KEY_BYTES}바이트를 base64로 쓴 값이 아니다."
+            " .env.example의 명령으로 만든다",
+        )
+    return Check(name, True, f"설정됨, fingerprint {fingerprint}")
+
+
 async def check_subprocess() -> Check:
     """지금 이벤트 루프에서 asyncio 서브프로세스(도구 실행 방식)가 뜨는지 본다.
 
@@ -247,4 +295,5 @@ def doctor_checks(settings: Settings) -> list[Check]:
         check_execution_policy(settings),
         check_port(settings.server_port),
         asyncio.run(check_subprocess()),
+        check_encryption_key(settings),
     ]

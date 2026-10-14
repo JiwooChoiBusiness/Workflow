@@ -41,7 +41,16 @@ ShutdownHook = Callable[[], Awaitable[None]]
 
 
 class Supervisor:
-    def __init__(self, run_fn: RunFn, *, max_concurrent: int = 1, grace_sec: float = 20) -> None:
+    def __init__(
+        self,
+        run_fn: RunFn,
+        *,
+        max_concurrent: int = 1,
+        grace_sec: float = 20,
+        name: str = "agent",
+    ) -> None:
+        # 레인 이름(agent, workflow). 로그에서 두 인스턴스를 가르는 데만 쓴다(2단계 3.6).
+        self.name = name
         self._run_fn = run_fn
         self._max_concurrent = max_concurrent
         self._grace_sec = grace_sec
@@ -89,7 +98,7 @@ class Supervisor:
         if self._workers:
             return
         self._workers = [
-            asyncio.create_task(self._work(slot), name=f"runner-worker-{slot}")
+            asyncio.create_task(self._work(slot), name=f"runner-{self.name}-worker-{slot}")
             for slot in range(self._max_concurrent)
         ]
 
@@ -137,7 +146,7 @@ class Supervisor:
             try:
                 await self._run_fn(run_id, signal)
             except Exception:
-                log.exception("runner.run_crashed", run_id=run_id)
+                log.exception("runner.run_crashed", lane=self.name, run_id=run_id)
             finally:
                 self._current[slot] = None
                 # 실행 함수가 끝나기 직전에 같은 런이 재개되어 새 신호가 들어왔을 수 있다.
@@ -145,7 +154,12 @@ class Supervisor:
                     del self._cancels[run_id]
 
     async def _shutdown(self, grace_sec: float) -> None:
-        log.info("runner.shutdown_started", active=self.stats()["active"], grace_sec=grace_sec)
+        log.info(
+            "runner.shutdown_started",
+            lane=self.name,
+            active=self.stats()["active"],
+            grace_sec=grace_sec,
+        )
         for signal in self._cancels.values():
             signal.set("shutdown")
 
@@ -158,7 +172,7 @@ class Supervisor:
         if busy:
             _, pending = await asyncio.wait(busy, timeout=grace_sec)
             for worker in pending:
-                log.warning("runner.force_cancel", worker=worker.get_name())
+                log.warning("runner.force_cancel", lane=self.name, worker=worker.get_name())
                 worker.cancel()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
@@ -167,5 +181,5 @@ class Supervisor:
                 await hook()
             except Exception:
                 log.exception("runner.shutdown_hook_failed", hook=getattr(hook, "__qualname__", ""))
-        log.info("runner.shutdown_finished")
+        log.info("runner.shutdown_finished", lane=self.name)
         self.finished.set()

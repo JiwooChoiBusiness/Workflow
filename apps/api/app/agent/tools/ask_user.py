@@ -8,7 +8,7 @@ class AskUserTool(Tool):
     # 넣는다(4.9).
     name = "ask_user"
     group = "ask_user"
-    pauses = True
+    pause_kind = "question"
     description = (
         "사용자에게 질문하고 답을 기다린다. 요구가 모호하거나 되돌릴 수 없는 작업 전에 "
         "확인할 때 쓴다. 답은 이 도구의 결과로 돌아온다."

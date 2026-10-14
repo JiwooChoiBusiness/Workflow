@@ -4,15 +4,21 @@
 지우며(결과 파일은 storage에 남는다), reuse면 지난 과업 세션의 작업공간을 이어 쓴다. 채운 지시는
 첫 사용자 메시지로, 입력 값과 파일은 작업공간 task/로 간다. 서비스 API POST /api/v1/agent-tasks와
 2단계 엔진이 같은 구현을 쓴다. HTTP에서 온 과업은 scope로 키의 에이전트 범위를 함께 검사한다.
+
+워크플로우 agent 노드는 파일을 FileRef(wf_file·session_file)로 준다. 참조 속 저장소 키는 노드
+출력에서 온 값이라 믿지 않고 id로 이 워크스페이스의 행을 다시 찾는다. wf_file은 키 범위가 없는
+엔진 호출(scope 없음)에서만 받는다.
 """
 
 import asyncio
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 import structlog
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.context import context_text, user_message_blocks
@@ -43,12 +49,14 @@ from app.db.repositories.run_events import RunEventRepository
 from app.db.repositories.runs import RunRepository
 from app.db.repositories.session_files import SessionFileRepository
 from app.db.repositories.sessions import SessionRepository
+from app.db.repositories.workflows import WfFileRepository
 from app.db.repositories.workspace_instances import WorkspaceInstanceRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
+from app.sandbox.disk import format_size
 from app.schemas.agent_version import ModelConfig
 from app.schemas.common import RunLimits
-from app.schemas.events import RunEventOut, UsageTotal
+from app.schemas.events import TERMINAL_EVENT_TYPES, RunEventOut, UsageTotal
 from app.schemas.task import (
     TASK_FILES_DIR,
     AgentTaskOut,
@@ -58,8 +66,9 @@ from app.schemas.task import (
 )
 from app.services.access import SessionScope, scoped_session
 from app.services.errors import ServiceError, not_found
-from app.services.runs import RunService, StartedRun, event_out, run_out, task_output
+from app.services.runs import RunService, StartedRun, event_out, pending_of, run_out, task_output
 from app.streaming.event_bus import EventBus, RunRef
+from app.workflow.variables import FileRef, is_file
 
 log = structlog.get_logger("app.services.tasks")
 
@@ -67,14 +76,83 @@ ACTIVE = (RunStatus.QUEUED, RunStatus.RUNNING)
 TITLE_CHARS = 50
 _WAIT_RETRY_SEC = 0.1
 
+FileSource = Literal["session_file", "wf_file"]
+FileKey = tuple[FileSource, uuid.UUID]
 
-def merged_limits(base: Mapping[str, Any] | None, override: RunLimits | None) -> RunLimits:
-    """버전의 limits에 과업이 준 필드만 덮어쓴다."""
+
+@dataclass(frozen=True)
+class ChildTaskOrigin:
+    """다른 런이 만드는 자식 과업. 일반 과업과 다른 점만 담는다.
+
+    call_agent의 자식(오케스트레이션 3.3, 7장)과 워크플로우 agent 노드의 자식(2단계 3.7)이다. 지시는
+    이미 채운 글(모델이 쓴 task, 노드가 렌더한 instruction)이라 템플릿으로 다시 채우지 않는다
+    ({{ }}가 들어 있어도 글이다).
+    """
+
+    # call_agent의 부모 런. 워크플로우 런이 부모면 None이고 wf_node_run.child_run_id가 가리킨다.
+    parent_run_id: uuid.UUID | None
+    title: str
+    meta: dict[str, Any]
+    api_key_id: uuid.UUID | None
+    # 자식이 다시 부를 수 있는 호출 수 상한. 뿌리 런의 남은 수다(3.9). None이면 버전 설정 그대로.
+    child_calls_cap: int | None
+
+
+def _spec_file_key(item: uuid.UUID | FileRef) -> FileKey:
+    if isinstance(item, FileRef):
+        return item.source, _ref_id(item)
+    return "session_file", item
+
+
+def _ref_id(ref: FileRef) -> uuid.UUID:
+    try:
+        return uuid.UUID(ref.file_id)
+    except ValueError:
+        raise TaskSpecError("file_not_found", f"올바른 file_id가 아니다: {ref.file_id!r}") from None
+
+
+def _input_file_keys(value: object) -> FileKey | list[FileKey] | None:
+    """입력 값이 파일이면 그 키(배열이면 키 목록). {"file_id": id}는 session_file이다."""
+    session_file = file_reference(value)
+    if session_file is not None:
+        return "session_file", session_file
+    if is_file(value):
+        return _spec_file_key(_file_ref(value))
+    if isinstance(value, list) and value and all(is_file(item) for item in cast(list[Any], value)):
+        return [_spec_file_key(_file_ref(item)) for item in cast(list[Any], value)]
+    return None
+
+
+def _file_ref(value: object) -> FileRef:
+    try:
+        return FileRef.model_validate(value)
+    except ValidationError:
+        raise TaskSpecError("file_not_found", "파일 참조가 아니다") from None
+
+
+def _as_list(found: FileKey | list[FileKey] | None) -> list[FileKey]:
+    if found is None:
+        return []
+    return found if isinstance(found, list) else [found]
+
+
+def merged_limits(
+    base: Mapping[str, Any] | None,
+    override: RunLimits | None,
+    *,
+    child_calls_cap: int | None = None,
+) -> RunLimits:
+    """버전의 limits에 과업이 준 필드만 덮어쓴다.
+
+    child_calls_cap이 있으면 max_child_calls를 그 값 이하로 내린다(트리 전체 호출 수, 3.9).
+    """
     limits = RunLimits.model_validate(dict(base or {}))
-    if override is None or not override.model_fields_set:
-        return limits
-    update = override.model_dump(include=set(override.model_fields_set))
-    return RunLimits.model_validate({**limits.model_dump(), **update})
+    if override is not None and override.model_fields_set:
+        update = override.model_dump(include=set(override.model_fields_set))
+        limits = RunLimits.model_validate({**limits.model_dump(), **update})
+    if child_calls_cap is not None and limits.max_child_calls > child_calls_cap:
+        limits = limits.model_copy(update={"max_child_calls": max(child_calls_cap, 0)})
+    return limits
 
 
 def _title(text: str) -> str:
@@ -122,11 +200,14 @@ class TaskService:
         subscribe: bool,
         scope: SessionScope | None = None,
         api_key_id: uuid.UUID | None = None,
+        enqueue: bool = True,
+        origin: ChildTaskOrigin | None = None,
     ) -> StartedRun:
         """과업 런을 만들어 큐에 넣는다. scope가 있으면 파일·reuse 세션이 그 안에 있어야 한다.
 
         reuse에 session_id가 없으면 새 과업 세션을 만들고 작업공간을 남긴다. 다음 과업이 그
-        session_id로 이어 쓴다.
+        session_id로 이어 쓴다. enqueue=False면 행만 queued로 만들고 큐에는 넣지 않는다(call_agent의
+        자식은 부모가 대기 상태를 저장한 뒤에 넣는다, 오케스트레이션 3.3).
         """
         self._runs.ensure_accepting()
         if spec.session_mode == "ephemeral" and spec.session_id is not None:
@@ -148,11 +229,16 @@ class TaskService:
             files, context = await self._resolve_inputs(session, ws, spec, scope)
             if reuse:
                 await self._reuse_session(session, ws, spec, agent.id, scope)
-        try:
-            # 템플릿이 무거워도 이벤트 루프와 DB 쓰기 잠금을 붙잡지 않게 스레드에서 채운다.
-            rendered = await asyncio.to_thread(render_instruction, spec.instruction, context)
-        except TaskSpecError as exc:
-            raise _spec_error(exc) from None
+        if origin is not None:
+            rendered = spec.instruction
+            if not rendered.strip():
+                raise ServiceError(422, "instruction_invalid", "과업 지시가 비어 있다")
+        else:
+            try:
+                # 템플릿이 무거워도 이벤트 루프와 DB 쓰기 잠금을 붙잡지 않게 스레드에서 채운다.
+                rendered = await asyncio.to_thread(render_instruction, spec.instruction, context)
+            except TaskSpecError as exc:
+                raise _spec_error(exc) from None
         text = task_message(rendered, context, files)
         now = self._clock()
         async with self._db.write() as session:
@@ -168,11 +254,16 @@ class TaskService:
                         agent_id=agent.id,
                         agent_version_id=version.id,
                         source=SessionSource.TASK,
-                        api_key_id=api_key_id,
+                        api_key_id=origin.api_key_id if origin is not None else api_key_id,
                         external_user=spec.external_user,
-                        title=_title(rendered),
+                        title=origin.title if origin is not None else _title(rendered),
                         status=SessionStatus.ACTIVE,
-                        meta={"session_mode": spec.session_mode},
+                        meta=(
+                            dict(origin.meta)
+                            if origin is not None
+                            else {"session_mode": spec.session_mode}
+                        ),
+                        approval_override=spec.session_approval_override,
                         message_count=0,
                     )
                 )
@@ -187,9 +278,13 @@ class TaskService:
                 inputs=context,
                 files=files,
                 now=now,
+                origin=origin,
             )
         ref = RunRef(run_id=run_id, session_id=chat.id, workspace_id=ws)
-        started = await self._runs.enqueue(ref, subscribe=subscribe)
+        if enqueue:
+            started = await self._runs.enqueue(ref, subscribe=subscribe)
+        else:
+            started = StartedRun(run_id=run_id, session_id=chat.id, subscription=None)
         log.info(
             "task.created",
             run_id=str(run_id),
@@ -197,6 +292,11 @@ class TaskService:
             session_mode=spec.session_mode,
             output_schema=spec.output_schema is not None,
             files=len(files),
+            parent_run_id=(
+                str(origin.parent_run_id)
+                if origin is not None and origin.parent_run_id is not None
+                else None
+            ),
         )
         return started
 
@@ -235,53 +335,85 @@ class TaskService:
         spec: AgentTaskSpec,
         scope: SessionScope | None,
     ) -> tuple[list[TaskFile], dict[str, Any]]:
-        """files와 {"file_id": ...} 입력을 task/files/의 경로로 바꾼다."""
+        """files와 파일 입력({"file_id": ...}, FileRef)을 task/files/의 경로로 바꾼다."""
         try:
-            referenced = {name: file_reference(value) for name, value in spec.inputs.items()}
+            wanted: list[FileKey] = list(dict.fromkeys(_spec_file_key(item) for item in spec.files))
+            referenced = {name: _input_file_keys(value) for name, value in spec.inputs.items()}
         except TaskSpecError as exc:
             raise _spec_error(exc) from None
-        wanted: list[uuid.UUID] = list(dict.fromkeys(spec.files))
-        for file_id in referenced.values():
-            if file_id is not None and file_id not in wanted:
-                wanted.append(file_id)
-        rows = await SessionFileRepository(session, ws).get_many(wanted)
-        by_id = {row.id: row for row in rows}
+        for found in referenced.values():
+            for key in _as_list(found):
+                if key not in wanted:
+                    wanted.append(key)
+        by_key = await self._file_rows(session, ws, wanted, scope)
+        taken: set[str] = set()
+        files: dict[FileKey, TaskFile] = {}
+        for key in wanted:
+            row = by_key.get(key)
+            if row is None:
+                raise ServiceError(
+                    422,
+                    "file_not_found",
+                    "내려받을 수 있는 파일이 아니다",
+                    details={"file_id": str(key[1])},
+                )
+            files[key] = row.model_copy(update={"path": _unique_path(row.filename, taken)})
+        context: dict[str, Any] = {}
+        for name, value in spec.inputs.items():
+            found = referenced[name]
+            if found is None:
+                context[name] = value
+            elif isinstance(found, list):
+                context[name] = [files[key].path for key in found]
+            else:
+                context[name] = files[found].path
+        return list(files.values()), context
+
+    async def _file_rows(
+        self,
+        session: AsyncSession,
+        ws: uuid.UUID,
+        keys: Sequence[FileKey],
+        scope: SessionScope | None,
+    ) -> dict[FileKey, TaskFile]:
+        """보이는 파일만 TaskFile(경로는 비움)로. 없거나 범위 밖이면 빠진다."""
+        found: dict[FileKey, TaskFile] = {}
+        session_ids = [file_id for source, file_id in keys if source == "session_file"]
         # 입력으로 받는 파일은 키의 에이전트 것이면 된다. 사용자(user) 구분은 대화에만 둔다.
         file_scope = (
             SessionScope(sources=scope.sources, agent_id=scope.agent_id)
             if scope is not None
             else None
         )
-        taken: set[str] = set()
-        files: dict[uuid.UUID, TaskFile] = {}
-        for file_id in wanted:
-            row = by_id.get(file_id)
-            visible = row is not None and row.storage_key is not None
-            if row is not None and visible and file_scope is not None:
+        for row in await SessionFileRepository(session, ws).get_many(session_ids):
+            if row.storage_key is None:
+                continue
+            if file_scope is not None:
                 try:
                     await scoped_session(session, ws, row.session_id, file_scope)
                 except ServiceError:
-                    visible = False
-            if row is None or not visible or row.storage_key is None:
-                raise ServiceError(
-                    422,
-                    "file_not_found",
-                    "내려받을 수 있는 세션 파일이 아니다",
-                    details={"file_id": str(file_id)},
-                )
-            files[file_id] = TaskFile(
+                    continue
+            found["session_file", row.id] = TaskFile(
                 session_file_id=row.id,
-                path=_unique_path(row.filename, taken),
+                path="",
                 filename=row.filename,
                 mime=row.mime,
                 size_bytes=row.size_bytes,
                 storage_key=row.storage_key,
             )
-        context: dict[str, Any] = {}
-        for name, value in spec.inputs.items():
-            file_id = referenced[name]
-            context[name] = files[file_id].path if file_id is not None else value
-        return list(files.values()), context
+        wf_ids = [file_id for source, file_id in keys if source == "wf_file"]
+        if wf_ids and scope is None:
+            # 워크플로우 파일은 키 범위가 없는 엔진 호출(agent 노드)만 넘긴다.
+            for wf_row in await WfFileRepository(session, ws).get_many(wf_ids):
+                found["wf_file", wf_row.id] = TaskFile(
+                    wf_file_id=wf_row.id,
+                    path="",
+                    filename=wf_row.filename,
+                    mime=wf_row.mime,
+                    size_bytes=wf_row.size_bytes,
+                    storage_key=wf_row.storage_key,
+                )
+        return found
 
     async def _reuse_session(
         self,
@@ -315,7 +447,7 @@ class TaskService:
             raise ServiceError(
                 409,
                 "workspace_disk_limit",
-                f"작업공간이 디스크 한도({limit // 2**20}MB)를 넘었다",
+                f"작업공간이 디스크 한도({format_size(limit)})를 넘었다",
                 details={"disk_bytes": instance.disk_bytes, "limit_bytes": limit},
             )
         return chat
@@ -332,6 +464,7 @@ class TaskService:
         inputs: Mapping[str, Any],
         files: Sequence[TaskFile],
         now: datetime,
+        origin: ChildTaskOrigin | None = None,
     ) -> uuid.UUID:
         ws = spec.workspace_id
         message_id = new_id()
@@ -373,12 +506,17 @@ class TaskService:
                 status=RunStatus.QUEUED,
                 user_message_id=message_id,
                 model={"model_id": model.model_id},
-                limits=merged_limits(version.limits, spec.limits).model_dump(mode="json"),
+                limits=merged_limits(
+                    version.limits,
+                    spec.limits,
+                    child_calls_cap=origin.child_calls_cap if origin is not None else None,
+                ).model_dump(mode="json"),
                 approval_mode=spec.approval_mode or version.approval_mode,
                 input=task.model_dump(mode="json"),
                 usage=UsageTotal().model_dump(mode="json"),
                 steps=0,
                 queued_at=now,
+                parent_run_id=origin.parent_run_id if origin is not None else None,
             )
         )
         await runs.flush()
@@ -427,7 +565,7 @@ class TaskService:
             return await self.wait_view(workspace_id, started.run_id)
         finished = False
         async for event in subscription.events():
-            if event.type == "run.completed":
+            if event.type in TERMINAL_EVENT_TYPES:
                 finished = True
                 break
         subscription.close()
@@ -448,7 +586,7 @@ class TaskService:
             subscription = await self._runs.run_stream(workspace_id, run_id, after=after)
             try:
                 async for event in subscription.events():
-                    if event.type != "run.completed":
+                    if event.type not in TERMINAL_EVENT_TYPES:
                         continue
                     _, settled = await self._progress(workspace_id, run_id)
                     if settled:
@@ -467,7 +605,11 @@ class TaskService:
             if run is None:
                 raise not_found("런")
             after = await RunEventRepository(session, workspace_id).max_seq(run_id)
-        return after, run.status not in ACTIVE
+        # 하위 에이전트를 기다리는 런(waiting_input + agent_call)은 사람 입력을 기다리는 게 아니라
+        # 도구를 실행하는 중이다. 끝난 것으로 보지 않아 wait()가 HITL로 돌아오지 않는다(3.2).
+        pending = pending_of(run) if run.status == RunStatus.WAITING_INPUT else None
+        waits_child = pending is not None and pending.kind == "agent_call"
+        return after, run.status not in ACTIVE and not waits_child
 
     async def view(self, workspace_id: uuid.UUID, run_id: uuid.UUID) -> AgentTaskOut:
         async with self._db.read() as session:

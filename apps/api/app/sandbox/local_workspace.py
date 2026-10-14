@@ -322,8 +322,11 @@ class LocalWorkspaceBackend:
         *,
         runner: ProcessRunner | None = None,
         http_client: "HttpClient | None" = None,
+        workspaces_dir: Path | None = None,
     ) -> None:
-        self._workspaces = settings.data_dir / "workspaces"
+        # 워크플로우 code 노드용 두 번째 인스턴스는 DATA_DIR/wf-workspaces를 쓴다(2단계 9.1).
+        # 1단계 하우스키핑이 세션 없는 폴더를 지우는 DATA_DIR/workspaces와 섞이지 않게 한다.
+        self._workspaces = workspaces_dir or settings.data_dir / "workspaces"
         self._workspaces_resolved: Path | None = None
         self._pip_cache = settings.data_dir / "cache" / "pip"
         self._shell = effective_shell(settings.sandbox_shell, windows=IS_WINDOWS)

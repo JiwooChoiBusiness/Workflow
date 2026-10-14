@@ -2,10 +2,13 @@ import json
 import re
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
 
+from app.agent.child_runs import SubAgentChoice
+from app.agent.tools.call_agent import CallAgentTool
 from app.config import REPO_ROOT, Settings, get_settings
 from app.llm.catalog import get_capabilities
 from app.llm.gemini_adapter import (
@@ -18,6 +21,7 @@ from app.llm.types import (
     CanonicalMessage,
     ChatRequest,
     ErrorEvent,
+    ForcedTool,
     MessageEnd,
     ModelEvent,
     ModelParams,
@@ -28,6 +32,7 @@ from app.llm.types import (
     ToolSpec,
     ToolUseBlock,
 )
+from app.schemas.agent_version import ResultSpec
 
 # 실제 Gemini API를 부른다. 키는 앱 설정(.env의 GEMINI_API_KEYS)으로만 받고, 없으면 건너뛴다.
 # 실행마다 생성 호출이 여러 번 나가므로 기본 실행에서 빠지고 `uv run pytest -m live`로만 돈다.
@@ -271,3 +276,44 @@ async def test_fallback_reaches_last_model_when_others_return_503(
     expected = [model for model in fallback[:-1] for _ in range(2)]
     assert transport.models[: len(expected)] == expected
     assert transport.models[len(expected)] == fallback[-1]
+
+
+async def test_call_agent_with_output_schema_object_parameter(adapter: GeminiAdapter) -> None:
+    # 오케스트레이션 라이브 확인 1: properties 없는 object 파라미터(output_schema)를 함수 선언으로
+    # 받는지 본다. 거부되면(400) call_agent 자체가 붙지 않으므로 output_schema를 JSON 문자열로
+    # 바꿔야 한다(설계 11.3).
+    tool = CallAgentTool(
+        [
+            SubAgentChoice(
+                agent_id=uuid4(),
+                slug="writer",
+                name="작성",
+                description="요약을 JSON으로 돌려준다",
+                result=ResultSpec(format="json"),
+            )
+        ]
+    )
+    spec = tool.spec()
+    assert spec.input_schema["properties"]["output_schema"]["type"] == "object"
+    assert "properties" not in spec.input_schema["properties"]["output_schema"]
+    req = ChatRequest(
+        system="하위 에이전트에게 일을 맡긴다.",
+        messages=[
+            user(
+                "call_agent로 writer에게 '오늘 날씨를 한 줄로 요약'을 맡겨라. output_schema는 "
+                '{"type":"object","properties":{"summary":{"type":"string"}},'
+                '"required":["summary"],"additionalProperties":false}로 준다.'
+            )
+        ],
+        tools=[spec],
+        params=LOW.model_copy(update={"tool_choice": ForcedTool(name="call_agent")}),
+    )
+
+    events = await collect(adapter, req)
+
+    end = finished(events)
+    assert end.stop_reason == "tool_use"
+    call = next(event for event in events if isinstance(event, ToolCallEnd))
+    arguments = json.loads(call.arguments)
+    assert call.name == "call_agent" and arguments["agent"] == "writer"
+    assert isinstance(arguments.get("output_schema", {}), dict)

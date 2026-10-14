@@ -43,12 +43,13 @@ class SkillOut(BaseModel):
     description: str
     current_version_id: uuid.UUID | None
     current_version_number: int | None
+    # 새 번호부터. 화면이 초안에 고정된 예전 버전이 어느 스킬의 몇 번째인지 상세 조회 없이 찾는다.
+    versions: list[SkillVersionSummary]
     created_at: datetime
     updated_at: datetime
 
 
 class SkillDetailOut(SkillOut):
-    versions: list[SkillVersionSummary]
     current_version: SkillVersionOut | None
 
 

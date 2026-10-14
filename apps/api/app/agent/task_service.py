@@ -17,6 +17,8 @@ from app.schemas.common import ApprovalMode, RunLimits
 from app.schemas.events import RunEventOut, UsageTotal
 from app.schemas.run import PendingInteractionOut, RunErrorOut
 from app.schemas.task import TASK_INPUTS_PATH, SessionFileRef, SessionMode, TaskFile
+from app.workflow.render import strict_environment
+from app.workflow.variables import FileRef
 
 FILE_ID_KEY = "file_id"
 # 렌더링한 지시의 상한. 사용자 메시지 상한(app/schemas/session.py)과 같다.
@@ -36,24 +38,32 @@ class AgentTaskSpec(BaseModel):
     agent_id: UUID
     # None이면 발행 버전.
     agent_version_id: UUID | None = None
-    # 변수명 → 값. 파일은 {"file_id": "<session_file id>"}로 준다.
+    # 변수명 → 값. 파일은 {"file_id": "<session_file id>"}로 준다. 워크플로우 파일 변수(FileRef)와
+    # 그 배열도 파일로 받아 task/files/의 경로로 바꾼다.
     inputs: dict[str, Any] = Field(default_factory=dict[str, Any])
-    # {{변수}} 템플릿(Jinja2 SandboxedEnvironment).
+    # {{변수}} 템플릿. app/workflow/render.py의 strict 환경(Jinja2 샌드박스)으로 채운다.
     instruction: str
     # JSON Schema(type: object, additionalProperties: false). 없으면 결과는 text만.
     output_schema: dict[str, Any] | None = None
-    # task/files/로 복사할 session_file id.
-    files: list[UUID] = Field(default_factory=list[UUID])
+    # task/files/로 복사할 파일. session_file id, 또는 워크플로우의 FileRef(wf_file·session_file).
+    # FileRef의 저장소 키는 믿지 않고 id로 행을 다시 찾는다.
+    files: Sequence[UUID | FileRef] = Field(default_factory=list[UUID | FileRef])
     # 준 필드만 버전의 limits를 덮어쓴다.
     limits: RunLimits | None = None
     # None이면 버전의 승인 모드.
     approval_mode: ApprovalMode | None = None
+    # 새 과업 세션의 session.approval_override. 하위 에이전트 호출은 부모 세션의 자동 승인을
+    # 물려준다(오케스트레이션 3.5). reuse 세션에는 쓰지 않는다.
+    session_approval_override: Literal["off"] | None = None
     # ephemeral: 새 세션에서 돌고 끝나면 작업공간을 지운다. reuse: 작업공간을 남긴다.
     session_mode: SessionMode = "ephemeral"
     # reuse일 때 이어 쓸 과업 세션. 비우면 새 세션을 만든다(응답의 session_id로 이어 쓴다).
     session_id: UUID | None = None
     external_user: str | None = None
-    # workflow_run_id, node_id 등. run.input.correlation에 남는다.
+    # run.input.correlation에 남는다. 조회 조건에는 쓰지 않는다. 워크플로우 agent 노드는
+    # {workflow_run_id, node_id, node_run_id, iteration_index}, call_agent의 자식은
+    # child_runs.ChildCorrelation {parent_run_id, parent_session_id, root_run_id, tool_call_id,
+    # depth, ancestors, parent_agent_name}.
     correlation: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
@@ -138,13 +148,8 @@ def check_output_schema(schema: Mapping[str, Any]) -> None:
 
 def render_instruction(template: str, context: Mapping[str, Any]) -> str:
     """{{변수}}를 채운다. 없는 변수는 오류다(오타를 빈칸으로 넘기지 않는다)."""
-    # Jinja2는 과업을 처음 받을 때 불러온다(2.7).
-    from jinja2 import StrictUndefined
-    from jinja2.sandbox import SandboxedEnvironment
-
-    environment = SandboxedEnvironment(undefined=StrictUndefined, autoescape=False)
     try:
-        rendered = environment.from_string(template).render(dict(context))
+        rendered = strict_environment().from_string(template).render(dict(context))
     except Exception as exc:
         raise TaskSpecError(
             "instruction_invalid", f"instruction을 채우지 못했다: {type(exc).__name__}: {exc}"

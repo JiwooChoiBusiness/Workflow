@@ -32,11 +32,27 @@ class PendingInteractionOut(BaseModel):
     created_at: datetime
 
 
+class RunChildOut(BaseModel):
+    """call_agent로 부른 자식 런을 기다리는 중. 화면은 이 값으로 하위 에이전트 카드를 다시 그리고
+    session_id의 이벤트 스트림에 붙는다(오케스트레이션 6.4, 8.1)."""
+
+    run_id: uuid.UUID
+    session_id: uuid.UUID
+    agent_id: uuid.UUID
+    agent_slug: str
+    agent_name: str
+    tool_call_id: str
+    version: Literal["draft", "published"]
+    since: datetime
+
+
 class RunOut(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
     agent_version_id: uuid.UUID
     trigger: str
+    # 하위 에이전트를 기다리는 런은 DB에서 waiting_input이지만 여기서는 running이고 child가
+    # 채워진다.
     status: RunStatus
     user_message_id: uuid.UUID
     # 이 런의 마지막 assistant 메시지(스텝마다 메시지가 하나씩 생긴다).
@@ -56,6 +72,10 @@ class RunOut(BaseModel):
     ended_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # call_agent가 만든 자식 런이면 부모 런과 깊이(지휘자 0, 자식 1, 손자 2).
+    parent_run_id: uuid.UUID | None = None
+    depth: int = 0
+    child: RunChildOut | None = None
 
 
 class RunList(BaseModel):

@@ -6,12 +6,13 @@ DB의 storage_key 열에는 이 키를 그대로 저장한다. 키를 만드는 
 from collections.abc import AsyncIterable, AsyncIterator
 from pathlib import Path
 from typing import Protocol
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel
 
 CHUNK_SIZE = 1024 * 1024
 MAX_KEY_LENGTH = 400
+_SAFE_ID_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
 
 
 class StorageError(Exception):
@@ -92,9 +93,29 @@ def session_file_key(run_id: UUID, rel_path: str) -> str:
     return f"session-files/{run_id}/{rel_path}"
 
 
+def staged_file_key(run_id: UUID, call_id: str, rel_path: str) -> str:
+    # call_agent로 하위 에이전트에 넘기려고 복사한 부모 작업공간 파일(오케스트레이션 4.1). 런 종료
+    # 수집의 session_file_key와 겹치면 부모가 그 파일을 고친 뒤의 수집이 덮어써 스테이징 행의
+    # sha256이 실제와 어긋나므로 호출별 폴더로 나눈다. call_id는 키에 쓸 수 있게 고친 도구 호출
+    # id다.
+    return f"session-files/{run_id}/.calls/{call_id}/{rel_path}"
+
+
 def snapshot_key(workspace_id: UUID, snapshot_id: UUID) -> str:
     return f"snapshots/{workspace_id}/{snapshot_id}.zip"
 
 
+def safe_tool_call_id(tool_call_id: str) -> str:
+    """storage 키에 쓰는 도구 호출 id. 프로바이더가 주는 id에 '/' 같은 글자가 섞여도 된다."""
+    if 0 < len(tool_call_id) <= 64 and set(tool_call_id) <= _SAFE_ID_CHARS:
+        return tool_call_id.lstrip(".") or "call"
+    return "call-" + uuid5(NAMESPACE_URL, tool_call_id).hex
+
+
 def tool_output_key(run_id: UUID, tool_call_id: str) -> str:
     return f"tool-outputs/{run_id}/{tool_call_id}.txt"
+
+
+def wf_file_key(workspace_id: UUID, file_id: UUID) -> str:
+    # 워크플로우 업로드·출력 파일(2단계 4.1 wf_file).
+    return f"wf-files/{workspace_id}/{file_id}"

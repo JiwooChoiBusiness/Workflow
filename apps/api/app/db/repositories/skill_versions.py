@@ -3,6 +3,7 @@ from collections.abc import Collection
 from datetime import datetime
 
 from sqlalchemy import func
+from sqlalchemy.orm import defer
 
 from app.db.models import Skill, SkillVersion
 from app.db.repositories.base import WorkspaceScopedRepository
@@ -18,17 +19,26 @@ class SkillVersionRepository(WorkspaceScopedRepository[SkillVersion]):
             .order_by(SkillVersion.version_number.desc())
         )
 
+    async def list_for_skills(self, skill_ids: Collection[uuid.UUID]) -> list[SkillVersion]:
+        """여러 스킬의 버전 요약(목록 화면). SKILL.md 본문과 manifest는 읽지 않는다."""
+        if not skill_ids:
+            return []
+        return await self._scalars(
+            self._select()
+            .options(
+                defer(SkillVersion.skill_md, raiseload=True),
+                defer(SkillVersion.manifest, raiseload=True),
+            )
+            .where(SkillVersion.skill_id.in_(list(skill_ids)))
+            .order_by(SkillVersion.skill_id, SkillVersion.version_number.desc())
+        )
+
     async def get_for_skill(
         self, skill_id: uuid.UUID, version_id: uuid.UUID
     ) -> SkillVersion | None:
         return await self._scalar(
             self._select().where(SkillVersion.id == version_id, SkillVersion.skill_id == skill_id)
         )
-
-    async def get_many(self, version_ids: Collection[uuid.UUID]) -> list[SkillVersion]:
-        if not version_ids:
-            return []
-        return await self._scalars(self._select().where(SkillVersion.id.in_(list(version_ids))))
 
     async def get_many_with_skill(
         self, version_ids: Collection[uuid.UUID]

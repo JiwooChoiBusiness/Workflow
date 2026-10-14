@@ -1,10 +1,14 @@
-"""런 이벤트(설계 4.5)의 단일 출처.
+"""런 이벤트(1단계 설계 4.5, 2단계 설계 3.9)의 단일 출처.
 
-SSE, run_event 영속, 화면 타입이 모두 이 모델을 따른다.
+SSE, run_event·wf_run_event 영속, 화면 타입이 모두 이 모델을 따른다.
 packages/event-schema/run-events.schema.json은 scripts/gen-event-schema.py가 여기서 만든다. 필드를
 지우거나 뜻을 바꾸면 SCHEMA_VERSION을 올리고 스키마 파일을 다시 만든다(13.2). 필드를 더하는 것은
 같은 버전 안에서 한다. 받는 쪽은 모르는 필드를 무시해야 하므로 스키마에 additionalProperties:
 false를 두지 않는다.
+
+v2는 워크플로우 런 이벤트(workflow.*, node.*, iteration.*, answer.*)를 더하고 봉투의 session_id를
+nullable로 바꿨다. 워크플로우 런은 session_id가 null이고 챗플로우만 conversation_id가 있다. 같은 v2
+안에서 하위 에이전트 호출의 child_run.*과 tool_call.completed.child_run_id를 더했다.
 """
 
 import uuid
@@ -15,11 +19,14 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import ApprovalMode
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 ToolCallStatus = Literal["ok", "error", "timeout", "cancelled", "rejected"]
 InteractionKind = Literal["question", "approval"]
 RunEndStatus = Literal["succeeded", "failed", "cancelled", "waiting_input"]
+WorkflowKind = Literal["workflow", "chatflow"]
+WorkflowEndStatus = Literal["succeeded", "failed", "cancelled", "waiting_input"]
+NodeRunStatus = Literal["running", "succeeded", "failed", "skipped", "cancelled", "waiting_input"]
 
 
 class RunQueuedData(BaseModel):
@@ -92,6 +99,8 @@ class ToolCallCompletedData(BaseModel):
     output_excerpt: str
     output_bytes: int
     output_storage_key: str | None = None
+    # call_agent 호출이면 그 자식 런. duration_ms는 자식의 벽시계 시간이다(오케스트레이션 3.4).
+    child_run_id: uuid.UUID | None = None
 
 
 class FileChangedData(BaseModel):
@@ -212,11 +221,210 @@ class RunCompletedData(BaseModel):
     error: RunErrorData | None = None
 
 
+class ChildRunStartedData(BaseModel):
+    """call_agent가 자식 런을 만들고 부모가 그 결과를 기다리기 시작했다(오케스트레이션 6.1).
+
+    부모 런은 run.completed 없이 열린 채로 남는다. 자식의 진행과 승인은 child_session_id 세션의
+    이벤트 스트림으로 따로 받는다.
+    """
+
+    tool_call_id: str
+    child_run_id: uuid.UUID
+    child_session_id: uuid.UUID
+    agent_id: uuid.UUID
+    agent_slug: str
+    agent_name: str
+    # 자식이 쓰는 버전. 초안이면 발행 스냅샷 없이 빈 작업공간에서 시작한다.
+    version: Literal["draft", "published"]
+    depth: int
+    result_format: Literal["text", "json"]
+    # 모델이 쓴 task의 앞 2KB.
+    task_preview: str
+
+
+class ChildRunCompletedData(BaseModel):
+    """자식 런이 끝나 부모가 다시 큐에 들어간다. 결과는 뒤이은 tool_call.completed에 있다."""
+
+    tool_call_id: str
+    child_run_id: uuid.UUID
+    status: Literal["succeeded", "failed", "cancelled"]
+    error: RunErrorData | None = None
+    steps: int
+    usage_total: UsageTotal
+    duration_ms: int
+    # 자식의 결과 파일 수.
+    files: int
+
+
 class PingData(BaseModel):
     pass
 
 
-EVENT_DATA_MODELS: dict[str, type[BaseModel]] = {
+class WorkflowQueuedData(BaseModel):
+    # 워크플로우 레인 대기열에서 몇 번째인지. 1이면 다음 차례다.
+    position: int
+
+
+class WorkflowStartedData(BaseModel):
+    workflow_id: uuid.UUID | None = None
+    version_id: uuid.UUID | None = None
+    kind: WorkflowKind
+    # 런 입력의 4KB 미리보기(마스킹). 전문은 wf_run.inputs.
+    inputs_preview: dict[str, Any]
+    truncated: bool
+    resumed: bool
+    node_count: int
+
+
+class NodeStartedData(BaseModel):
+    node_run_id: uuid.UUID
+    node_id: str
+    node_type: str
+    title: str
+    # 런 안 실행 순서. 재시도와 skipped 기록도 번호를 하나씩 받는다.
+    index: int
+    iteration_id: str | None = None
+    iteration_index: int | None = None
+    attempt: int
+    # agent 노드를 재개할 때 그 자식 런과 세션. 화면은 세션 스트림
+    # (/sessions/{sid}/events?run_id=)으로 자식의 진행·승인을 본다(3.8). 첫 시도에는 아직 자식이
+    # 없어 node.progress로 알린다.
+    child_run_id: uuid.UUID | None = None
+    child_session_id: uuid.UUID | None = None
+
+
+class NodeTextDeltaData(BaseModel):
+    node_id: str
+    node_run_id: uuid.UUID
+    text: str
+
+
+class NodeProgressData(BaseModel):
+    """agent 노드의 자식 런 진행. 자식을 만들자마자 한 번, 그 뒤 10초마다 온다."""
+
+    node_id: str
+    node_run_id: uuid.UUID
+    steps: int | None = None
+    usage: UsageTotal | None = None
+    # 자식 런이 에이전트 레인 대기열에서 몇 번째인지. 돌고 있으면 null.
+    position: int | None = None
+    child_run_id: uuid.UUID | None = None
+    child_session_id: uuid.UUID | None = None
+
+
+class NodeWaitingData(BaseModel):
+    node_id: str
+    node_run_id: uuid.UUID | None = None
+    reason: Literal["queue", "rate_limit"]
+    position: int | None = None
+
+
+class NodeRetryingData(BaseModel):
+    node_id: str
+    # 방금 실패한 시도의 노드 런. attempt는 이어서 시작할 시도 번호다(첫 시도가 1).
+    node_run_id: uuid.UUID
+    attempt: int
+    reason: str
+
+
+class NodeUsageData(BaseModel):
+    """모델을 부른 노드(llm 등)의 호출 한 번. 1단계 usage와 같은 값에 노드가 붙고 step이 없다."""
+
+    node_id: str
+    node_run_id: uuid.UUID
+    model: str
+    key_index: int | None = None
+    input_tokens: int
+    output_tokens: int
+    reasoning_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    estimated: bool
+    cost_usd: float | None = None
+
+
+class NodeError(BaseModel):
+    code: str
+    message: str
+    retryable: bool = False
+
+
+class NodeCompletedData(BaseModel):
+    node_run_id: uuid.UUID
+    node_id: str
+    # waiting_input은 agent 노드가 승인·질문을 기다리며 멈춘 것이다. 재개하면 같은 node_run_id로
+    # 다시 시작한다.
+    status: Literal["succeeded", "failed", "skipped", "cancelled", "waiting_input"]
+    # 4KB 미리보기(마스킹). 전문은 노드 런 상세 API로 받는다.
+    outputs_preview: dict[str, Any] = Field(default_factory=dict[str, Any])
+    truncated: bool = False
+    error: NodeError | None = None
+    usage: UsageTotal | None = None
+    duration_ms: int
+    # 분기 노드가 고른 핸들. 오류 분기로 갔으면 fail.
+    branch: str | None = None
+    warnings: list[str] = Field(default_factory=list[str])
+
+
+class IterationStartedData(BaseModel):
+    node_id: str
+    total: int
+
+
+class IterationNextData(BaseModel):
+    node_id: str
+    index: int
+
+
+class IterationCompletedData(BaseModel):
+    node_id: str
+    count: int
+    failed_count: int
+    duration_ms: int
+
+
+class AnswerDeltaData(BaseModel):
+    text: str
+    node_id: str
+    node_run_id: uuid.UUID | None = None
+
+
+class AnswerCompletedData(BaseModel):
+    text: str
+    message_id: uuid.UUID | None = None
+
+
+class WorkflowWaitingInputData(BaseModel):
+    node_id: str
+    iteration_index: int | None = None
+    child_run_id: uuid.UUID | None = None
+    interaction: RunWaitingInputData
+
+
+class WorkflowResumedData(BaseModel):
+    node_id: str
+
+
+class WorkflowErrorData(BaseModel):
+    code: str
+    message: str
+    node_id: str | None = None
+    retryable: bool = False
+
+
+class WorkflowCompletedData(BaseModel):
+    status: WorkflowEndStatus
+    # end 노드 출력을 완료 순서로 합친 값의 4KB 미리보기(마스킹). 같은 이름은 나중 값이 이긴다.
+    # 전문은 wf_run.outputs(GET /wf-runs/{rid}). succeeded가 아니면 null.
+    outputs: dict[str, Any] | None = None
+    truncated: bool = False
+    usage_total: UsageTotal
+    node_runs: int
+    duration_ms: int
+    error: WorkflowErrorData | None = None
+
+
+# 1단계 에이전트 런의 이벤트. run_event에 남는다.
+AGENT_RUN_EVENT_DATA_MODELS: dict[str, type[BaseModel]] = {
     "run.queued": RunQueuedData,
     "run.started": RunStartedData,
     "workspace.restoring": WorkspaceEventData,
@@ -242,13 +450,54 @@ EVENT_DATA_MODELS: dict[str, type[BaseModel]] = {
     "message.completed": MessageCompletedData,
     "run.completed": RunCompletedData,
     "run.error": RunErrorData,
+    # 오케스트레이션(하위 에이전트 호출). 부모 런의 스트림에 온다.
+    "child_run.started": ChildRunStartedData,
+    "child_run.completed": ChildRunCompletedData,
+}
+
+# 워크플로우 런의 이벤트(2단계 3.9). wf_run_event에 남는다. workflow.queued는 서비스가, 나머지는
+# 엔진(app/workflow/engine.py)이 낸다.
+WF_EVENT_DATA_MODELS: dict[str, type[BaseModel]] = {
+    "workflow.queued": WorkflowQueuedData,
+    "workflow.started": WorkflowStartedData,
+    "node.started": NodeStartedData,
+    "node.text_delta": NodeTextDeltaData,
+    "node.progress": NodeProgressData,
+    "node.waiting": NodeWaitingData,
+    "node.retrying": NodeRetryingData,
+    "node.usage": NodeUsageData,
+    "node.completed": NodeCompletedData,
+    "iteration.started": IterationStartedData,
+    "iteration.next": IterationNextData,
+    "iteration.completed": IterationCompletedData,
+    "answer.delta": AnswerDeltaData,
+    "answer.completed": AnswerCompletedData,
+    "workflow.waiting_input": WorkflowWaitingInputData,
+    "workflow.resumed": WorkflowResumedData,
+    "workflow.error": WorkflowErrorData,
+    "workflow.completed": WorkflowCompletedData,
+}
+
+EVENT_DATA_MODELS: dict[str, type[BaseModel]] = {
+    **AGENT_RUN_EVENT_DATA_MODELS,
+    **WF_EVENT_DATA_MODELS,
     "ping": PingData,
 }
 
-# SQLite run_event에 남기지 않는 이벤트. 재접속 때 링버퍼가 없으면 다시 볼 수 없으므로 화면은
-# message.completed·tool_call.completed의 전체 내용으로 다시 그린다(2.4).
+# SQLite(run_event·wf_run_event)에 남기지 않는 이벤트. 재접속 때 링버퍼가 없으면 다시 볼 수 없으므로
+# 화면은 message.completed·tool_call.completed·node.completed의 전체 내용으로 다시 그린다(2.4).
 TRANSIENT_EVENT_TYPES = frozenset(
-    {"message.delta", "thinking.delta", "tool_call.input_delta", "tool_call.output_delta", "ping"}
+    {
+        "message.delta",
+        "thinking.delta",
+        "tool_call.input_delta",
+        "tool_call.output_delta",
+        "node.text_delta",
+        "node.progress",
+        "node.waiting",
+        "answer.delta",
+        "ping",
+    }
 )
 # 이벤트 하나가 4KB를 넘지 않게 나눠 보내는 델타의 글자 필드(2.4).
 DELTA_TEXT_FIELDS: dict[str, str] = {
@@ -256,17 +505,23 @@ DELTA_TEXT_FIELDS: dict[str, str] = {
     "thinking.delta": "text",
     "tool_call.input_delta": "json_fragment",
     "tool_call.output_delta": "text",
+    "node.text_delta": "text",
+    "answer.delta": "text",
 }
-# 스트림을 닫는 이벤트. waiting_input으로 멈출 때도 run.completed가 온다. run.error는 언제나 바로
-# 뒤에 run.completed(status=failed)가 따라오므로 서버는 run.completed에서 연결을 닫는다.
-TERMINAL_EVENT_TYPE = "run.completed"
+# 스트림을 닫는 이벤트. waiting_input으로 멈출 때도 run.completed·workflow.completed가 온다.
+# run.error·workflow.error는 언제나 바로 뒤에 완료 이벤트(status=failed)가 따라오므로 서버는 완료
+# 이벤트에서 연결을 닫는다.
+TERMINAL_EVENT_TYPES = frozenset({"run.completed", "workflow.completed"})
 
 
 class RunEventOut(BaseModel):
     """SSE data 줄과 영속 이벤트 조회 응답의 공통 모양."""
 
     run_id: uuid.UUID
-    session_id: uuid.UUID
+    # 워크플로우 런은 null이다.
+    session_id: uuid.UUID | None
+    # 챗플로우 런에만 있다.
+    conversation_id: uuid.UUID | None = None
     seq: int
     ts: datetime
     type: str
@@ -277,9 +532,11 @@ def run_events_json_schema() -> dict[str, Any]:
     """packages/event-schema/run-events.schema.json의 내용."""
     defs: dict[str, Any] = {}
     variants: list[dict[str, Any]] = []
+    uuid_or_null = {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}]}
     envelope = {
         "run_id": {"type": "string", "format": "uuid"},
-        "session_id": {"type": "string", "format": "uuid"},
+        "session_id": uuid_or_null,
+        "conversation_id": uuid_or_null,
         "seq": {"type": "integer", "minimum": 1},
         "ts": {"type": "string", "format": "date-time"},
     }
@@ -319,11 +576,13 @@ def run_events_json_schema() -> dict[str, Any]:
         "title": "RunEvent",
         "description": (
             "런 이벤트(SSE data 줄 한 개). SSE의 id는 seq, event는 type과 같다. "
-            "x-transient-types의 이벤트는 저장되지 않아 재접속 때 다시 오지 않을 수 있다."
+            "x-transient-types의 이벤트는 저장되지 않아 재접속 때 다시 오지 않을 수 있다. "
+            "x-terminal-types의 이벤트 뒤에 서버가 스트림을 닫는다. 워크플로우 런은 session_id가 "
+            "null이고 챗플로우 런만 conversation_id가 있다."
         ),
         "x-schema-version": SCHEMA_VERSION,
         "x-transient-types": sorted(TRANSIENT_EVENT_TYPES),
-        "x-terminal-type": TERMINAL_EVENT_TYPE,
+        "x-terminal-types": sorted(TERMINAL_EVENT_TYPES),
         "oneOf": variants,
         "$defs": dict(sorted(defs.items())),
     }

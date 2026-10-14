@@ -20,10 +20,15 @@ __pycache__/
 .ruff_cache/
 .pyright/
 *.egg-info/
+# pip-audit 입력으로 uv export가 만드는 파일
+requirements-audit.txt
 
 # Node
 node_modules/
 dist/
+# apps/web/scripts/build.ts가 빌드 중에 잠깐 만드는 폴더
+dist.next/
+dist.old/
 .vite/
 coverage/
 playwright-report/

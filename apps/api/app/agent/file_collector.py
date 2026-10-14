@@ -20,8 +20,11 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_RUN_BYTES = 200 * 1024 * 1024
 MAX_RUN_FILES = 200
 MAX_SCAN_ENTRIES = 1000
-# mtime 해상도와 시계 차이를 감안해 런 시작보다 조금 앞부터 본다(3.13).
-SINCE_SLACK = timedelta(seconds=2)
+# 파일 시스템은 mtime을 시스템 시계의 한 틱(Windows 1~16ms, Linux 1~10ms) 늦게 찍을 수 있다.
+MTIME_TOLERANCE = timedelta(milliseconds=50)
+# 바닥 시각은 DB에 마이크로초까지만 남고 mtime 비교는 float라서, 그 시각과 같은 틱에 쓴 파일이
+# 바닥보다 늦어 보이지 않게 조금 띄운다.
+_FLOOR_STEP = timedelta(milliseconds=1)
 OUTPUTS_PREFIX = "outputs/"
 
 REASON_TOO_LARGE = "too_large"
@@ -31,6 +34,14 @@ REASON_COPY_FAILED = "copy_failed"
 
 class CopyFailed(Exception):
     """복사하지 못한 파일. 목록에는 남기고 다운로드만 막는다."""
+
+
+class AlreadyCollected(Exception):
+    """이 런이 같은 경로·같은 내용으로 이미 storage에 남긴 파일(call_agent 스테이징).
+
+    목록에서 빼고 새 행을 만들지 않는다. 같은 파일이 세션 파일 목록에 두 번 보이지 않게 한다
+    (오케스트레이션 4.1의 3번).
+    """
 
 
 class CopiedFile(BaseModel):
@@ -61,8 +72,18 @@ class CollectionResult(BaseModel):
 CopyFn = Callable[[str], Awaitable[CopiedFile]]
 
 
-def window_start(run_started_at: datetime) -> datetime:
-    return run_started_at - SINCE_SLACK
+def changes_since(ready_at: datetime, floor: datetime | None = None) -> datetime:
+    """이 런의 변경으로 볼 mtime 기준선(3.13).
+
+    ready_at은 런이 작업공간을 넘겨받은 시각이다(스냅샷 복원·첨부 복사가 끝난 뒤). 그 전에
+    플랫폼이 쓴 파일은 mtime이 새로 찍혔어도 런의 결과가 아니다. floor는 이 런 앞에서 플랫폼이
+    작업공간을 마지막으로 만진 시각(앞 런이 끝난 때, 작업공간 초기화)이다. 그때 이미 있던 파일은
+    앞 런이 알렸거나 원래 있던 것이라 허용 오차 안에 들어도 다시 잡지 않는다.
+    """
+    since = ready_at - MTIME_TOLERANCE
+    if floor is not None:
+        since = max(since, floor + _FLOOR_STEP)
+    return since
 
 
 def guess_mime(filename: str) -> str:
@@ -99,6 +120,8 @@ async def collect_files(
         else:
             try:
                 stored = await copy(entry.path)
+            except AlreadyCollected:
+                continue
             except CopyFailed as exc:
                 log.warning("agent.file_copy_failed", path=entry.path, error=str(exc))
                 item.reason = REASON_COPY_FAILED

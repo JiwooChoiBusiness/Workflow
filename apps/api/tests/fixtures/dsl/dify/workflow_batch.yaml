@@ -1,0 +1,207 @@
+# Dify DSL 구조를 보고 직접 쓴 작은 워크플로우 예제. iteration(+iteration-start) 안에서 llm이 item·index를
+# 읽고, 자바스크립트 code·list-operator·document-extractor는 우리가 옮기지 않는 노드다. 앱 아이콘은
+# 이미지이고, 파일 업로드 기능이 켜져 있어 sys.files를 읽는다.
+app:
+  description: 주소 목록을 나눠 하나씩 요약하고 첨부 문서를 붙인다
+  icon: 3f2a7c10-0000-4000-8000-0000000000aa
+  icon_type: image
+  mode: workflow
+  name: 문서 묶음 처리
+kind: app
+version: 0.1.5
+workflow:
+  environment_variables:
+  - name: MAX_ITEMS
+    value: 5
+    value_type: number
+  features:
+    file_upload:
+      enabled: true
+      number_limits: 5
+  graph:
+    edges:
+    - source: '1'
+      sourceHandle: source
+      target: '2'
+      targetHandle: target
+    - source: '2'
+      sourceHandle: source
+      target: '3'
+      targetHandle: target
+    - source: '3'
+      sourceHandle: source
+      target: '4'
+      targetHandle: target
+    - data:
+        isInIteration: true
+        iteration_id: '4'
+      source: 4start
+      sourceHandle: source
+      target: '4002'
+      targetHandle: target
+    - source: '1'
+      sourceHandle: source
+      target: '5'
+      targetHandle: target
+    - source: '4'
+      sourceHandle: source
+      target: '6'
+      targetHandle: target
+    - source: '5'
+      sourceHandle: source
+      target: '6'
+      targetHandle: target
+    - source: '6'
+      sourceHandle: source
+      target: '7'
+      targetHandle: target
+    - source: '6'
+      sourceHandle: source
+      target: '99'
+      targetHandle: target
+    nodes:
+    - data:
+        title: 시작
+        type: start
+        variables:
+        - label: 주소 목록
+          required: true
+          type: paragraph
+          variable: urls
+      id: '1'
+      position:
+        x: 0
+        y: 0
+    - data:
+        code: "function main({urls}) {\n  return {list: urls.split('\\n')}\n}\n"
+        code_language: javascript
+        outputs:
+          list:
+            type: array[string]
+        title: 줄 나누기
+        type: code
+        variables:
+        - value_selector:
+          - '1'
+          - urls
+          variable: urls
+      id: '2'
+      position:
+        x: 300
+        y: 0
+    - data:
+        filter_by:
+          conditions: []
+          enabled: false
+        limit:
+          enabled: true
+          size: 5
+        title: 앞의 다섯
+        type: list-operator
+        variable:
+        - '2'
+        - list
+      id: '3'
+      position:
+        x: 600
+        y: 0
+    - data:
+        error_handle_mode: continue-on-error
+        is_parallel: true
+        iterator_selector:
+        - '3'
+        - result
+        output_selector:
+        - '4002'
+        - text
+        output_type: array[string]
+        parallel_nums: 8
+        start_node_id: 4start
+        title: 하나씩 요약
+        type: iteration
+      height: 200
+      id: '4'
+      position:
+        x: 900
+        y: 0
+      width: 520
+    - data:
+        isInIteration: true
+        title: ''
+        type: iteration-start
+      id: 4start
+      parentId: '4'
+      position:
+        x: 24
+        y: 68
+      type: custom-iteration-start
+    - data:
+        default_value:
+        - key: text
+          type: string
+          value: 요약 실패
+        error_strategy: default-value
+        isInIteration: true
+        iteration_id: '4'
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: deepseek-chat
+          provider: deepseek
+        prompt_template:
+        - role: user
+          text: '{{#4.index#}}번째 주소 {{#4.item#}}의 내용을 두 줄로 요약해 줘'
+        title: 요약
+        type: llm
+      id: '4002'
+      parentId: '4'
+      position:
+        x: 128
+        y: 68
+    - data:
+        is_array_file: true
+        title: 첨부 문서 읽기
+        type: document-extractor
+        variable_selector:
+        - sys
+        - files
+      id: '5'
+      position:
+        x: 300
+        y: 300
+    - data:
+        template: '{{ items | join(''\n'') }}
+
+          첨부: {{ files_text }}'
+        title: 보고서
+        type: template-transform
+        variables:
+        - value_selector:
+          - '4'
+          - output
+          variable: items
+        - value_selector:
+          - '5'
+          - text
+          variable: files_text
+      id: '6'
+      position:
+        x: 1500
+        y: 0
+    - data:
+        outputs:
+        - value_selector:
+          - '6'
+          - output
+          variable: report
+        - value_selector:
+          - '4'
+          - output
+          variable: raw
+        title: 끝
+        type: end
+      id: '7'
+      position:
+        x: 1800
+        y: 0

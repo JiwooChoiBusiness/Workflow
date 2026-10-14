@@ -68,3 +68,30 @@ class WorkspaceInstanceStatus(StrEnum):
 
 class SnapshotKind(StrEnum):
     PUBLISHED = "published"
+
+
+class WorkflowKind(StrEnum):
+    WORKFLOW = "workflow"
+    CHATFLOW = "chatflow"
+
+
+class WfRunTrigger(StrEnum):
+    PREVIEW = "preview"
+    WEBAPP = "webapp"
+    API = "api"
+    SINGLE_NODE = "single_node"
+    RESUME = "resume"
+
+
+class WfNodeRunStatus(StrEnum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+    WAITING_INPUT = "waiting_input"
+
+
+class WfFileKind(StrEnum):
+    UPLOAD = "upload"
+    OUTPUT = "output"

@@ -33,7 +33,9 @@ async def usage_stats(
 ) -> UsageReport:
     """토큰·비용·런 수 집계. 런을 만든 시각(queued_at)이 [from, to)에 드는 런의 usage를 더한다.
 
-    시간대 없이 온 from·to는 tz_offset_minutes 시간대의 시각으로, 날짜만 오면 그날 0시로 본다.
+    에이전트 런과 워크플로우 런을 함께 센다. group_by=agent면 워크플로우 런이, group_by=workflow면
+    에이전트 런(agent 노드의 자식 런 포함)이 key가 null인 행 하나로 모인다. 시간대 없이 온 from·to는
+    tz_offset_minutes 시간대의 시각으로, 날짜만 오면 그날 0시로 본다.
     """
     return await UsageService(db).report(
         auth.workspace_id,

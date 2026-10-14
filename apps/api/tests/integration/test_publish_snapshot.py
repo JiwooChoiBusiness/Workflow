@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import os
 import sys
 import time
 import uuid
@@ -162,6 +163,51 @@ async def test_publish_snapshots_the_preview_and_a_new_webapp_session_starts_fro
     )
     assert "workspace.restoring" not in types(again)
     assert reinstalled == [["requests==2.32.3"]]
+
+
+async def test_restored_files_are_not_reported_as_run_changes(
+    logged_in: AsyncClient,
+    make_session: Any,
+    script: Any,
+    sse: Events,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 스냅샷에서 되살린 파일은 런이 바꾼 파일이 아니다. 작업공간을 초기화하며 mtime이 새로 찍혀도
+    # 그 뒤 런이 알리지 않는다(3.13).
+    agent_id, preview_id = await make_session(logged_in, approval_mode="off")
+    await write_in_preview(logged_in, script, preview_id, "outputs/result.csv")
+    body = (await publish(logged_in, agent_id)).json()
+    await logged_in.patch(f"/api/console/agents/{agent_id}", json={"webapp_enabled": True})
+    slug = body["agent"]["slug"]
+    session = (await logged_in.post(f"/api/web/apps/{slug}/sessions", json={})).json()
+
+    async def send(text: str) -> list[dict[str, Any]]:
+        script.add(fake_text("그대로다"))
+        response = await logged_in.post(
+            f"/api/web/sessions/{session['id']}/messages", json={"text": text}
+        )
+        return sse(response.text)
+
+    first = await send("안녕")
+
+    assert "workspace.restored" in types(first)
+    assert "file.changed" not in types(first)
+
+    # 원래 mtime을 되살리지 못하는 복원을 흉내 낸다.
+    before_reset = time.time()
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "utime", lambda *args, **kwargs: None)
+        reset = await logged_in.post(
+            f"/api/console/sessions/{session['id']}/workspace/reset", json={}
+        )
+    assert reset.status_code == 200, reset.text
+    restored = settings.data_dir / "workspaces" / session["id"] / "outputs" / "result.csv"
+    assert restored.stat().st_mtime >= before_reset - 0.05
+
+    second = await send("다시")
+
+    assert "file.changed" not in types(second)
 
 
 async def test_publish_without_a_preview_workspace_inherits_the_current_snapshot(

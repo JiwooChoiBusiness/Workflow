@@ -1,0 +1,68 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "title": "시작",
+      "config": { "fields": [{ "name": "topic", "type": "string", "label": "주제" }] }
+    },
+    {
+      "id": "template_a",
+      "type": "template",
+      "title": "가지 A",
+      "config": { "template": "A:{{ t }}", "vars": [{ "name": "t", "var": "start.topic" }] }
+    },
+    {
+      "id": "template_b",
+      "type": "template",
+      "title": "가지 B",
+      "config": { "template": "B:{{ t }}", "vars": [{ "name": "t", "var": "start.topic" }] }
+    },
+    {
+      "id": "variable_aggregator_1",
+      "type": "variable_aggregator",
+      "title": "합류",
+      "config": {
+        "vars": ["template_b.output", "template_a.output"],
+        "output_type": "string"
+      }
+    },
+    {
+      "id": "end_a",
+      "type": "end",
+      "title": "A 끝",
+      "config": {
+        "outputs": [
+          { "name": "result", "var": "template_a.output" },
+          { "name": "a", "var": "template_a.output" }
+        ]
+      }
+    },
+    {
+      "id": "end_b",
+      "type": "end",
+      "title": "B 끝",
+      "config": {
+        "outputs": [
+          { "name": "result", "var": "template_b.output" },
+          { "name": "b", "var": "template_b.output" }
+        ]
+      }
+    },
+    {
+      "id": "end_join",
+      "type": "end",
+      "title": "합류 끝",
+      "config": { "outputs": [{ "name": "joined", "var": "variable_aggregator_1.output" }] }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "template_a" },
+    { "id": "e2", "source": "start", "target": "template_b" },
+    { "id": "e3", "source": "template_a", "target": "variable_aggregator_1" },
+    { "id": "e4", "source": "template_b", "target": "variable_aggregator_1" },
+    { "id": "e5", "source": "template_a", "target": "end_a" },
+    { "id": "e6", "source": "template_b", "target": "end_b" },
+    { "id": "e7", "source": "variable_aggregator_1", "target": "end_join" }
+  ]
+}

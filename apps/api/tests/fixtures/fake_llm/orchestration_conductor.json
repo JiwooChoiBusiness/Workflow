@@ -1,0 +1,63 @@
+{
+  "description": "지휘자가 조사(researcher)와 작성(writer)을 차례로 부르고 결과를 합친다. 턴은 부모 1 → 자식 1 → 부모 2 → 자식 2 → 부모 3 순서로 쓰인다.",
+  "turns": [
+    [
+      {
+        "type": "tool_call_start",
+        "index": 0,
+        "id": "call_research",
+        "name": "call_agent"
+      },
+      {
+        "type": "tool_call_delta",
+        "index": 0,
+        "json_fragment": "{\"agent\": \"researcher\", \"task\": \"주제 X의 근거를 세 가지 모아 출처와 함께 정리한다\"}"
+      },
+      {
+        "type": "tool_call_end",
+        "index": 0,
+        "id": "call_research",
+        "name": "call_agent",
+        "arguments": "{\"agent\": \"researcher\", \"task\": \"주제 X의 근거를 세 가지 모아 출처와 함께 정리한다\"}"
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "조사 결과: 근거 A, 근거 B, 근거 C(출처 포함)."
+      }
+    ],
+    [
+      {
+        "type": "tool_call_start",
+        "index": 0,
+        "id": "call_write",
+        "name": "call_agent"
+      },
+      {
+        "type": "tool_call_delta",
+        "index": 0,
+        "json_fragment": "{\"agent\": \"writer\", \"task\": \"근거 A·B·C로 한 문단 보고서를 쓴다\"}"
+      },
+      {
+        "type": "tool_call_end",
+        "index": 0,
+        "id": "call_write",
+        "name": "call_agent",
+        "arguments": "{\"agent\": \"writer\", \"task\": \"근거 A·B·C로 한 문단 보고서를 쓴다\"}"
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "보고서 초안: 주제 X는 A, B, C 때문에 중요하다."
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "두 하위 에이전트의 결과를 합쳤다. 근거는 A·B·C이고 보고서 초안은 위와 같다."
+      }
+    ]
+  ]
+}

@@ -8,6 +8,10 @@
 새로 고침한 화면도 델타까지 받아 그릴 수 있게 하려는 것이다(12.2 M6 이후 확정). 같은 런이
 재개되면(waiting_input → queued) 다시 발행하는 순간 채널이 살아나고 seq는 영속된 마지막 값에서
 잇는다.
+
+2단계 워크플로우 런(kind=wf_run)도 같은 버스·링버퍼·SSE를 쓴다. 영속 테이블만 다르므로 저장소는
+런 종류별로 고른다(app/streaming/stores.py). 워크플로우 런의 봉투는 session_id가 null이고
+챗플로우면 conversation_id가 붙는다(2단계 3.9).
 """
 
 import asyncio
@@ -17,7 +21,7 @@ from collections import deque
 from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import structlog
 from pydantic import BaseModel
@@ -25,7 +29,7 @@ from pydantic import BaseModel
 from app.db.engine import Database
 from app.db.models import RunEvent
 from app.db.repositories.run_events import RunEventRepository
-from app.schemas.events import DELTA_TEXT_FIELDS, TERMINAL_EVENT_TYPE, TRANSIENT_EVENT_TYPES
+from app.schemas.events import DELTA_TEXT_FIELDS, TERMINAL_EVENT_TYPES, TRANSIENT_EVENT_TYPES
 
 log = structlog.get_logger("app.streaming")
 
@@ -81,17 +85,44 @@ def split_utf8(text: str, limit: int = DELTA_CHUNK_BYTES) -> list[str]:
     return pieces
 
 
+# run: 1단계 에이전트 런(run_event), wf_run: 2단계 워크플로우 런(wf_run_event).
+RunKind = Literal["run", "wf_run"]
+
+
 @dataclass(frozen=True, slots=True)
 class RunRef:
     run_id: uuid.UUID
-    session_id: uuid.UUID
+    # 에이전트 런은 늘 있고 워크플로우 런은 None이다.
+    session_id: uuid.UUID | None
     workspace_id: uuid.UUID
+    conversation_id: uuid.UUID | None = None
+    kind: RunKind = "run"
+
+
+def _envelope(
+    run_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    conversation_id: uuid.UUID | None,
+    seq: int,
+    ts: datetime,
+    event_type: str,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    envelope: dict[str, Any] = {
+        "run_id": str(run_id),
+        "session_id": str(session_id) if session_id is not None else None,
+    }
+    # 챗플로우 런에만 둔다. 1단계 봉투는 v1과 글자 그대로 같게 남긴다.
+    if conversation_id is not None:
+        envelope["conversation_id"] = str(conversation_id)
+    envelope.update({"seq": seq, "ts": format_ts(ts), "type": event_type, "data": data})
+    return envelope
 
 
 @dataclass(frozen=True, slots=True)
 class BusEvent:
     run_id: uuid.UUID
-    session_id: uuid.UUID
+    session_id: uuid.UUID | None
     workspace_id: uuid.UUID
     seq: int
     ts: datetime
@@ -99,35 +130,42 @@ class BusEvent:
     data: dict[str, Any]
     # SSE data 줄에 그대로 쓰는 JSON. 구독자마다 다시 직렬화하지 않게 발행할 때 한 번 만든다.
     line: str = field(repr=False)
+    kind: RunKind = "run"
+    conversation_id: uuid.UUID | None = None
 
     @property
     def persisted(self) -> bool:
         return self.type not in TRANSIENT_EVENT_TYPES
 
     def envelope(self) -> dict[str, Any]:
-        return {
-            "run_id": str(self.run_id),
-            "session_id": str(self.session_id),
-            "seq": self.seq,
-            "ts": format_ts(self.ts),
-            "type": self.type,
-            "data": self.data,
-        }
+        return _envelope(
+            self.run_id,
+            self.session_id,
+            self.conversation_id,
+            self.seq,
+            self.ts,
+            self.type,
+            self.data,
+        )
 
 
 def make_event(
     ref: RunRef, seq: int, ts: datetime, event_type: str, data: dict[str, Any]
 ) -> BusEvent:
-    envelope = {
-        "run_id": str(ref.run_id),
-        "session_id": str(ref.session_id),
-        "seq": seq,
-        "ts": format_ts(ts),
-        "type": event_type,
-        "data": data,
-    }
+    envelope = _envelope(ref.run_id, ref.session_id, ref.conversation_id, seq, ts, event_type, data)
     line = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
-    return BusEvent(ref.run_id, ref.session_id, ref.workspace_id, seq, ts, event_type, data, line)
+    return BusEvent(
+        ref.run_id,
+        ref.session_id,
+        ref.workspace_id,
+        seq,
+        ts,
+        event_type,
+        data,
+        line,
+        kind=ref.kind,
+        conversation_id=ref.conversation_id,
+    )
 
 
 class EventStore(Protocol):
@@ -141,6 +179,8 @@ class EventStore(Protocol):
 
 
 class SqliteEventStore:
+    """1단계 에이전트 런의 run_event. 워크플로우 런은 stores.WfRunEventStore가 맡는다."""
+
     def __init__(self, db: Database) -> None:
         self._db = db
 
@@ -186,7 +226,7 @@ class _Channel:
 
 
 class Subscription:
-    """한 런의 이벤트를 after 다음부터 준다. 진행 중인 런이면 run.completed까지 따라간다."""
+    """한 런의 이벤트를 after 다음부터 준다. 진행 중인 런이면 완료 이벤트까지 따라간다."""
 
     def __init__(
         self,
@@ -239,7 +279,7 @@ class Subscription:
                     continue
                 last = event.seq
                 yield event
-                if event.type == TERMINAL_EVENT_TYPE:
+                if event.type in TERMINAL_EVENT_TYPES:
                     return
         finally:
             self.close()
@@ -325,8 +365,28 @@ class EventBus:
             return [data]
         return [{**data, field_name: chunk} for chunk in chunks]
 
+    def open_channel(self, ref: RunRef) -> None:
+        """DB상 열린 런의 채널을 열어 둔다(오케스트레이션 6.1).
+
+        하위 에이전트를 기다리는 부모는 run.completed 없이 멈춰 있어 재기동 뒤에는 채널이 없다.
+        채널이 없을 때 구독하면 기록만 주고 닫히고, 화면은 종료 이벤트 없이 닫힌 연결을 끊김으로
+        본다. 구독 전에 이것을 부르면 live 구독이 되어 ping으로 유지되다가 다음 발행을 그대로
+        받는다. seq는 첫 발행 때 영속된 마지막 값에서 잇는다.
+        """
+        if self._closed:
+            return
+        channel = self._channels.get(ref.run_id)
+        if channel is None:
+            self._channels[ref.run_id] = _Channel(ref=ref, buffer=deque(maxlen=self._ring_size))
+            return
+        if channel.ended:
+            channel.ended = False
+            if channel.drop_handle is not None:
+                channel.drop_handle.cancel()
+                channel.drop_handle = None
+
     def subscribe(self, ref: RunRef, *, after: int = 0) -> Subscription:
-        """채널이 살아 있으면 run.completed까지 따라가고, 아니면 남은 기록만 다시 준다.
+        """채널이 살아 있으면 완료 이벤트까지 따라가고, 아니면 남은 기록만 다시 준다.
 
         등록은 동기로 끝나므로 이 호출 뒤에 발행된 이벤트는 빠지지 않는다.
         """
@@ -356,7 +416,7 @@ class EventBus:
             channel.subscribers.discard(subscription)
 
     def end(self, run_id: uuid.UUID) -> None:
-        """런이 끝났거나(run.completed) waiting_input으로 멈췄다."""
+        """런이 끝났거나(run.completed·workflow.completed) waiting_input으로 멈췄다."""
         channel = self._channels.get(run_id)
         if channel is None:
             return

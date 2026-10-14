@@ -4,23 +4,32 @@ import uuid
 from collections.abc import Awaitable, Callable, Collection, Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import structlog
 
 from app import sysinfo
 from app.auth.session_store import SessionStore
-from app.db.engine import Database
+from app.db.engine import Checkpoint, Database
+from app.db.models.enums import RunStatus
 from app.db.repositories.agent_files import AgentFileRepository
 from app.db.repositories.agent_versions import AgentVersionRepository
 from app.db.repositories.session_files import SessionFileRepository
 from app.db.repositories.sessions import SessionRepository
 from app.db.repositories.skill_versions import SkillVersionRepository
 from app.db.repositories.skills import SkillRepository
+from app.db.repositories.workflows import (
+    WfFileRepository,
+    WfNodeRunRepository,
+    WfRunEventRepository,
+    WfRunRepository,
+)
 from app.db.repositories.workspace_instances import WorkspaceInstanceRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import utcnow
+from app.sandbox import disk
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
+from app.schemas.workspace import WorkspaceSettings
 from app.storage.base import StorageBackend, StorageError
 
 log = structlog.get_logger("app.housekeeping")
@@ -31,6 +40,13 @@ HOURLY_INTERVAL_SEC = 3600.0
 # 넣기 전까지 기다려 주는 기간이다.
 UNREFERENCED_GRACE = timedelta(days=7)
 UPLOADS_PREFIX = "uploads"
+DISK_FIELDS = ("workspaces_mb", "pip_cache_mb", "disk_estimated")
+# 워크플로우 보존(2단계 4.4).
+WF_STATE_KEEP = timedelta(days=7)
+WF_SINGLE_RUN_KEEP = timedelta(days=7)
+WF_OUTPUT_FILE_KEEP = timedelta(days=90)
+# 실패 런의 작업 폴더는 로그를 확인할 수 있게 이만큼 남긴다.
+WF_WORKSPACE_KEEP = timedelta(hours=1)
 
 
 class RunJobs(Protocol):
@@ -41,6 +57,29 @@ class RunJobs(Protocol):
 
     # 보존 기간이 지난 런의 run_event와 tool-outputs 파일을 지운다(5.4).
     async def purge_events(self) -> int: ...
+
+    # 이벤트를 지운 뒤에도 남은 tool-outputs/<run_id> 폴더를 지운다(5.4).
+    async def purge_tool_outputs(self) -> int: ...
+
+    # 서버 종료 중에 끝나 남은 ephemeral 과업 작업공간을 지운다(3.3).
+    async def release_task_workspaces(self) -> int: ...
+
+    # 이미 끝난 하위 에이전트를 아직 기다리는 부모를 다시 넣는다(오케스트레이션 3.8의 안전망).
+    async def reconcile_children(self) -> int: ...
+
+
+def _mb(size: int) -> float:
+    return round(size / 2**20, 1)
+
+
+async def _attempt[T](
+    step: Callable[[], Awaitable[T]], failed_event: str, **context: Any
+) -> T | None:
+    try:
+        return await step()
+    except Exception:
+        log.exception(failed_event, **context)
+        return None
 
 
 def _uuid_dirs(root: Path) -> set[uuid.UUID]:
@@ -217,6 +256,160 @@ class Retention:
         return live
 
 
+class WorkflowRetention:
+    """워크플로우 보존 정리(2단계 4.4).
+
+    보존 기간이 지난 런의 이벤트(iteration 하위 노드 런의 입출력도 비운다), 실패 런의 체크포인트,
+    단일 노드 실행 런, 출력 파일, 런 작업 폴더(DATA_DIR/wf-workspaces/<wf_run_id>)를 지운다. 대기
+    중인 런의 체크포인트는 재개에 필요해 건드리지 않는다. 대기는 자식 런의 입력 대기 상한에서
+    끝난다.
+    """
+
+    def __init__(
+        self,
+        db: Database,
+        *,
+        storage: StorageBackend,
+        backend: SandboxBackend,
+        retention_days: int,
+        clock: Callable[[], datetime] = utcnow,
+        batch_size: int = 200,
+    ) -> None:
+        self._db = db
+        self._storage = storage
+        # DATA_DIR/wf-workspaces의 두 번째 로컬 백엔드.
+        self._backend = backend
+        self._retention_days = retention_days
+        self._clock = clock
+        self._batch = batch_size
+
+    def jobs(self) -> list[tuple[str, Callable[[], Awaitable[int]]]]:
+        return [
+            ("wf_run_events", self.purge_events),
+            ("wf_states", self.clear_states),
+            ("wf_single_runs", self.purge_single_runs),
+            ("wf_output_files", self.purge_output_files),
+            ("wf_workspaces", self.purge_workspaces),
+        ]
+
+    async def _workspaces(self) -> list[tuple[uuid.UUID, int]]:
+        async with self._db.read() as session:
+            rows = await WorkspaceRepository(session).list_all()
+        found: list[tuple[uuid.UUID, int]] = []
+        for row in rows:
+            try:
+                days = WorkspaceSettings.model_validate(row.settings or {}).run_event_retention_days
+            except ValueError:
+                days = self._retention_days
+            found.append((row.id, days))
+        return found
+
+    async def _delete_keys(self, keys: Iterable[str]) -> None:
+        for key in keys:
+            try:
+                await self._storage.delete(key)
+            except (OSError, StorageError) as exc:
+                log.warning("housekeeping.file_delete_failed", key=key, error=str(exc))
+
+    async def purge_events(self) -> int:
+        purged = 0
+        for workspace_id, days in await self._workspaces():
+            cutoff = self._clock() - timedelta(days=days)
+            while True:
+                async with self._db.write() as session:
+                    events = WfRunEventRepository(session, workspace_id)
+                    run_ids = await events.runs_ended_before(cutoff, limit=self._batch)
+                    await events.delete_for_runs(run_ids)
+                    # 요약 열은 남기고 반복마다 생긴 하위 노드 런의 입출력만 비운다(3.10).
+                    await WfNodeRunRepository(session, workspace_id).clear_iteration_io(run_ids)
+                purged += len(run_ids)
+                if len(run_ids) < self._batch:
+                    break
+        return purged
+
+    async def clear_states(self) -> int:
+        cutoff = self._clock() - WF_STATE_KEEP
+        cleared = 0
+        for workspace_id, _ in await self._workspaces():
+            while True:
+                async with self._db.write() as session:
+                    rows = await WfRunRepository(session, workspace_id).ended_before(
+                        cutoff, statuses=[RunStatus.FAILED], with_state=True, limit=self._batch
+                    )
+                    for row in rows:
+                        row.state = None
+                cleared += len(rows)
+                if len(rows) < self._batch:
+                    break
+        return cleared
+
+    async def purge_single_runs(self) -> int:
+        cutoff = self._clock() - WF_SINGLE_RUN_KEEP
+        purged = 0
+        for workspace_id, _ in await self._workspaces():
+            while True:
+                async with self._db.write() as session:
+                    runs = WfRunRepository(session, workspace_id)
+                    run_ids = await runs.single_node_ended_before(cutoff, limit=self._batch)
+                    files = WfFileRepository(session, workspace_id)
+                    rows = await files.list_for_runs(run_ids)
+                    await files.delete_many([row.id for row in rows])
+                    await WfRunEventRepository(session, workspace_id).delete_for_runs(run_ids)
+                    await WfNodeRunRepository(session, workspace_id).delete_for_runs(run_ids)
+                    await runs.delete_many(run_ids)
+                await self._delete_keys(row.storage_key for row in rows)
+                purged += len(run_ids)
+                if len(run_ids) < self._batch:
+                    break
+        return purged
+
+    async def purge_output_files(self) -> int:
+        cutoff = self._clock() - WF_OUTPUT_FILE_KEEP
+        removed = 0
+        for workspace_id, _ in await self._workspaces():
+            while True:
+                async with self._db.write() as session:
+                    files = WfFileRepository(session, workspace_id)
+                    rows = await files.outputs_ended_before(cutoff, limit=self._batch)
+                    await files.delete_many([row.id for row in rows])
+                # 행을 먼저 지운다. 파일 삭제가 실패해도 가리키는 행 없는 파일만 남는다.
+                await self._delete_keys(row.storage_key for row in rows)
+                removed += len(rows)
+                if len(rows) < self._batch:
+                    break
+        return removed
+
+    async def purge_workspaces(self) -> int:
+        """런 행이 없거나 끝난 지 1시간이 지난 런의 작업 폴더. 대기·실행 중인 런의 폴더는 둔다."""
+        workspaces = getattr(self._backend, "workspaces_dir", None)
+        if not isinstance(workspaces, Path):
+            return 0
+        folders = await asyncio.to_thread(_uuid_dirs, workspaces)
+        cutoff = self._clock() - WF_WORKSPACE_KEEP
+        keep: set[uuid.UUID] = set()
+        for workspace_id, _ in await self._workspaces():
+            async with self._db.read() as session:
+                ended = await WfRunRepository(session, workspace_id).ended_at_of(folders)
+            for run_id, (_, ended_at) in ended.items():
+                if ended_at is None or ended_at >= cutoff:
+                    keep.add(run_id)
+        root = await asyncio.to_thread(workspaces.resolve)
+        removed = 0
+        for run_id in sorted(folders - keep):
+            handle = WorkspaceHandle(session_id=run_id, root=root / str(run_id), backend="local")
+            try:
+                await self._backend.release(handle, delete=True)
+            except SandboxError as exc:
+                log.warning(
+                    "housekeeping.wf_workspace_delete_failed", run_id=str(run_id), error=exc.message
+                )
+                continue
+            removed += 1
+        # 잠겨서 이름만 바꿔 둔 .deleted-* 폴더도 다시 지운다.
+        removed += await self._backend.purge_deleted()
+        return removed
+
+
 class Housekeeping:
     def __init__(
         self,
@@ -228,10 +421,13 @@ class Housekeeping:
         hourly_interval_sec: float = HOURLY_INTERVAL_SEC,
         runs: RunJobs | None = None,
         retention: Retention | None = None,
+        workflows: WorkflowRetention | None = None,
     ) -> None:
+        self._db = db
         self._sessions = SessionStore(db)
         self._runs = runs
         self._retention = retention
+        self._workflows = workflows
         self._backend = backend
         self._budget_mb = memory_budget_mb
         self._interval_sec = interval_sec
@@ -261,46 +457,80 @@ class Housekeeping:
             log.warning("memory.over_budget", rss_mb=round(rss_mb, 1), budget_mb=self._budget_mb)
         return rss_mb
 
-    async def run_hourly(self) -> None:
-        # 한 작업이 실패해도 나머지는 돈다. 실패한 작업은 다음 시간에 다시 한다.
-        expired: int | None = None
-        purged: int | None = None
-        timed_out: int | None = None
-        purged_events: int | None = None
-        retained: dict[str, int | None] = {}
-        try:
-            expired = await self._sessions.purge_expired()
-        except Exception:
-            log.exception("housekeeping.login_sessions_failed")
+    async def run_hourly(self) -> dict[str, Any]:
+        """매시 작업을 돌리고 housekeeping.hourly 로그에 남긴 값을 돌려준다.
+
+        한 작업이 실패해도 나머지는 돈다. 실패한 작업의 값은 None이고 다음 시간에 다시 한다.
+        """
+        summary: dict[str, Any] = {
+            "expired_login_sessions": await _attempt(
+                self._sessions.purge_expired, "housekeeping.login_sessions_failed"
+            ),
+            "input_timeouts": None,
+            "reconciled_parents": None,
+            "purged_run_events": None,
+            "purged_tool_outputs": None,
+            "released_task_workspaces": None,
+        }
         if self._runs is not None:
-            try:
-                timed_out = await self._runs.expire_waiting()
-            except Exception:
-                log.exception("housekeeping.waiting_input_failed")
-            try:
-                purged_events = await self._runs.purge_events()
-            except Exception:
-                log.exception("housekeeping.run_events_failed")
+            runs = self._runs
+            summary["input_timeouts"] = await _attempt(
+                runs.expire_waiting, "housekeeping.waiting_input_failed"
+            )
+            summary["reconciled_parents"] = await _attempt(
+                runs.reconcile_children, "housekeeping.reconcile_children_failed"
+            )
+            summary["purged_run_events"] = await _attempt(
+                runs.purge_events, "housekeeping.run_events_failed"
+            )
+            # purge_events가 파일을 지우고 남긴 빈 폴더까지 보도록 그 뒤에 둔다.
+            summary["purged_tool_outputs"] = await _attempt(
+                runs.purge_tool_outputs, "housekeeping.tool_outputs_failed"
+            )
+            summary["released_task_workspaces"] = await _attempt(
+                runs.release_task_workspaces, "housekeeping.task_workspaces_failed"
+            )
         if self._retention is not None:
             # 고아 작업공간을 지우다 잠겨서 이름만 바꾼 폴더를 아래 purge_deleted가 바로 다시 본다.
             for name, job in self._retention.jobs():
-                retained[name] = None
-                try:
-                    retained[name] = await job()
-                except Exception:
-                    log.exception("housekeeping.retention_failed", job=name)
-        try:
-            purged = await self._backend.purge_deleted()
-        except Exception:
-            log.exception("housekeeping.workspaces_failed")
-        log.info(
-            "housekeeping.hourly",
-            expired_login_sessions=expired,
-            purged_workspaces=purged,
-            input_timeouts=timed_out,
-            purged_run_events=purged_events,
-            **{f"purged_{name}": count for name, count in retained.items()},
+                summary[f"purged_{name}"] = await _attempt(
+                    job, "housekeeping.retention_failed", job=name
+                )
+        if self._workflows is not None:
+            for name, job in self._workflows.jobs():
+                summary[f"purged_{name}"] = await _attempt(
+                    job, "housekeeping.workflow_retention_failed", job=name
+                )
+        summary["purged_workspaces"] = await _attempt(
+            self._backend.purge_deleted, "housekeeping.workspaces_failed"
         )
+        # 지울 것을 다 지운 뒤에 잰다.
+        sizes = await _attempt(self._measure_disk, "housekeeping.disk_measure_failed")
+        summary.update(sizes or dict.fromkeys(DISK_FIELDS))
+        # 위 작업들이 쓴 것까지 DB 파일로 옮긴다.
+        checkpoint: Checkpoint | None = await _attempt(
+            lambda: self._db.checkpoint("PASSIVE"), "housekeeping.checkpoint_failed"
+        )
+        summary["wal_frames"] = checkpoint.wal_frames if checkpoint is not None else None
+        summary["wal_checkpointed"] = checkpoint.checkpointed if checkpoint is not None else None
+        log.info("housekeeping.hourly", **summary)
+        return summary
+
+    async def _measure_disk(self) -> dict[str, Any]:
+        """작업공간 합계와 pip 캐시 크기(3.14). 재기만 한다. cache/pip은 사용자가 지운다."""
+        workspaces = getattr(self._backend, "workspaces_dir", None)
+        if not isinstance(workspaces, Path):
+            return dict.fromkeys(DISK_FIELDS)
+        # 로컬 백엔드의 작업공간 폴더가 DATA_DIR/workspaces라서 pip 캐시는 그 옆 cache/pip이다(2.8).
+        # 하우스키핑은 설정을 받지 않으므로(main.py) 경로를 여기서 잇는다.
+        pip_cache = workspaces.parent / "cache" / "pip"
+        used = await asyncio.to_thread(disk.measure, workspaces)
+        cached = await asyncio.to_thread(disk.measure, pip_cache)
+        return {
+            "workspaces_mb": _mb(used.total_bytes),
+            "pip_cache_mb": _mb(cached.total_bytes),
+            "disk_estimated": used.estimated or cached.estimated,
+        }
 
     async def _memory_loop(self) -> None:
         while True:

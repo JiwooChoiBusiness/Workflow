@@ -128,6 +128,20 @@ async def test_new_versions_and_name_mismatch(logged_in: AsyncClient, skill_zip:
     assert detail["current_version_number"] == 2
     assert detail["description"] == "새 설명"
     assert [v["version_number"] for v in detail["versions"]] == [2, 1]
+    # 목록에도 버전 요약이 있어 예전 버전을 고정한 초안을 상세 조회 없이 풀 수 있다.
+    [listed] = (await logged_in.get("/api/console/skills")).json()["items"]
+    assert listed["versions"] == detail["versions"]
+    assert [v["id"] for v in listed["versions"]] == [
+        second.json()["id"],
+        skill["current_version_id"],
+    ]
+    assert set(listed["versions"][0]) == {
+        "id",
+        "version_number",
+        "size_bytes",
+        "sha256",
+        "created_at",
+    }
 
 
 async def test_duplicate_name_is_a_conflict(logged_in: AsyncClient, skill_zip: SkillZip) -> None:
@@ -265,6 +279,7 @@ async def test_embedded_skills_belong_to_one_agent(
     assert duplicate.status_code == 409
     listed = (await logged_in.get(f"/api/console/agents/{agent['id']}/skills")).json()["items"]
     assert [item["id"] for item in listed] == [embedded["id"]]
+    assert [v["id"] for v in listed[0]["versions"]] == [embedded["current_version_id"]]
     library_list = (await logged_in.get("/api/console/skills")).json()["items"]
     assert [item["id"] for item in library_list] == [library["id"]]
 

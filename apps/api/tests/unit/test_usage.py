@@ -10,7 +10,17 @@ import pytest
 
 from app.db.engine import Database
 from app.db.migrate import upgrade_head
-from app.db.models import Agent, AgentVersion, ChatSession, Message, Run
+from app.db.models import (
+    Agent,
+    AgentVersion,
+    ChatSession,
+    Message,
+    Run,
+    WfNodeRun,
+    WfRun,
+    WfVersion,
+    Workflow,
+)
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id
 from app.schemas.usage import UsageTotals
@@ -210,3 +220,134 @@ def test_sum_totals_keeps_cost_null_until_some_run_has_one() -> None:
     rows.append(UsageTotals(runs=1, cost_usd=0.1, unpriced_runs=0))
     total = sum_totals(rows)
     assert (total.runs, total.input_tokens, total.cost_usd) == (4, 3, 0.1)
+
+
+class WfSeed:
+    """워크플로우 런과 모델 노드 런. 노드 런 순서대로 process.model이 models다."""
+
+    def __init__(self, seed: Seed) -> None:
+        self.seed = seed
+        self.workflows: dict[str, tuple[uuid.UUID, uuid.UUID]] = {}
+
+    async def workflow(self, name: str, *, deleted: bool = False) -> uuid.UUID:
+        workspace_id = self.seed.workspace_id
+        async with self.seed.db.write() as session:
+            workflow = Workflow(
+                id=new_id(),
+                workspace_id=workspace_id,
+                slug=name,
+                name=name,
+                kind="workflow",
+                deleted_at=NOW if deleted else None,
+            )
+            session.add(workflow)
+            await session.flush()
+            version = WfVersion(
+                id=new_id(),
+                workspace_id=workspace_id,
+                workflow_id=workflow.id,
+                status="draft",
+                graph_hash="0" * 64,
+            )
+            session.add(version)
+            self.workflows[name] = (workflow.id, version.id)
+            return workflow.id
+
+    async def run(
+        self,
+        name: str,
+        queued_at: datetime,
+        *,
+        usage: dict[str, Any],
+        models: list[str | None],
+    ) -> None:
+        workflow_id, version_id = self.workflows[name]
+        workspace_id = self.seed.workspace_id
+        async with self.seed.db.write() as session:
+            run = WfRun(
+                id=new_id(),
+                workspace_id=workspace_id,
+                workflow_id=workflow_id,
+                wf_version_id=version_id,
+                kind="workflow",
+                trigger="preview",
+                status="succeeded",
+                usage=usage,
+                graph_hash="0" * 64,
+                queued_at=queued_at,
+            )
+            session.add(run)
+            await session.flush()
+            for index, model in enumerate(models):
+                session.add(
+                    WfNodeRun(
+                        id=new_id(),
+                        workspace_id=workspace_id,
+                        wf_run_id=run.id,
+                        node_id=f"llm_{index}",
+                        node_type="llm",
+                        index=index,
+                        status="succeeded",
+                        process={"model": model} if model else {},
+                        started_at=queued_at,
+                    )
+                )
+            # agent 노드 런은 자식 런의 사용량을 보여 주기만 하고 모델 집계에 들어가지 않는다.
+            session.add(
+                WfNodeRun(
+                    id=new_id(),
+                    workspace_id=workspace_id,
+                    wf_run_id=run.id,
+                    node_id="agent_1",
+                    node_type="agent",
+                    index=len(models),
+                    status="succeeded",
+                    process={"model": "child-model"},
+                    started_at=queued_at,
+                )
+            )
+
+
+async def test_workflow_runs_join_every_grouping_with_the_same_total(db: Database) -> None:
+    seed = Seed(db)
+    await seed.setup("a")
+    flows = WfSeed(seed)
+    first = await flows.workflow("분류")
+    gone = await flows.workflow("옛 흐름", deleted=True)
+    at = datetime(2026, 10, 20, 1, 0, tzinfo=UTC)
+    await seed.run("a", at, usage=tokens(100, 10), model={"used": "m-1"})
+    await flows.run("분류", at, usage=tokens(40, 4, cost_usd=0.1), models=["m-1", "m-2"])
+    await flows.run(
+        "분류", datetime(2026, 10, 19, 1, 0, tzinfo=UTC), usage=tokens(5, 1), models=["m-1", None]
+    )
+    await flows.run("옛 흐름", at, usage={}, models=[])
+    service = UsageService(db, clock=lambda: NOW)
+
+    by_day = await service.report(seed.workspace_id, group_by="day", tz_offset_minutes=0)
+    by_model = await service.report(seed.workspace_id, group_by="model", tz_offset_minutes=0)
+    by_agent = await service.report(seed.workspace_id, group_by="agent", tz_offset_minutes=0)
+    by_flow = await service.report(seed.workspace_id, group_by="workflow", tz_offset_minutes=0)
+
+    assert [(r.key, r.runs, r.input_tokens) for r in by_day.items] == [
+        ("2026-10-19", 1, 5),
+        ("2026-10-20", 3, 140),
+    ]
+    models = {row.key: (row.runs, row.input_tokens) for row in by_model.items}
+    # 워크플로우 런은 마지막으로 모델을 부른 노드의 모델로 센다. agent 노드는 보지 않는다.
+    assert models == {"m-1": (2, 105), "m-2": (1, 40), None: (1, 0)}
+    agents = [(row.key, row.label, row.runs, row.input_tokens) for row in by_agent.items]
+    assert agents == [
+        (str(seed.agents["a"][0]), "a", 1, 100),
+        (None, None, 3, 45),
+    ]
+    flows_rows = [(r.key, r.label, r.deleted, r.runs, r.input_tokens) for r in by_flow.items]
+    assert flows_rows == [
+        (None, None, False, 1, 100),
+        (str(first), "분류", False, 2, 45),
+        (str(gone), "옛 흐름", True, 1, 0),
+    ]
+    for report in (by_day, by_model, by_agent, by_flow):
+        assert report.total.runs == 4
+        assert report.total.input_tokens == 145
+        assert report.total.cost_usd == 0.1
+        assert report.total.unpriced_runs == 2

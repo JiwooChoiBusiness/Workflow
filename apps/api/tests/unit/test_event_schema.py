@@ -1,4 +1,7 @@
-"""packages/event-schema/run-events.schema.json이 Pydantic 모델과 같은지(설계 4.5, 13.2)."""
+"""packages/event-schema/run-events.schema.json이 Pydantic 모델과 같은지.
+
+1단계 설계 4.5·13.2와 2단계 설계 3.9(스키마 v2)의 이벤트 표를 본다.
+"""
 
 import json
 import runpy
@@ -43,6 +46,29 @@ DESIGN_TYPES = {
     "run.error",
     "ping",
 }
+# 2단계 설계 3.9의 표. 사용량은 1단계 usage와 겹치지 않게 node.usage다.
+WF_DESIGN_TYPES = {
+    "workflow.queued",
+    "workflow.started",
+    "node.started",
+    "node.text_delta",
+    "node.progress",
+    "node.waiting",
+    "node.retrying",
+    "node.usage",
+    "node.completed",
+    "iteration.started",
+    "iteration.next",
+    "iteration.completed",
+    "answer.delta",
+    "answer.completed",
+    "workflow.waiting_input",
+    "workflow.resumed",
+    "workflow.error",
+    "workflow.completed",
+}
+# 오케스트레이션 설계 6.1의 표(같은 v2 안에서 더한 타입).
+ORCH_DESIGN_TYPES = {"child_run.started", "child_run.completed"}
 
 
 def test_generated_file_is_up_to_date() -> None:
@@ -55,9 +81,10 @@ def test_schema_covers_the_design_table() -> None:
     schema = run_events_json_schema()
     Draft202012Validator.check_schema(schema)
 
-    assert set(EVENT_DATA_MODELS) == DESIGN_TYPES
-    assert {variant["title"] for variant in schema["oneOf"]} == DESIGN_TYPES
-    assert TRANSIENT_EVENT_TYPES <= DESIGN_TYPES
+    every = DESIGN_TYPES | WF_DESIGN_TYPES | ORCH_DESIGN_TYPES
+    assert set(EVENT_DATA_MODELS) == every
+    assert {variant["title"] for variant in schema["oneOf"]} == every
+    assert TRANSIENT_EVENT_TYPES <= DESIGN_TYPES | WF_DESIGN_TYPES
     assert set(DELTA_TEXT_FIELDS) <= TRANSIENT_EVENT_TYPES
 
 

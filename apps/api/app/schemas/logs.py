@@ -20,6 +20,8 @@ class RunLogItem(RunOut):
     session_title: str | None
     # 지운 세션의 런도 로그로 남는다. 이때 세션 상세·메시지 API는 404다.
     session_deleted: bool
+    # call_agent로 만든 자식 런 수. 자식은 GET /runs?parent_run_id=로 본다.
+    child_count: int = 0
 
 
 class RunLogList(BaseModel):

@@ -37,20 +37,25 @@ class RunLogService:
         status: str | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        parent_run_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> RunLogList:
+        """parent_run_id를 주면 그 런이 call_agent로 부른 자식 런만 나온다(오케스트레이션 6.2)."""
         async with self._db.read() as session:
-            rows = await RunRepository(session, workspace_id).list_for_logs(
+            runs = RunRepository(session, workspace_id)
+            rows = await runs.list_for_logs(
                 session_id=session_id,
                 agent_id=agent_id,
                 source=source,
                 status=status,
                 since=since,
                 until=until,
+                parent_run_id=parent_run_id,
                 limit=limit + 1,
                 offset=offset,
             )
+            children = await runs.count_children([run.id for run, _, _ in rows[:limit]])
         more = len(rows) > limit
         items = [
             RunLogItem(
@@ -61,6 +66,7 @@ class RunLogService:
                 session_source=chat.source,  # pyright: ignore[reportArgumentType]
                 session_title=chat.title,
                 session_deleted=chat.deleted_at is not None,
+                child_count=children.get(run.id, 0),
             )
             for run, chat, agent in rows[:limit]
         ]

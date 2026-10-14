@@ -15,6 +15,7 @@ class Run(TimestampMixin, Base):
     __table_args__ = (
         Index(None, "session_id", "queued_at"),
         Index(None, "workspace_id", "status"),
+        Index(None, "parent_run_id"),
         enum_check("trigger", RunTrigger),
         enum_check("status", RunStatus),
         enum_check("approval_mode", ApprovalMode),
@@ -44,6 +45,10 @@ class Run(TimestampMixin, Base):
     queued_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None]
     ended_at: Mapped[datetime | None]
+    # call_agent가 만든 자식 런의 부모(오케스트레이션 7장). 자기 테이블을 가리켜 외래 키를 두지
+    # 않는다. 자식 목록·고아 취소·부모 재개·범위 판단은 JSON(input.correlation)이 아니라 이 열로
+    # 찾는다.
+    parent_run_id: Mapped[uuid.UUID | None]
 
 
 Index("ix_run_workspace_id_queued_at", Run.workspace_id, Run.queued_at.desc())

@@ -31,6 +31,35 @@ class SessionFileRepository(WorkspaceScopedRepository[SessionFile]):
             return []
         return await self._scalars(self._select().where(SessionFile.id.in_(list(file_ids))))
 
+    async def find_by_hash(
+        self, session_id: uuid.UUID, path: str, sha256: str
+    ) -> SessionFile | None:
+        """세션에 같은 경로·같은 내용으로 storage에 남은 파일(kind 무관). 가장 최근 것."""
+        return await self._scalar(
+            self._select()
+            .where(
+                SessionFile.session_id == session_id,
+                SessionFile.path == path,
+                SessionFile.sha256 == sha256,
+                SessionFile.storage_key.is_not(None),
+            )
+            .order_by(SessionFile.created_at.desc(), SessionFile.id.desc())
+            .limit(1)
+        )
+
+    async def stored_for_run(self, run_id: uuid.UUID) -> dict[str, set[str]]:
+        """런이 storage에 남긴 파일의 경로별 sha256. 런 종료 수집이 같은 파일을 두 번 남기지 않게
+        본다(오케스트레이션 4.1의 3번)."""
+        result = await self._execute(
+            self._select(SessionFile.path, SessionFile.sha256).where(
+                SessionFile.run_id == run_id, SessionFile.storage_key.is_not(None)
+            )
+        )
+        found: dict[str, set[str]] = {}
+        for path, sha256 in result.all():
+            found.setdefault(path, set()).add(sha256)
+        return found
+
     async def list_for_message(self, message_id: uuid.UUID) -> list[SessionFile]:
         return await self._scalars(
             self._select()

@@ -1,16 +1,18 @@
-"""토큰·비용·런 수 집계(설계 6.2 GET /stats/usage, 7.3 설정의 사용량 표).
+"""토큰·비용·런 수 집계(설계 6.2 GET /stats/usage, 7.3 설정의 사용량 표, 2단계 3.10).
 
-런 단위로 run.usage를 더하므로 어떻게 묶든 합계는 같은 기간 런들의 usage 합과 같다. 모델별은 런이
-마지막으로 쓴 모델(run.model.used)로 센다. 한 런 안에서 폴백으로 모델이 바뀌어도 런 전체가 마지막
-모델에 들어간다. 지운 세션·에이전트의 런도 사용량이므로 센다.
+런 단위로 run.usage(에이전트 런)와 wf_run.usage(워크플로우 런)를 더하므로 어떻게 묶든 합계는 같은
+기간 런들의 usage 합과 같다. 모델별은 런이 마지막으로 쓴 모델(run.model.used, 워크플로우 런은 마지막
+모델 노드의 모델)로 센다. 한 런 안에서 폴백으로 모델이 바뀌어도 런 전체가 마지막 모델에 들어간다.
+지운 세션·에이전트·워크플로우의 런도 사용량이므로 센다.
 """
 
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 
 from app.db.engine import Database
-from app.db.repositories.usage import UsageAggregate, UsageRepository
+from app.db.repositories.usage import UsageAggregate, UsageRepository, WfUsageRepository
 from app.db.types import utcnow
 from app.schemas.usage import UsageGroupBy, UsageReport, UsageRow, UsageTotals
 from app.services.errors import ServiceError
@@ -50,6 +52,40 @@ def sum_totals(rows: Sequence[UsageTotals]) -> UsageTotals:
         cost_usd=sum(costs) if costs else None,
         unpriced_runs=sum(row.unpriced_runs for row in rows),
         estimated=any(row.estimated for row in rows),
+    )
+
+
+def _merge(items: Sequence[UsageAggregate], group_by: UsageGroupBy) -> list[UsageAggregate]:
+    """에이전트 런과 워크플로우 런의 같은 키 행을 합치고 다시 정렬한다."""
+    merged: dict[str | None, UsageAggregate] = {}
+    for item in items:
+        found = merged.get(item.key)
+        if found is None:
+            merged[item.key] = item
+            continue
+        costs = [cost for cost in (found.cost_usd, item.cost_usd) if cost is not None]
+        merged[item.key] = replace(
+            found,
+            runs=found.runs + item.runs,
+            input_tokens=found.input_tokens + item.input_tokens,
+            output_tokens=found.output_tokens + item.output_tokens,
+            reasoning_tokens=found.reasoning_tokens + item.reasoning_tokens,
+            cached_input_tokens=found.cached_input_tokens + item.cached_input_tokens,
+            cost_usd=sum(costs) if costs else None,
+            unpriced_runs=found.unpriced_runs + item.unpriced_runs,
+            estimated=found.estimated or item.estimated,
+        )
+    rows = list(merged.values())
+    if group_by == "day":
+        return sorted(rows, key=lambda row: row.key or "")
+    # SQL의 ORDER BY 토큰 DESC, 이름처럼 null 키가 앞이다.
+    return sorted(
+        rows,
+        key=lambda row: (
+            -(row.input_tokens + row.output_tokens),
+            row.key is not None,
+            row.label or row.key or "",
+        ),
     )
 
 
@@ -99,10 +135,13 @@ class UsageService:
         if end - start > MAX_RANGE:
             raise ServiceError(422, "invalid_range", "기간은 10년을 넘을 수 없다")
         async with self._db.read() as session:
-            aggregates = await UsageRepository(session, workspace_id).aggregate(
+            agent_runs = await UsageRepository(session, workspace_id).aggregate(
                 group_by=group_by, since=start, until=end, offset_minutes=offset
             )
-        items = [_row(item) for item in aggregates]
+            workflow_runs = await WfUsageRepository(session, workspace_id).aggregate(
+                group_by=group_by, since=start, until=end, offset_minutes=offset
+            )
+        items = [_row(item) for item in _merge([*agent_runs, *workflow_runs], group_by)]
         return UsageReport(
             group_by=group_by,
             since=start,

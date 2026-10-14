@@ -362,7 +362,12 @@ async def test_workspace_status_clean_reset_and_list(
 
 
 async def test_disk_limit_rejects_new_runs(
-    logged_in: AsyncClient, make_session: Any, script: Any, db: Database
+    logged_in: AsyncClient,
+    make_session: Any,
+    script: Any,
+    db: Database,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, session_id = await make_session(logged_in)
     script.add(fake_text("첫 런"))
@@ -384,6 +389,11 @@ async def test_disk_limit_rejects_new_runs(
 
     assert refused.status_code == 409
     assert refused.json()["error"]["code"] == "workspace_disk_limit"
+    assert "디스크 한도(2GB)" in refused.json()["error"]["message"]
+    # 한도를 아주 작게 잡아도 0MB로 보이지 않는다.
+    monkeypatch.setattr(settings, "workspace_max_bytes", 5000)
+    tiny = await logged_in.post(f"/api/console/sessions/{session_id}/messages", json={"text": "더"})
+    assert "디스크 한도(4.9KB)" in tiny.json()["error"]["message"]
 
 
 async def test_delete_session_removes_workspace_but_keeps_outputs(

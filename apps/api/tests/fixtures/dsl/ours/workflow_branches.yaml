@@ -1,0 +1,135 @@
+# 분기·합류와 end 두 개, JSON 모드 llm, JSON 본문 http_request. 글자 필드에 따옴표·콜론·#처럼
+# YAML이 따로 다루는 글자를 넣어 라운드트립을 본다.
+dsl_version: 1
+kind: workflow
+name: 인사 보내기
+icon: "👋"
+description: ""
+env_vars:
+  - { name: HOOK_URL, value: "https://hooks.example.com/notify", secret: false }
+conversation_vars: []
+settings:
+  limits: { max_run_seconds: 300, max_total_tokens: 50000 }
+graph:
+  nodes:
+    - id: start
+      type: start
+      version: 1
+      title: 시작
+      position: { x: 0, y: 0 }
+      config:
+        fields:
+          - { name: name, type: string, label: 이름, required: true, max_length: 50 }
+          - { name: age, type: number, label: 나이, default: 20 }
+          - { name: note, type: paragraph, label: 메모 }
+    - id: route
+      type: if_else
+      version: 1
+      title: 나이로 나누기
+      position: { x: 300, y: 0 }
+      config:
+        cases:
+          - id: adult
+            conditions:
+              - { var: start.age, op: "≥", value: 20 }
+          - id: teen
+            logical: and
+            conditions:
+              - { var: start.age, op: "<", value: 20 }
+              - { var: start.age, op: "≥", value: 13 }
+    - id: adult
+      type: template
+      version: 1
+      title: 어른 인사
+      position: { x: 600, y: -150 }
+      config:
+        template: |
+          안녕하세요, {{ name }}님.
+          {% if note %}메모: {{ note }}{% endif %}
+        vars:
+          - { name: name, var: start.name }
+          - { name: note, var: start.note }
+    - id: teen
+      type: template
+      version: 1
+      title: 학생 인사
+      position: { x: 600, y: 0 }
+      config:
+        template: "{{ name }} 학생, 반가워요!"
+        vars:
+          - { name: name, var: start.name }
+    - id: other
+      type: template
+      version: 1
+      title: 그 밖
+      position: { x: 600, y: 150 }
+      config:
+        template: "#1: {{ name }}: 'quoted' \"double\" 값 - yes"
+        vars:
+          - { name: name, var: start.name }
+    - id: joined
+      type: variable_aggregator
+      version: 1
+      title: 인사 하나로
+      position: { x: 900, y: 0 }
+      config:
+        vars: [adult.output, teen.output, other.output]
+        output_type: string
+    - id: tone
+      type: llm
+      version: 1
+      title: 어조 판정
+      position: { x: 1200, y: -100 }
+      config:
+        model: { model_id: gemini-2.5-flash, params: { temperature: 0.2, max_output_tokens: 1024 } }
+        prompt:
+          - { role: user, text: "다음 인사의 어조를 JSON으로 답한다: {{ joined.output }}" }
+        json_mode: true
+        output_schema:
+          type: object
+          properties:
+            tone: { type: string, enum: [formal, casual] }
+          required: [tone]
+    - id: notify
+      type: http_request
+      version: 1
+      title: 알림 보내기
+      position: { x: 1200, y: 100 }
+      config:
+        method: POST
+        url: "{{ env.HOOK_URL }}"
+        headers:
+          - { name: Content-Type, value: application/json }
+        body:
+          type: json
+          content: '{"text": {{ joined.output | tojson }}}'
+        timeout_sec: 10
+    - id: end_main
+      type: end
+      version: 1
+      title: 결과
+      position: { x: 1500, y: -100 }
+      config:
+        outputs:
+          - { name: greeting, var: joined.output }
+          - { name: tone, var: tone.json }
+    - id: end_notify
+      type: end
+      version: 1
+      title: 알림 결과
+      position: { x: 1500, y: 100 }
+      config:
+        outputs:
+          - { name: status, var: notify.status_code }
+  edges:
+    - { id: e1, source: start, target: route }
+    - { id: e2, source: route, source_handle: case_adult, target: adult }
+    - { id: e3, source: route, source_handle: case_teen, target: teen }
+    - { id: e4, source: route, source_handle: else, target: other }
+    - { id: e5, source: adult, target: joined }
+    - { id: e6, source: teen, target: joined }
+    - { id: e7, source: other, target: joined }
+    - { id: e8, source: joined, target: tone }
+    - { id: e9, source: joined, target: notify }
+    - { id: e10, source: tone, target: end_main }
+    - { id: e11, source: notify, target: end_notify }

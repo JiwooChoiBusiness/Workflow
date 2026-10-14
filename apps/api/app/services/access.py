@@ -2,6 +2,10 @@
 
 콘솔은 범위 없이 모든 세션을 다룬다. 웹앱은 발행되어 webapp_enabled인 에이전트의 webapp 세션만,
 서비스 API는 키에 묶인 에이전트의 api·task 세션만 다룬다. 범위 밖의 자원은 없는 것(404)으로 본다.
+
+call_agent가 만든 자식 세션(source=task, 다른 에이전트)은 그 자체로는 범위 밖이다. 자식 런의
+parent_run_id를 따라 뿌리 런까지 올라가 뿌리 런의 세션이 범위 안이면 허용한다(오케스트레이션 6.3).
+그래서 엔드포인트를 더하지 않아도 자식 세션의 기존 경로(이벤트·파일·중지·응답)가 열린다.
 """
 
 import uuid
@@ -12,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ChatSession
 from app.db.repositories.agents import AgentRepository
+from app.db.repositories.runs import RunRepository
 from app.db.repositories.sessions import SessionRepository
 from app.services.errors import not_found
 
@@ -30,6 +35,31 @@ class SessionScope:
 
 
 async def in_scope(
+    session: AsyncSession, workspace_id: uuid.UUID, chat: ChatSession, scope: SessionScope
+) -> bool:
+    if await _directly_in_scope(session, workspace_id, chat, scope):
+        return True
+    if chat.deleted_at is not None:
+        return False
+    root = await _root_session(session, workspace_id, chat)
+    return root is not None and await _directly_in_scope(session, workspace_id, root, scope)
+
+
+async def _root_session(
+    session: AsyncSession, workspace_id: uuid.UUID, chat: ChatSession
+) -> ChatSession | None:
+    """call_agent가 만든 세션이면 그 호출 사슬의 뿌리 런 세션. 아니면 None."""
+    runs = RunRepository(session, workspace_id)
+    child = await runs.child_run_in_session(chat.id)
+    if child is None:
+        return None
+    chain = await runs.parent_chain(child.id)
+    if not chain:
+        return None
+    return await SessionRepository(session, workspace_id).get_active(chain[-1].session_id)
+
+
+async def _directly_in_scope(
     session: AsyncSession, workspace_id: uuid.UUID, chat: ChatSession, scope: SessionScope
 ) -> bool:
     if chat.deleted_at is not None or chat.source not in scope.sources:

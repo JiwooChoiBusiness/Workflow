@@ -18,7 +18,7 @@ from app.config import Settings
 from app.db.engine import Database
 from app.housekeeping import Housekeeping
 from app.llm.gemini_adapter import GeminiAdapter
-from app.logging import configure_logging
+from app.logsetup import configure_logging
 from app.main import create_app
 from app.runner import recovery
 from app.sandbox import E2B_NOT_IMPLEMENTED, allowlist
@@ -62,7 +62,11 @@ async def test_healthz_reports_process_state(settings: Settings) -> None:
     assert body["db"] == "ok"
     assert body["rss_mb"] > 0
     assert isinstance(body["uptime_sec"], int)
-    assert body["runner"] == {"active": 0, "queued": 0, "shutting_down": False}
+    assert body["runner"] == {
+        "agent": {"active": 0, "queued": 0},
+        "workflow": {"active": 0, "queued": 0},
+        "shutting_down": False,
+    }
 
 
 async def test_readyz_turns_503_after_shutdown(settings: Settings) -> None:
@@ -70,9 +74,10 @@ async def test_readyz_turns_503_after_shutdown(settings: Settings) -> None:
     async with running(app) as client:
         assert (await client.get("/readyz")).status_code == 200
 
-        supervisor = app.state.supervisor
-        supervisor.request_shutdown()
-        assert await asyncio.to_thread(supervisor.finished.wait, 5)
+        # 두 레인과 종료 훅은 종료 코디네이터가 함께 멈춘다(2단계 3.6).
+        coordinator = app.state.shutdown
+        coordinator.request_shutdown()
+        assert await asyncio.to_thread(coordinator.finished.wait, 5)
         response = await client.get("/readyz")
 
     assert response.status_code == 503
@@ -176,7 +181,8 @@ async def test_shutdown_stops_housekeeping_then_closes_sandbox_llm_and_db(
     async with running(create_app(settings)):
         pass
 
-    assert calls == ["housekeeping", "sandbox", "llm", "db"]
+    # 샌드박스 백엔드는 둘이다(에이전트 작업공간, 워크플로우 런 작업 폴더).
+    assert calls == ["housekeeping", "sandbox", "sandbox", "llm", "db"]
 
 
 async def test_e2b_backend_stops_startup(settings: Settings) -> None:

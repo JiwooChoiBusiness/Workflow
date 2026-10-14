@@ -1,0 +1,36 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "title": "시작",
+      "position": { "x": 0, "y": 0 },
+      "config": {
+        "fields": [
+          { "name": "name", "type": "string", "label": "이름", "required": true, "max_length": 40 }
+        ]
+      }
+    },
+    {
+      "id": "template_1",
+      "type": "template",
+      "title": "인사",
+      "position": { "x": 300, "y": 0 },
+      "config": {
+        "template": "안녕하세요, {{ name }}님",
+        "vars": [{ "name": "name", "var": "start.name" }]
+      }
+    },
+    {
+      "id": "end_1",
+      "type": "end",
+      "title": "끝",
+      "position": { "x": 600, "y": 0 },
+      "config": { "outputs": [{ "name": "greeting", "var": "template_1.output" }] }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "template_1" },
+    { "id": "e2", "source": "template_1", "target": "end_1" }
+  ]
+}

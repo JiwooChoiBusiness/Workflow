@@ -1,0 +1,297 @@
+# Dify DSL 구조를 보고 직접 쓴 작은 챗플로우(advanced-chat) 예제. 질문 분류 뒤 세 갈래로 나뉘고,
+# 지식 검색(knowledge-retrieval)과 도구(tool) 노드는 우리가 옮기지 않는 노드다. 대화 변수, 여는 말,
+# 추천 질문, 파일 업로드, 메모리를 쓰는 llm, 할당 노드(v2)가 들어 있다.
+app:
+  description: 환불·배송·그 밖의 질문을 나눠 답한다
+  icon: 🤖
+  icon_background: '#E0F2FE'
+  mode: advanced-chat
+  name: 상담 챗봇
+kind: app
+version: 0.3.0
+workflow:
+  conversation_variables:
+  - description: 마지막으로 다룬 주제
+    id: 2c7b1f00-0000-4000-8000-000000000001
+    name: topic
+    selector:
+    - conversation
+    - topic
+    value: ''
+    value_type: string
+  - description: ''
+    id: 2c7b1f00-0000-4000-8000-000000000002
+    name: visits
+    selector:
+    - conversation
+    - visits
+    value: 0
+    value_type: number
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_types:
+      - image
+      enabled: true
+      number_limits: 3
+    opening_statement: 안녕하세요! 무엇을 도와드릴까요?
+    retriever_resource:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+    - 환불 규정이 궁금해요
+    - 배송은 얼마나 걸리나요?
+    suggested_questions_after_answer:
+      enabled: true
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+    - id: e-start-classify
+      source: '1730000000001'
+      sourceHandle: source
+      target: '1730000000002'
+      targetHandle: target
+      type: custom
+    - id: e-classify-1
+      source: '1730000000002'
+      sourceHandle: '1'
+      target: '1730000000003'
+      targetHandle: target
+      type: custom
+    - id: e-knowledge-llm
+      source: '1730000000003'
+      sourceHandle: source
+      target: '1730000000004'
+      targetHandle: target
+      type: custom
+    - id: e-llm-answer
+      source: '1730000000004'
+      sourceHandle: source
+      target: '1730000000005'
+      targetHandle: target
+      type: custom
+    - id: e-classify-2
+      source: '1730000000002'
+      sourceHandle: '2'
+      target: '1730000000006'
+      targetHandle: target
+      type: custom
+    - id: e-extract-assign
+      source: '1730000000006'
+      sourceHandle: source
+      target: '1730000000007'
+      targetHandle: target
+      type: custom
+    - id: e-assign-answer
+      source: '1730000000007'
+      sourceHandle: source
+      target: '1730000000008'
+      targetHandle: target
+      type: custom
+    - id: e-classify-3
+      source: '1730000000002'
+      sourceHandle: '3'
+      target: '1730000000009'
+      targetHandle: target
+      type: custom
+    - id: e-tool-answer
+      source: '1730000000009'
+      sourceHandle: source
+      target: '1730000000010'
+      targetHandle: target
+      type: custom
+    nodes:
+    - data:
+        title: 시작
+        type: start
+        variables: []
+      id: '1730000000001'
+      position:
+        x: 30
+        y: 300
+      type: custom
+    - data:
+        classes:
+        - id: '1'
+          name: 환불·결제 문의
+        - id: '2'
+          name: '배송 문의
+
+            (주문 번호가 있을 때)'
+        - id: '3'
+          name: 그 밖의 질문
+        instruction: 고객 질문을 셋 중 하나로 분류한다
+        model:
+          completion_params:
+            temperature: 0
+          mode: chat
+          name: claude-3-haiku
+          provider: anthropic
+        query_variable_selector:
+        - sys
+        - query
+        title: 질문 분류
+        type: question-classifier
+      id: '1730000000002'
+      position:
+        x: 330
+        y: 300
+      type: custom
+    - data:
+        dataset_ids:
+        - 9d1e0000-0000-4000-8000-000000000003
+        query_variable_selector:
+        - sys
+        - query
+        retrieval_mode: multiple
+        title: 환불 규정 검색
+        type: knowledge-retrieval
+      id: '1730000000003'
+      position:
+        x: 630
+        y: 120
+      type: custom
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1730000000003'
+          - result
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 6
+        model:
+          completion_params:
+            temperature: 0.7
+            top_p: 0.9
+          mode: chat
+          name: gpt-4o
+          provider: openai
+        prompt_template:
+        - role: system
+          text: '다음 자료만 보고 환불 규정을 설명한다.
+
+            {{#context#}}
+
+            지금까지 다룬 주제: {{#conversation.topic#}}'
+        title: 환불 답변
+        type: llm
+        vision:
+          configs:
+            detail: high
+            variable_selector:
+            - sys
+            - files
+          enabled: true
+      id: '1730000000004'
+      position:
+        x: 930
+        y: 120
+      type: custom
+    - data:
+        answer: '{{#1730000000004.text#}}'
+        title: 환불 답
+        type: answer
+        variables: []
+      id: '1730000000005'
+      position:
+        x: 1230
+        y: 120
+      type: custom
+    - data:
+        instruction: 질문에서 주문 번호를 찾는다
+        model:
+          completion_params: {}
+          mode: chat
+          name: gpt-4o-mini
+          provider: openai
+        parameters:
+        - description: 주문 번호
+          name: order_id
+          required: true
+          type: string
+        - description: 급한 정도
+          name: urgency
+          options:
+          - 높음
+          - 보통
+          required: false
+          type: select
+        query:
+        - sys
+        - query
+        reasoning_mode: function_call
+        title: 주문 번호 찾기
+        type: parameter-extractor
+      id: '1730000000006'
+      position:
+        x: 630
+        y: 300
+      type: custom
+    - data:
+        items:
+        - input_type: constant
+          operation: set
+          value: 배송
+          variable_selector:
+          - conversation
+          - topic
+        - input_type: constant
+          operation: +=
+          value: 1
+          variable_selector:
+          - conversation
+          - visits
+        title: 대화 변수 갱신
+        type: assigner
+        version: '2'
+      id: '1730000000007'
+      position:
+        x: 930
+        y: 300
+      type: custom
+    - data:
+        answer: '주문 {{#1730000000006.order_id#}}의 배송 상황을 확인하겠습니다. (상담 {{#conversation.visits#}}번째)'
+        title: 배송 답
+        type: answer
+        variables: []
+      id: '1730000000008'
+      position:
+        x: 1230
+        y: 300
+      type: custom
+    - data:
+        provider_id: time
+        provider_name: time
+        provider_type: builtin
+        title: 현재 시각
+        tool_label: Current Time
+        tool_name: current_time
+        tool_parameters: {}
+        type: tool
+      id: '1730000000009'
+      position:
+        x: 630
+        y: 480
+      type: custom
+    - data:
+        answer: '지금은 {{#1730000000009.text#}}입니다. 담당자가 곧 답합니다.'
+        title: 그 밖의 답
+        type: answer
+        variables: []
+      id: '1730000000010'
+      position:
+        x: 930
+        y: 480
+      type: custom
+    viewport:
+      x: 0
+      y: 0
+      zoom: 1

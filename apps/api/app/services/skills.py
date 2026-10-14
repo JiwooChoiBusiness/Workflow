@@ -137,7 +137,9 @@ def _version_out(version: SkillVersion) -> SkillVersionOut:
     )
 
 
-def _skill_out(skill: Skill, current: SkillVersion | None) -> SkillOut:
+def _skill_out(skill: Skill, versions: list[SkillVersion]) -> SkillOut:
+    """versions는 그 스킬의 버전 전부(새 번호부터)."""
+    current = next((v for v in versions if v.id == skill.current_version_id), None)
     return SkillOut(
         id=skill.id,
         scope="embedded" if skill.scope == SkillScope.EMBEDDED else "library",
@@ -147,6 +149,7 @@ def _skill_out(skill: Skill, current: SkillVersion | None) -> SkillOut:
         description=skill.description,
         current_version_id=skill.current_version_id,
         current_version_number=current.version_number if current else None,
+        versions=[_version_summary(version) for version in versions],
         created_at=skill.created_at,
         updated_at=skill.updated_at,
     )
@@ -155,8 +158,7 @@ def _skill_out(skill: Skill, current: SkillVersion | None) -> SkillOut:
 def _detail(skill: Skill, versions: list[SkillVersion]) -> SkillDetailOut:
     current = next((v for v in versions if v.id == skill.current_version_id), None)
     return SkillDetailOut(
-        **_skill_out(skill, current).model_dump(),
-        versions=[_version_summary(version) for version in versions],
+        **_skill_out(skill, versions).model_dump(),
         current_version=_version_out(current) if current else None,
     )
 
@@ -315,18 +317,13 @@ class SkillService:
     async def _list(
         self, session: AsyncSession, workspace_id: uuid.UUID, skills: list[Skill]
     ) -> SkillList:
-        current_ids = [skill.current_version_id for skill in skills if skill.current_version_id]
-        versions = await SkillVersionRepository(session, workspace_id).get_many(current_ids)
-        by_id = {version.id: version for version in versions}
-        return SkillList(
-            items=[
-                _skill_out(
-                    skill,
-                    by_id.get(skill.current_version_id) if skill.current_version_id else None,
-                )
-                for skill in skills
-            ]
+        versions = await SkillVersionRepository(session, workspace_id).list_for_skills(
+            [skill.id for skill in skills]
         )
+        by_skill: dict[uuid.UUID, list[SkillVersion]] = {}
+        for version in versions:
+            by_skill.setdefault(version.skill_id, []).append(version)
+        return SkillList(items=[_skill_out(skill, by_skill.get(skill.id, [])) for skill in skills])
 
     async def _skill(
         self, session: AsyncSession, workspace_id: uuid.UUID, skill_id: uuid.UUID

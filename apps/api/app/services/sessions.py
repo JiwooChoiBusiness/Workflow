@@ -49,11 +49,11 @@ from app.schemas.session import (
     WorkspaceDirUsage,
     WorkspaceInstanceOut,
     WorkspaceKillOut,
-    WorkspaceList,
     WorkspaceStatusOut,
 )
 from app.services.access import SessionScope, scoped_session
 from app.services.agents import AgentService, provision_content, snapshot_source
+from app.services.child_runs import propagate_auto_approve_down
 from app.services.errors import ServiceError, not_found
 from app.services.files import guess_mime, sanitize_filename
 from app.services.runs import RunService, run_out, session_file_out, workspace_handle
@@ -358,6 +358,11 @@ class SessionService:
             if "approval_override" in patch.model_fields_set:
                 # 자동 승인은 이 세션에서만 켠다. 끄면 에이전트 버전의 승인 모드로 돌아간다(3.10).
                 chat.approval_override = patch.approval_override
+                # 이 대화에서 부른 하위 에이전트(열린 자식 세션)에도 같은 값을 쓴다(오케스트레이션
+                # 3.5).
+                await propagate_auto_approve_down(
+                    session, workspace_id, session_id, patch.approval_override
+                )
             chat.updated_at = self._clock()
             return session_out(chat)
 
@@ -678,12 +683,3 @@ class SessionService:
                 row.disk_bytes = stats.disk_bytes
                 row.disk_estimated = stats.disk_estimated
                 row.disk_measured_at = self._clock()
-
-    async def list_workspaces(self, workspace_id: uuid.UUID) -> WorkspaceList:
-        async with self._db.read() as session:
-            rows = await WorkspaceInstanceRepository(session, workspace_id).list_all()
-            chats = await SessionRepository(session, workspace_id).get_many(
-                [row.session_id for row in rows]
-            )
-        by_id = {chat.id: chat for chat in chats}
-        return WorkspaceList(items=[instance_out(row, by_id.get(row.session_id)) for row in rows])

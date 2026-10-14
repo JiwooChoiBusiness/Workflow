@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Collection
+from typing import Any
 
 from sqlalchemy import func
 
@@ -51,6 +52,19 @@ class AgentVersionRepository(WorkspaceScopedRepository[AgentVersion]):
             )
         )
         return (current or 0) + 1
+
+    async def sub_agent_edges(
+        self, version_ids: Collection[uuid.UUID]
+    ) -> list[tuple[uuid.UUID, list[dict[str, Any]]]]:
+        """버전들의 (agent_id, sub_agents). 하위 에이전트 참조 그래프(순환·깊이 검사)에 쓴다."""
+        if not version_ids:
+            return []
+        result = await self._execute(
+            self._select(AgentVersion.agent_id, AgentVersion.sub_agents).where(
+                AgentVersion.id.in_(list(version_ids))
+            )
+        )
+        return [(row[0], list(row[1] or [])) for row in result.all()]
 
     async def referenced_ids(self) -> tuple[set[str], set[str]]:
         """모든 버전(초안·발행, 지운 에이전트 것까지)이 쓰는 (파일 id, 스킬 버전 id). 문자열이다.

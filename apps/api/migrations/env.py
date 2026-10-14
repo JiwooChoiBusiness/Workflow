@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.db.base import Base
 from app.db.engine import Database
 from app.db.migrate import run_in_transaction
-from app.logging import configure_logging
+from app.logsetup import configure_logging
 
 config = context.config
 

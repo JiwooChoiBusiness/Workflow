@@ -26,15 +26,16 @@ class WorkspaceInstanceRepository(WorkspaceScopedRepository[WorkspaceInstance]):
             .limit(limit)
         )
 
-    async def list_all(self) -> list[WorkspaceInstance]:
-        return await self._scalars(
-            self._select().order_by(
-                WorkspaceInstance.last_activity_at.desc(), WorkspaceInstance.id.desc()
-            )
-        )
-
     async def list_by_status(self, status: str) -> list[WorkspaceInstance]:
         return await self._scalars(self._select().where(WorkspaceInstance.status == status))
+
+    async def list_for_source(self, source: str) -> list[WorkspaceInstance]:
+        """그 소스의 살아 있는 세션이 가진 작업공간(하우스키핑의 과업 작업공간 정리)."""
+        return await self._scalars(
+            self._select()
+            .join(ChatSession, ChatSession.id == WorkspaceInstance.session_id)
+            .where(ChatSession.source == source, ChatSession.deleted_at.is_(None))
+        )
 
     async def list_with_session(
         self,

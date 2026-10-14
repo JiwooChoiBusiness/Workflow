@@ -240,6 +240,9 @@ async def test_hourly_job_runs_retention_and_survives_a_failing_job(
         db=db, backend=app.state.sandbox, memory_budget_mb=300, retention=jobs
     )
 
-    await housekeeping.run_hourly()
+    summary = await housekeeping.run_hourly()
 
     assert loose["id"] not in await ids_of(db, AgentFile.id)
+    # 실패한 작업은 로그 값이 None이고 나머지는 지운 개수가 남는다.
+    assert summary["purged_broken"] is None
+    assert summary["purged_agent_files"] == 1

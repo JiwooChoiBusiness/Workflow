@@ -25,9 +25,12 @@ BUILTIN_TOOLS: tuple[Tool, ...] = (
 )
 
 
-def tools_for_groups(groups: Iterable[str]) -> list[Tool]:
-    """에이전트 버전의 tools(그룹 목록)에 든 도구. 순서는 BUILTIN_TOOLS를 따른다."""
-    wanted: set[str] = set(groups)
+def tools_for_groups(groups: Iterable[str], *, exclude: Iterable[str] = ()) -> list[Tool]:
+    """에이전트 버전의 tools(그룹 목록)에 든 도구. 순서는 BUILTIN_TOOLS를 따른다.
+
+    exclude의 그룹은 뺀다. call_agent로 만든 자식 런은 ask_user를 받지 않는다(오케스트레이션 3.5).
+    """
+    wanted: set[str] = set(groups) - set(exclude)
     return [tool for tool in BUILTIN_TOOLS if tool.group in wanted]
 
 

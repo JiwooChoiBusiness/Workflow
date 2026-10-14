@@ -135,6 +135,24 @@ async def test_write_commits_and_rolls_back(db: Database) -> None:
     assert rows == [1]
 
 
+async def test_passive_checkpoint_does_not_wait_for_an_open_write(db: Database) -> None:
+    async with db.write() as session:
+        await session.execute(text("CREATE TABLE t (x INTEGER)"))
+        await session.execute(text("INSERT INTO t VALUES (1)"))
+
+    async with db.write() as session:
+        await session.execute(text("INSERT INTO t VALUES (2)"))
+        # 하우스키핑은 런 이벤트 기록과 겹쳐 돈다. 쓰기 락을 기다리면 여기서 멈춘다.
+        result = await asyncio.wait_for(db.checkpoint("PASSIVE"), timeout=5)
+
+    # 커밋된 프레임은 모두 DB 파일로 옮겼다. 아직 커밋하지 않은 쓰기는 세지 않는다.
+    assert not result.busy
+    assert result.wal_frames > 0
+    assert result.checkpointed == result.wal_frames
+    with pytest.raises(ValueError):
+        await db.checkpoint("NOW")  # pyright: ignore[reportArgumentType]
+
+
 async def test_close_checkpoints_and_removes_wal(tmp_path: Path) -> None:
     path = tmp_path / "app.db"
     database = Database(path)
@@ -151,6 +169,8 @@ async def test_close_checkpoints_and_removes_wal(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError):
         async with database.read():
             pass
+    with pytest.raises(RuntimeError):
+        await database.checkpoint()
     with closing(sqlite3.connect(path)) as conn:
         assert conn.execute("PRAGMA journal_mode").fetchone() == ("wal",)
         assert conn.execute("SELECT x FROM t").fetchall() == [(1,)]

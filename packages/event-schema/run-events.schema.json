@@ -1,16 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "RunEvent",
-  "description": "런 이벤트(SSE data 줄 한 개). SSE의 id는 seq, event는 type과 같다. x-transient-types의 이벤트는 저장되지 않아 재접속 때 다시 오지 않을 수 있다.",
-  "x-schema-version": 1,
+  "description": "런 이벤트(SSE data 줄 한 개). SSE의 id는 seq, event는 type과 같다. x-transient-types의 이벤트는 저장되지 않아 재접속 때 다시 오지 않을 수 있다. x-terminal-types의 이벤트 뒤에 서버가 스트림을 닫는다. 워크플로우 런은 session_id가 null이고 챗플로우 런만 conversation_id가 있다.",
+  "x-schema-version": 2,
   "x-transient-types": [
+    "answer.delta",
     "message.delta",
+    "node.progress",
+    "node.text_delta",
+    "node.waiting",
     "ping",
     "thinking.delta",
     "tool_call.input_delta",
     "tool_call.output_delta"
   ],
-  "x-terminal-type": "run.completed",
+  "x-terminal-types": [
+    "run.completed",
+    "workflow.completed"
+  ],
   "oneOf": [
     {
       "title": "run.queued",
@@ -29,8 +36,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -65,8 +90,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -101,8 +144,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -137,8 +198,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -173,8 +252,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -209,8 +306,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -245,8 +360,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -281,8 +414,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -317,8 +468,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -353,8 +522,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -389,8 +576,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -425,8 +630,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -461,8 +684,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -497,8 +738,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -533,8 +792,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -569,8 +846,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -605,8 +900,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -641,8 +954,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -677,8 +1008,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -713,8 +1062,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -749,8 +1116,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -785,8 +1170,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -821,8 +1224,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -857,8 +1278,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -893,8 +1332,26 @@
           "format": "uuid"
         },
         "session_id": {
-          "type": "string",
-          "format": "uuid"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "seq": {
           "type": "integer",
@@ -909,6 +1366,1086 @@
         },
         "data": {
           "$ref": "#/$defs/RunErrorData"
+        }
+      }
+    },
+    {
+      "title": "child_run.started",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "child_run.started"
+        },
+        "data": {
+          "$ref": "#/$defs/ChildRunStartedData"
+        }
+      }
+    },
+    {
+      "title": "child_run.completed",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "child_run.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/ChildRunCompletedData"
+        }
+      }
+    },
+    {
+      "title": "workflow.queued",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "workflow.queued"
+        },
+        "data": {
+          "$ref": "#/$defs/WorkflowQueuedData"
+        }
+      }
+    },
+    {
+      "title": "workflow.started",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "workflow.started"
+        },
+        "data": {
+          "$ref": "#/$defs/WorkflowStartedData"
+        }
+      }
+    },
+    {
+      "title": "node.started",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.started"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeStartedData"
+        }
+      }
+    },
+    {
+      "title": "node.text_delta",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.text_delta"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeTextDeltaData"
+        }
+      }
+    },
+    {
+      "title": "node.progress",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.progress"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeProgressData"
+        }
+      }
+    },
+    {
+      "title": "node.waiting",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.waiting"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeWaitingData"
+        }
+      }
+    },
+    {
+      "title": "node.retrying",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.retrying"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeRetryingData"
+        }
+      }
+    },
+    {
+      "title": "node.usage",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.usage"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeUsageData"
+        }
+      }
+    },
+    {
+      "title": "node.completed",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "node.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/NodeCompletedData"
+        }
+      }
+    },
+    {
+      "title": "iteration.started",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "iteration.started"
+        },
+        "data": {
+          "$ref": "#/$defs/IterationStartedData"
+        }
+      }
+    },
+    {
+      "title": "iteration.next",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "iteration.next"
+        },
+        "data": {
+          "$ref": "#/$defs/IterationNextData"
+        }
+      }
+    },
+    {
+      "title": "iteration.completed",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "iteration.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/IterationCompletedData"
+        }
+      }
+    },
+    {
+      "title": "answer.delta",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "answer.delta"
+        },
+        "data": {
+          "$ref": "#/$defs/AnswerDeltaData"
+        }
+      }
+    },
+    {
+      "title": "answer.completed",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "answer.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/AnswerCompletedData"
+        }
+      }
+    },
+    {
+      "title": "workflow.waiting_input",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "workflow.waiting_input"
+        },
+        "data": {
+          "$ref": "#/$defs/WorkflowWaitingInputData"
+        }
+      }
+    },
+    {
+      "title": "workflow.resumed",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "workflow.resumed"
+        },
+        "data": {
+          "$ref": "#/$defs/WorkflowResumedData"
+        }
+      }
+    },
+    {
+      "title": "workflow.error",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "workflow.error"
+        },
+        "data": {
+          "$ref": "#/$defs/WorkflowErrorData"
+        }
+      }
+    },
+    {
+      "title": "workflow.completed",
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "seq",
+        "ts",
+        "type",
+        "data"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "const": "workflow.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/WorkflowCompletedData"
         }
       }
     },
@@ -933,6 +2470,193 @@
     }
   ],
   "$defs": {
+    "AnswerCompletedData": {
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message Id"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "AnswerCompletedData",
+      "type": "object"
+    },
+    "AnswerDeltaData": {
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Run Id"
+        }
+      },
+      "required": [
+        "text",
+        "node_id"
+      ],
+      "title": "AnswerDeltaData",
+      "type": "object"
+    },
+    "ChildRunCompletedData": {
+      "description": "자식 런이 끝나 부모가 다시 큐에 들어간다. 결과는 뒤이은 tool_call.completed에 있다.",
+      "properties": {
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "child_run_id": {
+          "format": "uuid",
+          "title": "Child Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunErrorData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "steps": {
+          "title": "Steps",
+          "type": "integer"
+        },
+        "usage_total": {
+          "$ref": "#/$defs/UsageTotal"
+        },
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "files": {
+          "title": "Files",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tool_call_id",
+        "child_run_id",
+        "status",
+        "steps",
+        "usage_total",
+        "duration_ms",
+        "files"
+      ],
+      "title": "ChildRunCompletedData",
+      "type": "object"
+    },
+    "ChildRunStartedData": {
+      "description": "call_agent가 자식 런을 만들고 부모가 그 결과를 기다리기 시작했다(오케스트레이션 6.1).\n\n부모 런은 run.completed 없이 열린 채로 남는다. 자식의 진행과 승인은 child_session_id 세션의\n이벤트 스트림으로 따로 받는다.",
+      "properties": {
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "child_run_id": {
+          "format": "uuid",
+          "title": "Child Run Id",
+          "type": "string"
+        },
+        "child_session_id": {
+          "format": "uuid",
+          "title": "Child Session Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "format": "uuid",
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "agent_slug": {
+          "title": "Agent Slug",
+          "type": "string"
+        },
+        "agent_name": {
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "version": {
+          "enum": [
+            "draft",
+            "published"
+          ],
+          "title": "Version",
+          "type": "string"
+        },
+        "depth": {
+          "title": "Depth",
+          "type": "integer"
+        },
+        "result_format": {
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Result Format",
+          "type": "string"
+        },
+        "task_preview": {
+          "title": "Task Preview",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_call_id",
+        "child_run_id",
+        "child_session_id",
+        "agent_id",
+        "agent_slug",
+        "agent_name",
+        "version",
+        "depth",
+        "result_format",
+        "task_preview"
+      ],
+      "title": "ChildRunStartedData",
+      "type": "object"
+    },
     "ContextCompactedData": {
       "properties": {
         "before_tokens": {
@@ -1104,6 +2828,70 @@
       "title": "InteractionResolvedData",
       "type": "object"
     },
+    "IterationCompletedData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "failed_count": {
+          "title": "Failed Count",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "node_id",
+        "count",
+        "failed_count",
+        "duration_ms"
+      ],
+      "title": "IterationCompletedData",
+      "type": "object"
+    },
+    "IterationNextData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "node_id",
+        "index"
+      ],
+      "title": "IterationNextData",
+      "type": "object"
+    },
+    "IterationStartedData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "node_id",
+        "total"
+      ],
+      "title": "IterationStartedData",
+      "type": "object"
+    },
     "MessageCompletedData": {
       "properties": {
         "message_id": {
@@ -1212,6 +3000,474 @@
         "downloadable"
       ],
       "title": "MessageFileData",
+      "type": "object"
+    },
+    "NodeCompletedData": {
+      "properties": {
+        "node_run_id": {
+          "format": "uuid",
+          "title": "Node Run Id",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "skipped",
+            "cancelled",
+            "waiting_input"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "outputs_preview": {
+          "additionalProperties": true,
+          "title": "Outputs Preview",
+          "type": "object"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageTotal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "node_run_id",
+        "node_id",
+        "status",
+        "duration_ms"
+      ],
+      "title": "NodeCompletedData",
+      "type": "object"
+    },
+    "NodeError": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "NodeError",
+      "type": "object"
+    },
+    "NodeProgressData": {
+      "description": "agent 노드의 자식 런 진행. 자식을 만들자마자 한 번, 그 뒤 10초마다 온다.",
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_run_id": {
+          "format": "uuid",
+          "title": "Node Run Id",
+          "type": "string"
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Steps"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageTotal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "child_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Run Id"
+        },
+        "child_session_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Session Id"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_run_id"
+      ],
+      "title": "NodeProgressData",
+      "type": "object"
+    },
+    "NodeRetryingData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_run_id": {
+          "format": "uuid",
+          "title": "Node Run Id",
+          "type": "string"
+        },
+        "attempt": {
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_run_id",
+        "attempt",
+        "reason"
+      ],
+      "title": "NodeRetryingData",
+      "type": "object"
+    },
+    "NodeStartedData": {
+      "properties": {
+        "node_run_id": {
+          "format": "uuid",
+          "title": "Node Run Id",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_type": {
+          "title": "Node Type",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "iteration_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Iteration Id"
+        },
+        "iteration_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Iteration Index"
+        },
+        "attempt": {
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "child_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Run Id"
+        },
+        "child_session_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Session Id"
+        }
+      },
+      "required": [
+        "node_run_id",
+        "node_id",
+        "node_type",
+        "title",
+        "index",
+        "attempt"
+      ],
+      "title": "NodeStartedData",
+      "type": "object"
+    },
+    "NodeTextDeltaData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_run_id": {
+          "format": "uuid",
+          "title": "Node Run Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_run_id",
+        "text"
+      ],
+      "title": "NodeTextDeltaData",
+      "type": "object"
+    },
+    "NodeUsageData": {
+      "description": "모델을 부른 노드(llm 등)의 호출 한 번. 1단계 usage와 같은 값에 노드가 붙고 step이 없다.",
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_run_id": {
+          "format": "uuid",
+          "title": "Node Run Id",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "key_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Index"
+        },
+        "input_tokens": {
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "cached_input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cached Input Tokens"
+        },
+        "estimated": {
+          "title": "Estimated",
+          "type": "boolean"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_run_id",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "estimated"
+      ],
+      "title": "NodeUsageData",
+      "type": "object"
+    },
+    "NodeWaitingData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Run Id"
+        },
+        "reason": {
+          "enum": [
+            "queue",
+            "rate_limit"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        }
+      },
+      "required": [
+        "node_id",
+        "reason"
+      ],
+      "title": "NodeWaitingData",
       "type": "object"
     },
     "PingData": {
@@ -1629,6 +3885,19 @@
           ],
           "default": null,
           "title": "Output Storage Key"
+        },
+        "child_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Run Id"
         }
       },
       "required": [
@@ -1851,6 +4120,235 @@
         }
       },
       "title": "UsageTotal",
+      "type": "object"
+    },
+    "WorkflowCompletedData": {
+      "properties": {
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled",
+            "waiting_input"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "outputs": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outputs"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "usage_total": {
+          "$ref": "#/$defs/UsageTotal"
+        },
+        "node_runs": {
+          "title": "Node Runs",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowErrorData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "status",
+        "usage_total",
+        "node_runs",
+        "duration_ms"
+      ],
+      "title": "WorkflowCompletedData",
+      "type": "object"
+    },
+    "WorkflowErrorData": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "WorkflowErrorData",
+      "type": "object"
+    },
+    "WorkflowQueuedData": {
+      "properties": {
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "position"
+      ],
+      "title": "WorkflowQueuedData",
+      "type": "object"
+    },
+    "WorkflowResumedData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id"
+      ],
+      "title": "WorkflowResumedData",
+      "type": "object"
+    },
+    "WorkflowStartedData": {
+      "properties": {
+        "workflow_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        },
+        "kind": {
+          "enum": [
+            "workflow",
+            "chatflow"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "inputs_preview": {
+          "additionalProperties": true,
+          "title": "Inputs Preview",
+          "type": "object"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "resumed": {
+          "title": "Resumed",
+          "type": "boolean"
+        },
+        "node_count": {
+          "title": "Node Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "inputs_preview",
+        "truncated",
+        "resumed",
+        "node_count"
+      ],
+      "title": "WorkflowStartedData",
+      "type": "object"
+    },
+    "WorkflowWaitingInputData": {
+      "properties": {
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "iteration_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Iteration Index"
+        },
+        "child_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Run Id"
+        },
+        "interaction": {
+          "$ref": "#/$defs/RunWaitingInputData"
+        }
+      },
+      "required": [
+        "node_id",
+        "interaction"
+      ],
+      "title": "WorkflowWaitingInputData",
       "type": "object"
     },
     "WorkspaceEventData": {

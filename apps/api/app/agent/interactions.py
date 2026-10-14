@@ -3,6 +3,10 @@
 도구 호출에 승인이 필요한지는 이 모듈 한 곳에서만 정한다(12.3). 루프는 승인이나 질문이 필요하면
 PendingInteraction을 남기고 런을 waiting_input으로 끝낸다. 답이 오면 API가 ResumePayload를 만들어
 같은 런을 다시 큐에 넣는다.
+
+하위 에이전트 호출(call_agent)도 같은 기계로 멈춘다(kind=agent_call, 오케스트레이션 3.2). 사람
+입력이 아니라 자식 런의 끝을 기다리므로 run.waiting_input을 내지 않고, 재개 값은 자식 결과
+요약(child)이다.
 """
 
 import uuid
@@ -12,8 +16,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.agent.child_runs import ChildResultSummary, VersionKind
+from app.schemas.agent_version import ResultSpec
 from app.schemas.common import ApprovalMode
-from app.schemas.events import InteractionKind
+
+# 이벤트·API의 InteractionKind(question | approval)는 사람 입력만 뜻한다. agent_call은 내부 값이다.
+PendingKind = Literal["question", "approval", "agent_call"]
 
 SHELL_TOOLS = frozenset({"shell", "run_python", "install_packages"})
 READ_ONLY_HTTP_METHODS = frozenset({"GET", "HEAD"})
@@ -48,7 +56,7 @@ class PendingInteraction(BaseModel):
     """run.pending_interaction 열. 재개에 필요한 루프 상태도 함께 둔다."""
 
     interaction_id: str
-    kind: InteractionKind
+    kind: PendingKind
     tool_call_id: str
     tool_name: str
     # 멈춘 스텝의 assistant 메시지. 그 메시지의 tool_use를 이어서 처리한다.
@@ -58,6 +66,9 @@ class PendingInteraction(BaseModel):
     completed_tool_call_ids: list[str] = Field(default_factory=list[str])
     # waiting_input 대기 시간을 빼고 실행한 시간. max_run_seconds 계산에 이어 쓴다(4.6).
     elapsed_ms: int = 0
+    # 런이 처음 시작할 때 정한 변경 파일 mtime 기준선(3.13). 재개한 뒤에도 같은 값으로 모은다.
+    # 루프가 아니라 런 실행기가 채운다. 이벤트·API로는 내보내지 않는다.
+    changes_since: datetime | None = None
     created_at: datetime
     question: str | None = None
     options: list[str] | None = None
@@ -65,8 +76,23 @@ class PendingInteraction(BaseModel):
     input: dict[str, Any] | None = None
     cwd: str | None = None
     timeout_sec: int | None = None
+    # agent_call일 때 기다리는 자식 런과 그 에이전트.
+    child_run_id: uuid.UUID | None = None
+    child_session_id: uuid.UUID | None = None
+    agent_id: uuid.UUID | None = None
+    agent_slug: str | None = None
+    agent_name: str | None = None
+    version: VersionKind | None = None
+    depth: int | None = None
+    result: ResultSpec | None = None
+    task_preview: str | None = None
+
+    @property
+    def waits_for_child(self) -> bool:
+        return self.kind == "agent_call"
 
     def event_data(self) -> dict[str, Any]:
+        """run.waiting_input의 data. 사람 입력(question·approval)에만 쓴다."""
         data: dict[str, Any] = {
             "interaction_id": self.interaction_id,
             "kind": self.kind,
@@ -100,11 +126,13 @@ class ResumePayload(BaseModel):
     """run.resume_payload 열."""
 
     interaction_id: str
-    kind: InteractionKind
+    kind: PendingKind
     answer: str | None = None
     decision: Decision | None = None
     note: str | None = None
     session_auto_approve: bool = False
+    # agent_call: 끝난 자식 런의 요약. 재개한 루프가 call_agent의 tool_result로 붙인다.
+    child: ChildResultSummary | None = None
 
     def resolved_event_data(self) -> dict[str, Any]:
         data: dict[str, Any] = {"interaction_id": self.interaction_id, "kind": self.kind}
@@ -127,6 +155,10 @@ class InteractionError(ValueError):
 
 
 def resolve_reply(pending: PendingInteraction, reply: InteractionReply) -> ResumePayload:
+    if pending.kind == "agent_call":
+        raise InteractionError(
+            "child_in_progress", "하위 에이전트가 진행 중이다. 답은 하위 에이전트의 런에 보낸다"
+        )
     if pending.kind == "question":
         if reply.answer is None or reply.decision is not None:
             raise InteractionError("answer_required", "질문에는 answer로 답한다")

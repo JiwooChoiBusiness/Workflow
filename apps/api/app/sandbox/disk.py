@@ -134,6 +134,18 @@ def scan_changes(
     return found, scanner.truncated
 
 
+def format_size(size: int) -> str:
+    """메시지에 넣는 크기(1024 단위). 한도를 아주 작게 잡아도 0MB처럼 보이지 않게 단위를 고른다."""
+    if size < 1024:
+        return f"{size}B"
+    value, unit = size / 1024, "KB"
+    for bigger in ("MB", "GB"):
+        if value < 1024:
+            break
+        value, unit = value / 1024, bigger
+    return f"{value:.1f}".removesuffix(".0") + unit
+
+
 def largest_dirs(
     files: Iterable[ScanEntry], *, top: int = 10, depth: int = 2
 ) -> list[tuple[str, int]]:

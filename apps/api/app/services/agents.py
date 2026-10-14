@@ -5,6 +5,10 @@
 그 스냅샷에서 시작한다(app/services/run_executor.py).
 런(M6)은 load_runtime_version으로 버전 설정·복호화한 환경변수·스킬·첨부 파일을 받고,
 provision_content로 작업공간 초기화에 넘길 내용을 만든다.
+
+하위 에이전트(sub_agents, 오케스트레이션 2.3)는 저장·발행 때 검사한다. 없는 에이전트·자기 자신·
+순환·잘못된 결과 스키마는 막고, 설명 없음·미발행·깊이 초과는 응답의 warnings로 알린다. 발행은 하위
+에이전트가 모두 발행되어 있어야 한다(발행된 부모가 초안 자식을 부르면 미완성 설정이 밖으로 샌다).
 """
 
 import asyncio
@@ -22,6 +26,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.task_service import TaskSpecError, check_output_schema
 from app.config import Settings
 from app.db.engine import Database
 from app.db.models import Agent, AgentVersion, Skill, SkillVersion, Snapshot
@@ -53,12 +58,14 @@ from app.schemas.agent_version import (
     AgentVersionList,
     AgentVersionOut,
     AgentVersionSummary,
+    AgentWarning,
     DraftUpdate,
     EnvVarIn,
     EnvVarOut,
     ModelConfig,
     SandboxConfig,
     StoredEnvVar,
+    SubAgentRef,
 )
 from app.schemas.webapp import WebAppOut
 from app.schemas.workspace import WorkspaceSettings
@@ -211,7 +218,56 @@ def _config_dict(version: AgentVersion) -> dict[str, Any]:
         "approval_mode": version.approval_mode,
         "skill_version_ids": version.skill_version_ids,
         "file_ids": version.file_ids,
+        "sub_agents": version.sub_agents or [],
     }
+
+
+def _stored_sub_agents(refs: Sequence[SubAgentRef]) -> list[dict[str, Any]]:
+    return [ref.model_dump(mode="json", by_alias=True) for ref in refs]
+
+
+def _sub_agent_ids(raw: Sequence[Any]) -> set[uuid.UUID]:
+    found: set[uuid.UUID] = set()
+    for item in raw:
+        try:
+            found.add(SubAgentRef.model_validate(item).agent_id)
+        except ValidationError:
+            continue
+    return found
+
+
+def _cycle_path(
+    graph: dict[uuid.UUID, set[uuid.UUID]], start: uuid.UUID, goal: uuid.UUID
+) -> list[uuid.UUID] | None:
+    """start에서 참조를 따라 goal에 닿는 경로. 없으면 None."""
+    stack: list[tuple[uuid.UUID, list[uuid.UUID]]] = [(start, [start])]
+    seen: set[uuid.UUID] = set()
+    while stack:
+        node, path = stack.pop()
+        if node == goal:
+            return path
+        if node in seen:
+            continue
+        seen.add(node)
+        for nxt in sorted(graph.get(node, set()), key=str):
+            stack.append((nxt, [*path, nxt]))
+    return None
+
+
+def _deepest(
+    graph: dict[uuid.UUID, set[uuid.UUID]], node: uuid.UUID, path: frozenset[uuid.UUID], limit: int
+) -> int:
+    """node에서 참조를 따라 내려갈 수 있는 가장 긴 사슬(간선 수). limit까지만 센다."""
+    if limit <= 0:
+        return 0
+    best = 0
+    for nxt in graph.get(node, set()):
+        if nxt in path:
+            continue
+        best = max(best, 1 + _deepest(graph, nxt, path | {nxt}, limit - 1))
+        if best >= limit:
+            break
+    return best
 
 
 def _agent_out(agent: Agent, published: AgentVersion | None) -> AgentOut:
@@ -417,6 +473,14 @@ class AgentService:
             await self._check_references(
                 session, workspace_id, agent.id, body.skill_version_ids, body.file_ids, problems
             )
+            if "sub_agents" in body.model_fields_set:
+                sub_agents = body.sub_agents
+            else:
+                # 하위 에이전트를 아직 모르는 화면이 보낸 저장이다. 저장된 목록을 그대로 둔다.
+                sub_agents = self._stored_refs(draft)
+            warnings = await self._check_sub_agents(
+                session, workspace_id, agent, sub_agents, problems, publishing=False
+            )
             env_vars = self._merge_env(draft.env_vars, body.env_vars, problems)
             problems.raise_if_any()
             draft.instructions = body.instructions
@@ -428,9 +492,127 @@ class AgentService:
             draft.env_vars = env_vars
             draft.skill_version_ids = [str(value) for value in body.skill_version_ids]
             draft.file_ids = [str(value) for value in body.file_ids]
+            draft.sub_agents = _stored_sub_agents(sub_agents)
             draft.updated_at = self._next_stamp(draft.updated_at)
             await AgentVersionRepository(session, workspace_id).flush()
-        return self._version_out(draft)
+        return self._version_out(draft, warnings)
+
+    def _stored_refs(self, version: AgentVersion) -> list[SubAgentRef]:
+        refs: list[SubAgentRef] = []
+        for raw in version.sub_agents or []:
+            try:
+                refs.append(SubAgentRef.model_validate(raw))
+            except ValidationError:
+                log.warning("agent.sub_agent_invalid", version_id=str(version.id))
+        return refs
+
+    async def _sub_agent_graph(
+        self, session: AsyncSession, workspace_id: uuid.UUID, agents: Sequence[Agent]
+    ) -> dict[uuid.UUID, set[uuid.UUID]]:
+        """살아 있는 에이전트들의 참조 그래프. 초안과 발행 버전의 합집합이다(보수적, 2.3)."""
+        version_ids = [
+            version_id
+            for agent in agents
+            for version_id in (agent.draft_version_id, agent.published_version_id)
+            if version_id is not None
+        ]
+        alive = {agent.id for agent in agents}
+        graph: dict[uuid.UUID, set[uuid.UUID]] = {agent.id: set() for agent in agents}
+        for owner, raw in await AgentVersionRepository(session, workspace_id).sub_agent_edges(
+            version_ids
+        ):
+            if owner in graph:
+                graph[owner] |= _sub_agent_ids(raw) & alive
+        return graph
+
+    async def _check_sub_agents(
+        self,
+        session: AsyncSession,
+        workspace_id: uuid.UUID,
+        agent: Agent,
+        refs: Sequence[SubAgentRef],
+        problems: Problems,
+        *,
+        publishing: bool,
+    ) -> list[AgentWarning]:
+        """하위 에이전트 검사(오케스트레이션 2.3). 막을 문제는 problems에, 알릴 것은 반환값에."""
+        warnings: list[AgentWarning] = []
+        if not refs:
+            return warnings
+        agents = await AgentRepository(session, workspace_id).list_active()
+        by_id = {item.id: item for item in agents}
+        graph = await self._sub_agent_graph(session, workspace_id, agents)
+        graph[agent.id] = {ref.agent_id for ref in refs if ref.agent_id in by_id}
+        for index, ref in enumerate(refs):
+            loc = ("sub_agents", index, "agent_id")
+            target = by_id.get(ref.agent_id)
+            if target is None:
+                problems.add(
+                    loc, "agent_ref_not_found", "없거나 지운 에이전트다", id=str(ref.agent_id)
+                )
+                continue
+            if target.id == agent.id:
+                problems.add(loc, "agent_ref_self", "자기 자신을 하위 에이전트로 둘 수 없다")
+                continue
+            path = _cycle_path(graph, target.id, agent.id)
+            if path is not None:
+                slugs = [agent.slug, *(by_id[node].slug for node in path if node in by_id)]
+                problems.add(
+                    loc,
+                    "agent_ref_cycle",
+                    f"순환 참조다: {' → '.join(slugs)}",
+                    path=slugs,
+                )
+                continue
+            schema = ref.result.json_schema
+            if schema is not None:
+                try:
+                    check_output_schema(schema)
+                except TaskSpecError as exc:
+                    problems.add(("sub_agents", index, "result", "schema"), exc.code, exc.message)
+            if not target.description.strip():
+                warnings.append(
+                    AgentWarning(
+                        code="agent_description_empty",
+                        message=(
+                            f"하위 에이전트 {target.name}에 설명이 없다. 지휘자 모델은 설명을 보고 "
+                            "누구에게 맡길지 고른다"
+                        ),
+                        agent_id=target.id,
+                    )
+                )
+            if target.published_version_id is None:
+                if publishing:
+                    problems.add(
+                        loc,
+                        "agent_ref_unpublished",
+                        f"하위 에이전트 {target.name}을(를) 먼저 발행한다",
+                        agent_id=str(target.id),
+                    )
+                else:
+                    warnings.append(
+                        AgentWarning(
+                            code="agent_unpublished",
+                            message=(
+                                f"하위 에이전트 {target.name}은(는) 발행되지 않았다. "
+                                "미리보기에서는 초안으로 돌고, 이 에이전트를 발행하려면 먼저 "
+                                "발행해야 한다"
+                            ),
+                            agent_id=target.id,
+                        )
+                    )
+        max_depth = self._settings.orchestration_max_depth
+        if _deepest(graph, agent.id, frozenset({agent.id}), max_depth + 1) > max_depth:
+            warnings.append(
+                AgentWarning(
+                    code="chain_too_deep",
+                    message=(
+                        f"하위 에이전트 사슬이 호출 깊이 한도({max_depth})보다 길다. 한도를 넘는 "
+                        "호출은 실행할 때 도구가 없어 하지 못한다"
+                    ),
+                )
+            )
+        return warnings
 
     async def publish(
         self, workspace_id: uuid.UUID, agent_id: uuid.UUID, change_note: str | None = None
@@ -443,14 +625,14 @@ class AgentService:
         async with self._db.read() as session:
             agent = await self._active_agent(session, workspace_id, agent_id)
             draft = await self._draft(session, workspace_id, agent)
-            await self._check_publishable(session, workspace_id, agent.id, draft)
+            await self._check_publishable(session, workspace_id, agent, draft)
             source = await self._preview_workspace(session, workspace_id, agent.id)
         created = await self._create_snapshot(workspace_id, *source) if source else None
         try:
             async with self._db.write() as session:
                 agent = await self._active_agent(session, workspace_id, agent_id)
                 draft = await self._draft(session, workspace_id, agent)
-                await self._check_publishable(session, workspace_id, agent.id, draft)
+                warnings = await self._check_publishable(session, workspace_id, agent, draft)
                 previous = await self._published(session, workspace_id, agent)
                 versions = AgentVersionRepository(session, workspace_id)
                 # 초안은 남아 계속 편집하고, 발행본은 번호를 받은 불변 사본이다(5.3).
@@ -469,6 +651,7 @@ class AgentService:
                         env_vars=copy.deepcopy(draft.env_vars),
                         skill_version_ids=list(draft.skill_version_ids),
                         file_ids=list(draft.file_ids),
+                        sub_agents=copy.deepcopy(draft.sub_agents or []),
                         snapshot_id=None,
                         published_at=self._clock(),
                         change_note=change_note or None,
@@ -506,6 +689,7 @@ class AgentService:
                         if snapshot is not None
                         else None
                     ),
+                    warnings=warnings,
                 )
         except BaseException:
             if created is not None and self._storage is not None:
@@ -525,10 +709,11 @@ class AgentService:
         self,
         session: AsyncSession,
         workspace_id: uuid.UUID,
-        agent_id: uuid.UUID,
+        agent: Agent,
         draft: AgentVersion,
-    ) -> None:
+    ) -> list[AgentWarning]:
         """저장 뒤에 바뀐 것(지운 스킬, 낮춘 전역 상한 등)을 발행 전에 다시 본다(12.2 M5)."""
+        agent_id = agent.id
         try:
             config = AgentVersionConfig.model_validate(_config_dict(draft))
         except ValidationError as exc:
@@ -548,6 +733,9 @@ class AgentService:
         await self._check_references(
             session, workspace_id, agent_id, config.skill_version_ids, config.file_ids, problems
         )
+        warnings = await self._check_sub_agents(
+            session, workspace_id, agent, config.sub_agents, problems, publishing=True
+        )
         if problems.items:
             raise ServiceError(
                 422,
@@ -555,6 +743,7 @@ class AgentService:
                 "초안에 발행할 수 없는 설정이 있다. 고쳐 저장한 뒤 다시 발행한다",
                 details=_draft_problems(problems.items),
             )
+        return warnings
 
     async def _preview_workspace(
         self, session: AsyncSession, workspace_id: uuid.UUID, agent_id: uuid.UUID
@@ -979,7 +1168,9 @@ class AgentService:
                 ) from None
         return env
 
-    def _version_out(self, version: AgentVersion) -> AgentVersionOut:
+    def _version_out(
+        self, version: AgentVersion, warnings: Sequence[AgentWarning] = ()
+    ) -> AgentVersionOut:
         return AgentVersionOut.model_validate(
             {
                 **_config_dict(version),
@@ -993,5 +1184,6 @@ class AgentService:
                 "change_note": version.change_note,
                 "created_at": version.created_at,
                 "updated_at": version.updated_at,
+                "warnings": list(warnings),
             }
         )

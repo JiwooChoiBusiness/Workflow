@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from app.schemas.agent_version import AgentVersionOut
+from app.schemas.agent_version import AgentVersionOut, AgentWarning
 
 # 웹앱 주소(/apps/<slug>)에 쓰인다. 스킬 이름과 같은 규칙.
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")]
@@ -82,3 +82,5 @@ class PublishOut(BaseModel):
     version: AgentVersionOut
     # 미리보기 작업공간도, 이어받을 스냅샷도 없으면 null.
     snapshot: SnapshotOut | None = None
+    # 발행은 막지 않는 하위 에이전트 문제(설명 없음, 사슬 깊이 초과).
+    warnings: list[AgentWarning] = Field(default_factory=list[AgentWarning])

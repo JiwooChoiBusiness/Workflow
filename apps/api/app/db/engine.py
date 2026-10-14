@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NamedTuple, get_args
 
 from sqlalchemy import URL, Connection, event, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,6 +23,14 @@ PRAGMAS = (
     "PRAGMA cache_size=-8000",
 )
 _WRITE_OPTION = "platform_write"
+CheckpointMode = Literal["PASSIVE", "FULL", "RESTART", "TRUNCATE"]
+
+
+class Checkpoint(NamedTuple):
+    # PRAGMA wal_checkpoint 결과. busy는 FULL 이상이 다른 연결 때문에 끝까지 못 했을 때만 참이다.
+    busy: bool
+    wal_frames: int
+    checkpointed: int
 
 
 def _on_connect(dbapi_connection: Any, _record: Any) -> None:
@@ -45,13 +53,18 @@ def _on_begin(conn: Connection) -> None:
         conn.exec_driver_sql("BEGIN")
 
 
-def _checkpoint(conn: Connection) -> None:
+def _checkpoint(conn: Connection, mode: CheckpointMode) -> Checkpoint:
     # SQLAlchemy 트랜잭션 밖에서 실행해야 하므로 DBAPI 커서를 직접 쓴다.
     cursor = conn.connection.cursor()
     try:
-        cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        cursor.execute(f"PRAGMA wal_checkpoint({mode})")
+        row = cursor.fetchone()
     finally:
         cursor.close()
+    if row is None:
+        raise RuntimeError("PRAGMA wal_checkpoint가 결과 행을 돌려주지 않았다")
+    busy, wal_frames, checkpointed = row
+    return Checkpoint(bool(busy), wal_frames, checkpointed)
 
 
 class Database:
@@ -107,6 +120,19 @@ class Database:
             return False
         return True
 
+    async def checkpoint(self, mode: CheckpointMode = "PASSIVE") -> Checkpoint:
+        # 쓰기 락을 잡지 않는다. PASSIVE는 SQLite도 다른 읽기·쓰기를 기다리지 않아 하우스키핑이
+        # 런 이벤트 기록과 겹쳐도 막지 않는다(2.9).
+        self._ensure_open()
+        return await self._run_checkpoint(mode)
+
+    async def _run_checkpoint(self, mode: CheckpointMode) -> Checkpoint:
+        # PRAGMA에는 바인드 변수를 쓸 수 없어 문자열에 넣으므로 정해진 값만 받는다.
+        if mode not in get_args(CheckpointMode):
+            raise ValueError(f"알 수 없는 체크포인트 모드: {mode!r}")
+        async with self.engine.connect() as conn:
+            return await conn.run_sync(_checkpoint, mode)
+
     def _ensure_open(self) -> None:
         # 닫은 뒤 새 연결이 생기면 aiosqlite의 non-daemon 스레드 때문에 프로세스가 끝나지 않는다.
         if self._closed:
@@ -117,8 +143,7 @@ class Database:
             return
         self._closed = True
         try:
-            async with self.engine.connect() as conn:
-                await conn.run_sync(_checkpoint)
+            await self._run_checkpoint("TRUNCATE")
         finally:
             # 마지막 연결이 닫힐 때 SQLite가 -wal, -shm 파일을 지운다.
             await self.engine.dispose()

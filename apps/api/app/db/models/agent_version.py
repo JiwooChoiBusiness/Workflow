@@ -42,6 +42,10 @@ class AgentVersion(TimestampMixin, Base):
     env_vars: Mapped[list[dict[str, Any]]] = mapped_column(JSONValue, default=list)
     skill_version_ids: Mapped[list[str]] = mapped_column(JSONValue, default=list)
     file_ids: Mapped[list[str]] = mapped_column(JSONValue, default=list)
+    # SubAgentRef 목록(오케스트레이션 2.2). 0004가 기존 행에 []를 채우며 더했다.
+    sub_agents: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONValue, default=list, server_default=text("'[]'")
+    )
     # 스냅샷 쪽이 agent_version_id로 이 행을 가리키므로 외래 키를 두지 않는다.
     snapshot_id: Mapped[uuid.UUID | None]
     published_at: Mapped[datetime | None]

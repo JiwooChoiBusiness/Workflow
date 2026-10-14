@@ -19,7 +19,7 @@ from app.db.engine import Database
 from app.db.models import Run, WorkspaceInstance
 from app.db.repositories.runs import RunRepository
 from app.llm.fake_adapter import FakeAdapter, fake_end, fake_text, fake_tool_call
-from app.logging import configure_logging
+from app.logsetup import configure_logging
 from app.main import create_app
 
 BASE_URL = "http://127.0.0.1:8500"

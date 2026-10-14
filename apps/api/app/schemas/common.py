@@ -16,6 +16,10 @@ class RunLimits(BaseModel):
     # None이면 200,000과 모델 컨텍스트의 60% 중 작은 값을 쓴다.
     context_budget_tokens: int | None = Field(default=None, ge=1)
     tool_timeout_sec: int = Field(default=120, ge=1, le=900)
+    # 이 런이 call_agent로 만들 수 있는 자식 수. 뿌리 런의 값이 트리 전체 상한이고 자식 런에는
+    # min(자식 설정, 뿌리의 남은 수)로 내려 준다(오케스트레이션 3.9). 0이면 call_agent를 붙이지
+    # 않는다.
+    max_child_calls: int = Field(default=20, ge=0, le=100)
 
 
 class ModelPrice(BaseModel):

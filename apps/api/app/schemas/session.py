@@ -125,10 +125,6 @@ class WorkspaceInstanceOut(BaseModel):
     session_source: SessionSource | None = None
 
 
-class WorkspaceList(BaseModel):
-    items: list[WorkspaceInstanceOut]
-
-
 class WorkspaceDirUsage(BaseModel):
     path: str
     bytes: int

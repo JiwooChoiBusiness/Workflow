@@ -1,16 +1,19 @@
 """변경 파일 수집의 순서·한도·이유(설계 3.13)."""
 
+import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from app.agent.file_collector import (
+    MTIME_TOLERANCE,
     REASON_COPY_FAILED,
     REASON_RUN_LIMIT,
     REASON_TOO_LARGE,
     CopiedFile,
     CopyFailed,
+    changes_since,
     collect_files,
     order_changes,
-    window_start,
 )
 from app.sandbox.base import FileChanges, FileEntry
 
@@ -41,8 +44,35 @@ def test_outputs_first_then_most_recent() -> None:
     assert [item.path for item in ordered] == ["outputs/old.csv", "a.txt", "b.txt"]
 
 
-def test_window_starts_two_seconds_early() -> None:
-    assert window_start(NOW) == NOW - timedelta(seconds=2)
+def test_baseline_is_the_moment_the_workspace_was_ready() -> None:
+    # 파일 시스템 시각이 한 틱 늦게 찍히는 만큼만 앞당긴다. 몇 초 앞의 파일은 이 런의 것이 아니다.
+    assert changes_since(NOW) == NOW - MTIME_TOLERANCE
+    assert MTIME_TOLERANCE < timedelta(seconds=1)
+    assert changes_since(NOW, NOW - timedelta(minutes=5)) == NOW - MTIME_TOLERANCE
+
+
+def test_baseline_never_reaches_back_before_the_previous_run_ended() -> None:
+    # 앞 런이 끝난(작업공간을 초기화한) 시각과 같은 틱에 쓴 파일도 다시 잡지 않는다.
+    floor = NOW - timedelta(milliseconds=5)
+    since = changes_since(NOW, floor)
+
+    assert floor < since <= NOW
+
+
+def test_mtime_lag_stays_inside_the_tolerance(tmp_path: Path) -> None:
+    # 런이 작업공간을 받자마자 쓴 파일의 mtime이 그 시각보다 허용 오차 넘게 이르게 찍히면 변경 파일
+    # 목록에서 빠진다. 쓰기 직전 시계와 찍힌 mtime의 차이를 이 PC·CI의 파일 시스템에서 잰다.
+    lags: list[float] = []
+    for index in range(200):
+        path = tmp_path / f"f{index}.txt"
+        before = time.time()
+        path.write_bytes(b"x")
+        lags.append(before - path.stat().st_mtime)
+
+    worst = max(lags)
+    assert worst < MTIME_TOLERANCE.total_seconds(), (
+        f"mtime이 쓰기 직전 시각보다 최대 {worst * 1000:.1f}ms 이르다"
+    )
 
 
 async def test_files_are_copied_with_mime_and_key() -> None:

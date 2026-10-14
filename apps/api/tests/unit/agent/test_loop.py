@@ -177,6 +177,35 @@ async def test_approval_in_the_middle_of_a_batch_pauses_and_resumes(harness: Har
     assert done.steps == 2
 
 
+async def test_resumed_step_keeps_stop_reason_and_usage(harness: Harness) -> None:
+    # 재개한 스텝에 도구 결과를 붙여 다시 저장해도 stop_reason·usage가 지워지지 않는다.
+    run = harness(
+        [
+            [
+                *shell("python job.py", "call_s"),
+                fake_end("tool_use", usage=Usage(input_tokens=12, output_tokens=3)),
+            ],
+            [*fake_text("끝."), fake_end()],
+        ],
+        approval_mode="all_shell",
+    )
+    paused = await run.run()
+    pending = paused.pending
+    assert pending is not None
+
+    await run.resume(
+        paused,
+        ResumePayload(interaction_id=pending.interaction_id, kind="approval", decision="approve"),
+    )
+
+    step = run.ports.messages[pending.message_id]
+    assert [block.type for block in step.blocks] == ["tool_use", "tool_result"]
+    assert step.stop_reason == "tool_use"
+    assert step.usage is not None and step.usage["input_tokens"] == 12
+    row = next(row for row in run.ports.rows if row.id == pending.message_id)
+    assert (row.stop_reason, row.usage) == ("tool_use", step.usage)
+
+
 async def test_tool_error_is_returned_and_model_tries_again(harness: Harness) -> None:
     run = harness(
         [

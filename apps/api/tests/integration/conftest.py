@@ -16,7 +16,7 @@ from app.config import Settings
 from app.db.engine import Database
 from app.llm.fake_adapter import FakeAdapter, FakeTurn
 from app.llm.types import ChatRequest, ErrorEvent, ModelEvent
-from app.logging import configure_logging
+from app.logsetup import configure_logging
 from app.main import create_app
 
 BASE_URL = "http://127.0.0.1:8500"

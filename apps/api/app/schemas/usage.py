@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-UsageGroupBy = Literal["day", "agent", "model"]
+UsageGroupBy = Literal["day", "agent", "model", "workflow"]
 
 
 class UsageTotals(BaseModel):
@@ -22,12 +22,14 @@ class UsageTotals(BaseModel):
 
 
 class UsageRow(UsageTotals):
-    # day: 날짜(YYYY-MM-DD, tz_offset_minutes 기준), agent: 에이전트 id,
-    # model: 런이 마지막으로 쓴 모델(모델을 부르기 전에 끝나 알 수 없으면 null).
+    # day: 날짜(YYYY-MM-DD, tz_offset_minutes 기준),
+    # agent: 에이전트 id(워크플로우 런은 null 행 하나),
+    # model: 런이 마지막으로 쓴 모델(모델을 부르기 전에 끝나 알 수 없으면 null),
+    # workflow: 워크플로우 id(에이전트 런은 agent 노드의 자식 런까지 null 행 하나).
     key: str | None
-    # agent일 때 에이전트 이름. 나머지는 null.
+    # agent·workflow일 때 이름. 나머지와 null 키 행은 null.
     label: str | None = None
-    # agent일 때 지운 에이전트인지.
+    # agent·workflow일 때 지운 에이전트·워크플로우인지.
     deleted: bool = False
 
 
@@ -38,6 +40,7 @@ class UsageReport(BaseModel):
     until: datetime
     # day로 묶을 때 쓴 시간대(UTC와의 차이, 분).
     tz_offset_minutes: int
-    # day는 날짜 순, agent·model은 토큰(입력+출력)이 많은 순이다. 런이 없는 날은 없다.
+    # day는 날짜 순, 나머지는 토큰(입력+출력)이 많은 순이다. 런이 없는 날은 없다. 에이전트 런과
+    # 워크플로우 런을 함께 세므로 어떻게 묶든 total은 같다.
     items: list[UsageRow]
     total: UsageTotals

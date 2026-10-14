@@ -31,15 +31,20 @@ def get_run_service(request: Request, db: DbDep, settings: SettingsDep) -> RunSe
         supervisor=state.supervisor,
         storage=state.storage,
         backend=state.sandbox,
+        parents=getattr(state, "wf_parents", None),
     )
 
 
 RunServiceDep = Annotated[RunService, Depends(get_run_service)]
 
 
-def run_headers(run_id: uuid.UUID, session_id: uuid.UUID) -> dict[str, str]:
-    # 스트림의 첫 이벤트를 읽기 전에도 중지·응답에 쓸 수 있게 헤더로도 준다.
-    return {"X-Run-Id": str(run_id), "X-Session-Id": str(session_id)}
+def run_headers(run_id: uuid.UUID, session_id: uuid.UUID | None) -> dict[str, str]:
+    # 스트림의 첫 이벤트를 읽기 전에도 중지·응답에 쓸 수 있게 헤더로도 준다. 워크플로우 런은
+    # 세션이 없어 X-Run-Id만 준다.
+    headers = {"X-Run-Id": str(run_id)}
+    if session_id is not None:
+        headers["X-Session-Id"] = str(session_id)
+    return headers
 
 
 @router.get("", response_model=RunLogList)
@@ -52,13 +57,15 @@ async def list_runs(
     status: RunStatus | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    parent_run_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> RunLogList:
     """런 목록(최근 것부터). 지운 세션의 런도 나온다(session_deleted).
 
     기간은 런을 만든 시각(queued_at) 기준 [since, until)이다. 시간대 없이 온 시각은 서버 PC
-    시간대로 본다.
+    시간대로 본다. parent_run_id를 주면 그 런이 하위 에이전트로 부른 자식 런만 나오고, 각 항목의
+    child_count는 그 런의 자식 수다.
     """
     return await RunLogService(db).list_runs(
         auth.workspace_id,
@@ -68,6 +75,7 @@ async def list_runs(
         status=status,
         since=assume_local(since),
         until=assume_local(until),
+        parent_run_id=parent_run_id,
         limit=limit,
         offset=offset,
     )

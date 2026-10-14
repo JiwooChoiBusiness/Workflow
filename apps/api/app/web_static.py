@@ -14,6 +14,8 @@ ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 # 잡혀 있으면 브라우저가 모듈 스크립트 실행을 거부해 빈 화면이 된다.
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
+# 글꼴 파일은 Python 기본 매핑에 없어 octet-stream으로 나간다. 브라우저는 읽지만 타입을 맞춰 둔다.
+mimetypes.add_type("font/woff2", ".woff2")
 
 _NOT_BUILT_HTML = """<!doctype html>
 <html lang="ko">

@@ -43,7 +43,8 @@ __all__ = [
 
 def make_adapter(settings: "Settings") -> ModelAdapter:
     if settings.llm_fake:
+        delay = settings.llm_fake_delay_sec
         if settings.llm_fake_script is not None:
-            return FakeAdapter.from_file(settings.llm_fake_script)
-        return FakeAdapter()
+            return FakeAdapter.from_file(settings.llm_fake_script, step_delay_sec=delay)
+        return FakeAdapter(step_delay_sec=delay)
     return GeminiAdapter.from_settings(settings)

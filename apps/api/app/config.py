@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     )
 
     runner_max_concurrent_runs: int = Field(default=1, ge=1)
+    # 워크플로우 레인(두 번째 Supervisor)의 동시 런. 에이전트 레인과 따로 센다(2단계 3.6).
+    runner_max_concurrent_workflow_runs: int = Field(default=1, ge=1)
     shutdown_grace_sec: float = Field(default=20, ge=0)
     waiting_input_ttl_hours: int = Field(default=24, ge=1)
     run_event_retention_days: int = Field(default=90, ge=1)
@@ -60,6 +62,19 @@ class Settings(BaseSettings):
     gemini_key_cooldown_sec: int = Field(default=60, ge=0)
     llm_fake: bool = False
     llm_fake_script: Path | None = None
+    # 가짜 어댑터가 스텝(모델 호출)마다 기다리는 초. e2e에서 실행 중인 런을 붙잡아 두는 데 쓴다.
+    llm_fake_delay_sec: float = Field(default=0, ge=0)
+
+    # 워크플로우 엔진(2단계 3.4, 3.7, 3.10).
+    wf_max_parallel_nodes: int = Field(default=4, ge=1, le=16)
+    wf_code_timeout_sec: int = Field(default=30, ge=1, le=60)
+    wf_variable_pool_max_mb: int = Field(default=16, ge=1, le=256)
+    # 0이면 대기 전환 직전과 실패 때만 체크포인트를 쓴다.
+    wf_checkpoint_interval_sec: float = Field(default=0, ge=0)
+
+    # 지휘자 에이전트가 하위 에이전트를 부를 수 있는 깊이(지휘자 0, 자식 1, 손자 2). 이 깊이에 닿은
+    # 런에는 call_agent가 붙지 않는다(오케스트레이션 3.9).
+    orchestration_max_depth: int = Field(default=2, ge=1, le=3)
 
     e2b_api_key: SecretStr | None = None
     e2b_template: str | None = None

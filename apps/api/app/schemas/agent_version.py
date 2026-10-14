@@ -6,9 +6,17 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.llm.types import ReasoningEffort
 from app.schemas.common import ApprovalMode, RunLimits
@@ -22,6 +30,9 @@ MAX_ENV_VALUE_CHARS = 32 * 1024
 # 스킬은 라이브러리 20개 + 임베디드 20개까지라 40개를 넘는 목록은 볼 것도 없다(설계 4.8).
 MAX_SKILL_REFERENCES = 40
 MAX_FILE_REFERENCES = 200
+# 하위 에이전트 목록이 도구 설명과 시스템 프롬프트에 그대로 들어가므로 길이를 묶는다(오케스트레이션
+# 2.2).
+MAX_SUB_AGENTS = 10
 
 ModelId = Annotated[
     str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
@@ -86,6 +97,49 @@ class EnvVarOut(BaseModel):
     value: str | None
 
 
+class ResultSpec(BaseModel):
+    """하위 에이전트 호출 하나가 돌려주는 모양(오케스트레이션 2.2).
+
+    2단계 agent 노드의 결과 설정도 같은 구조다.
+    """
+
+    # schema는 BaseModel의 속성 이름과 겹쳐 필드 이름만 바꾸고 API·저장 모양은 schema로 둔다.
+    model_config = ConfigDict(
+        extra="forbid", validate_by_name=True, validate_by_alias=True, serialize_by_alias=True
+    )
+
+    format: Literal["text", "json"] = "text"
+    # format=json일 때의 결과 JSON Schema. null이면 모델이 호출할 때 output_schema로 정한다.
+    json_schema: dict[str, Any] | None = Field(default=None, alias="schema")
+    # 자식의 결과 파일을 부모 작업공간 agents/<slug>/<run_id>/로 복사할지.
+    files: bool = True
+
+    @model_validator(mode="after")
+    def _schema_needs_json(self) -> "ResultSpec":
+        if self.format == "text" and self.json_schema is not None:
+            raise ValueError("결과 스키마는 format이 json일 때만 둔다")
+        return self
+
+
+class SubAgentRef(BaseModel):
+    """에이전트 버전의 sub_agents 항목. 이 에이전트가 call_agent로 부를 수 있는 에이전트다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: uuid.UUID
+    result: ResultSpec = Field(default_factory=ResultSpec)
+    # inherit은 하위 에이전트 버전의 승인 모드를 따르고, off는 그 호출의 승인을 끈다.
+    approval_mode: Literal["inherit", "off"] = "inherit"
+
+
+class AgentWarning(BaseModel):
+    """저장·발행을 막지 않는 문제(설명 없는 하위 에이전트, 미발행, 깊이 초과 등)."""
+
+    code: str
+    message: str
+    agent_id: uuid.UUID | None = None
+
+
 class AgentVersionConfig(BaseModel):
     """초안과 발행 버전이 같이 갖는 설정. 환경변수는 입력과 출력의 모양이 달라 따로 둔다."""
 
@@ -103,6 +157,9 @@ class AgentVersionConfig(BaseModel):
     file_ids: list[uuid.UUID] = Field(
         default_factory=list[uuid.UUID], max_length=MAX_FILE_REFERENCES
     )
+    sub_agents: list[SubAgentRef] = Field(
+        default_factory=list[SubAgentRef], max_length=MAX_SUB_AGENTS
+    )
 
     @field_validator("tools")
     @classmethod
@@ -118,6 +175,12 @@ class AgentVersionConfig(BaseModel):
     @classmethod
     def _unique_files(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
         return _unique(value, "file_ids")
+
+    @field_validator("sub_agents")
+    @classmethod
+    def _unique_sub_agents(cls, value: list[SubAgentRef]) -> list[SubAgentRef]:
+        _unique([item.agent_id for item in value], "sub_agents의 agent_id")
+        return value
 
 
 class DraftUpdate(AgentVersionConfig):
@@ -150,6 +213,8 @@ class AgentVersionOut(AgentVersionConfig):
     created_at: datetime
     # 초안 저장(PUT)의 낙관적 잠금 값.
     updated_at: datetime
+    # 초안 저장 응답에만 채운다(하위 에이전트 경고, 오케스트레이션 2.3).
+    warnings: list[AgentWarning] = Field(default_factory=list[AgentWarning])
 
 
 class AgentVersionSummary(BaseModel):

@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "title": "시작",
+      "config": {
+        "fields": [{ "name": "score", "type": "number", "label": "점수", "required": true }]
+      }
+    },
+    {
+      "id": "if_else_1",
+      "type": "if_else",
+      "title": "합격 여부",
+      "config": {
+        "cases": [
+          {
+            "id": "pass",
+            "logical": "and",
+            "conditions": [{ "var": "start.score", "op": "≥", "value": 80 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "template_pass",
+      "type": "template",
+      "title": "합격 문구",
+      "config": {
+        "template": "합격({{ score }}점)",
+        "vars": [{ "name": "score", "var": "start.score" }]
+      }
+    },
+    {
+      "id": "template_fail",
+      "type": "template",
+      "title": "불합격 문구",
+      "config": {
+        "template": "불합격({{ score }}점)",
+        "vars": [{ "name": "score", "var": "start.score" }]
+      }
+    },
+    {
+      "id": "end_pass",
+      "type": "end",
+      "title": "합격 끝",
+      "config": { "outputs": [{ "name": "result", "var": "template_pass.output" }] }
+    },
+    {
+      "id": "end_fail",
+      "type": "end",
+      "title": "불합격 끝",
+      "config": { "outputs": [{ "name": "result", "var": "template_fail.output" }] }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "if_else_1" },
+    { "id": "e2", "source": "if_else_1", "source_handle": "case_pass", "target": "template_pass" },
+    { "id": "e3", "source": "if_else_1", "source_handle": "else", "target": "template_fail" },
+    { "id": "e4", "source": "template_pass", "target": "end_pass" },
+    { "id": "e5", "source": "template_fail", "target": "end_fail" }
+  ]
+}

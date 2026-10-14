@@ -5,13 +5,20 @@ import sys
 import threading
 from collections.abc import Callable
 from types import FrameType
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
-from app.runner.supervisor import Supervisor
-
 log = structlog.get_logger("app.runner")
+
+
+class ShutdownTarget(Protocol):
+    """종료를 받는 쪽. 서버에서는 종료 코디네이터(shutdown.py)이고 Supervisor도 같은 모양이다."""
+
+    finished: threading.Event
+
+    def request_shutdown(self, grace_sec: float | None = None) -> None: ...
+
 
 CTRL_C_EVENT = 0
 CTRL_BREAK_EVENT = 1
@@ -22,7 +29,9 @@ CLOSE_WAIT_SEC = 4.0
 CLOSE_GRACE_SEC = 2.5
 
 
-def make_handler(loop: asyncio.AbstractEventLoop, supervisor: Supervisor) -> Callable[[int], bool]:
+def make_handler(
+    loop: asyncio.AbstractEventLoop, supervisor: ShutdownTarget
+) -> Callable[[int], bool]:
     def handle(event: int) -> bool:
         # Ctrl+C와 Ctrl+Break는 다음 핸들러로 넘긴다. 파이썬이 SIGINT·SIGBREAK로 바꾸고
         # uvicorn이 받아 lifespan 종료를 거친다.
@@ -45,33 +54,22 @@ def _noop() -> None:
 def ensure_proactor_loop_policy() -> None:
     # 도구 실행은 asyncio 서브프로세스라 Windows에서는 Proactor 루프에서만 된다. 3.12의 기본
     # 정책이 이미 Proactor라 보통은 할 일이 없고, 다른 코드가 Selector 정책으로 바꿔 둔 경우를
-    # 되돌린다. uvicorn --reload는 이 정책을 거치지 않으므로 reload_warning을 본다.
+    # 되돌린다. uvicorn 리로더는 이 정책과 관계없이 Selector 루프를 만들어서 쓰지 않는다
+    # (serve --reload는 runner/reloader.py).
     if sys.platform != "win32":
         return
     if not isinstance(asyncio.get_event_loop_policy(), asyncio.WindowsProactorEventLoopPolicy):
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
-def reload_warning() -> str | None:
-    # uvicorn --reload는 Windows에서 정책과 관계없이 SelectorEventLoop를 만든다. loop="none"으로
-    # Proactor를 쓰게 하면 처음 뜬 서버는 되지만, 부모가 만든 리슨 소켓을 IOCP에 한 번밖에 붙일
-    # 수 없어 코드를 고쳐 다시 뜬 서버는 연결을 받지 못한다(WinError 87). 그래서 알리기만 한다.
-    if sys.platform != "win32":
-        return None
-    return (
-        "Windows에서 --reload로 띄우면 서버가 SelectorEventLoop로 돌아 셸·파이썬 도구"
-        "(서브프로세스)를 실행하지 못한다. 도구를 쓰려면 --reload 없이 띄운다."
-    )
-
-
 def chain_exit_signals(
-    loop: asyncio.AbstractEventLoop, supervisor: Supervisor
+    loop: asyncio.AbstractEventLoop, supervisor: ShutdownTarget
 ) -> Callable[[], None]:
     """uvicorn의 종료 신호 처리기 앞에 런 종료 요청을 끼운다.
 
     uvicorn은 신호를 받으면 열린 HTTP 연결이 모두 닫힐 때까지 기다린 뒤에 lifespan 종료를 부른다.
     진행 중인 런의 SSE 응답은 런이 끝나야 닫히므로 그대로 두면 서로를 기다려 Ctrl+C로 꺼지지 않는다.
-    신호를 받는 즉시 Supervisor 종료를 시작해 런이 run.completed로 끝나고 SSE가 닫히게 한다.
+    신호를 받는 즉시 런 종료를 시작해 런이 완료 이벤트로 끝나고 SSE가 닫히게 한다.
     """
     if threading.current_thread() is not threading.main_thread():
         return _noop
@@ -106,7 +104,7 @@ def chain_exit_signals(
     return uninstall
 
 
-def install(loop: asyncio.AbstractEventLoop, supervisor: Supervisor) -> Callable[[], None]:
+def install(loop: asyncio.AbstractEventLoop, supervisor: ShutdownTarget) -> Callable[[], None]:
     if sys.platform != "win32":
         return _noop
     import ctypes

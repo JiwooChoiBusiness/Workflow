@@ -38,6 +38,7 @@ def test_env_example_parses() -> None:
     ]
     assert settings.llm_fake is False
     assert settings.llm_fake_script is None
+    assert settings.llm_fake_delay_sec == 0
     assert settings.e2b_api_key is None
     assert settings.secret_values() == []
 

@@ -2,7 +2,7 @@
 
 run.input은 과업을 만들 때(app/services/tasks.py) 채우고, 러너가 작업공간 task/를 채우고
 submit_result를 붙일 때(app/services/run_executor.py) 읽는다. correlation에는 2단계 워크플로우
-런·노드 id가 들어간다.
+런·노드 id가 들어간다. 워크플로우 agent 노드가 넘긴 파일은 session_file이 아니라 wf_file일 수 있다.
 """
 
 import uuid
@@ -19,7 +19,9 @@ TASK_FILES_DIR = "task/files"
 
 
 class TaskFile(BaseModel):
-    session_file_id: uuid.UUID
+    # 둘 중 하나만 있다. 러너는 storage_key로 복사하므로 어느 쪽이든 같다.
+    session_file_id: uuid.UUID | None = None
+    wf_file_id: uuid.UUID | None = None
     # 작업공간 상대 경로(task/files/<이름>).
     path: str
     filename: str

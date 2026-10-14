@@ -19,12 +19,12 @@ from app.config import Settings, get_settings
 from app.db.base import Base
 from app.db.engine import Database
 from app.db.migrate import alembic_config, current_revision, run_in_transaction, upgrade_head
-from app.logging import configure_logging
+from app.logsetup import configure_logging
 from app.main import create_app
 
-HEAD = "0002"
+HEAD = "0004"
 
-# 설계 5.1의 테이블 전부.
+# 1단계 설계 5.1과 2단계 설계 4.1(0003)의 테이블 전부.
 TABLES = {
     "workspace",
     "account",
@@ -42,6 +42,12 @@ TABLES = {
     "workspace_instance",
     "snapshot",
     "api_key",
+    "workflow",
+    "wf_version",
+    "wf_run",
+    "wf_node_run",
+    "wf_run_event",
+    "wf_file",
 }
 
 

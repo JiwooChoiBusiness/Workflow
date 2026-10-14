@@ -223,9 +223,54 @@ async def test_approval_tool_output_files_and_download(
     messages = (await logged_in.get(f"/api/console/sessions/{session_id}/messages")).json()
     roles = [item["role"] for item in messages["items"]]
     assert roles == ["user", "assistant", "assistant"]
-    step_blocks = [block["type"] for block in messages["items"][1]["blocks"]]
-    assert step_blocks == ["text", "tool_use", "tool_result"]
+    step = messages["items"][1]
+    assert [block["type"] for block in step["blocks"]] == ["text", "tool_use", "tool_result"]
+    # 승인 뒤 도구 결과를 붙여 다시 저장한 행도 stop_reason·usage를 잃지 않는다.
+    assert step["stop_reason"] == "tool_use"
+    assert step["usage"] is not None and step["usage"]["model"] == "fake-model"
     assert messages["items"][2]["files"][0]["path"] == "outputs/r.csv"
+
+
+async def test_files_from_the_previous_run_are_not_reported_again(
+    logged_in: AsyncClient, make_session: Any, script: Any, sse: Events
+) -> None:
+    # 앞 런이 만든 파일을 건드리지 않은 다음 런은 그 파일을 다시 알리지 않는다(3.13).
+    _, session_id = await make_session(logged_in, approval_mode="off")
+
+    def write(content: str) -> list[ModelEvent]:
+        return [
+            *fake_tool_call("write_file", {"path": "outputs/result.csv", "content": content}),
+            fake_end("tool_use"),
+        ]
+
+    async def send(text: str) -> list[dict[str, Any]]:
+        response = await logged_in.post(
+            f"/api/console/sessions/{session_id}/messages", json={"text": text}
+        )
+        return sse(response.text)
+
+    def changed(events: list[dict[str, Any]]) -> list[str]:
+        return [event["data"]["path"] for event in events if event["type"] == "file.changed"]
+
+    script.add(write("a,b\n"), fake_text("만들었다"))
+    first = await send("CSV를 만들어")
+    script.add(fake_text("그대로 둔다"))
+    second = await send("아무것도 바꾸지 마")
+    script.add(write("a,b,c\n"), fake_text("고쳤다"))
+    third = await send("CSV를 고쳐")
+
+    assert changed(first) == ["outputs/result.csv"]
+    assert changed(second) == []
+    assert (
+        next(event for event in second if event["type"] == "message.completed")["data"]["files"]
+        == []
+    )
+    assert changed(third) == ["outputs/result.csv"]
+    files = (await logged_in.get(f"/api/console/sessions/{session_id}/files")).json()["items"]
+    assert len([item for item in files if item["kind"] == "output"]) == 2
+    messages = (await logged_in.get(f"/api/console/sessions/{session_id}/messages")).json()
+    untouched = next(item for item in messages["items"] if item["text"] == "그대로 둔다")
+    assert untouched["files"] == []
 
 
 async def test_input_then_reconnect_continues_the_same_run(

@@ -7,6 +7,10 @@ HTTP와 DB를 모른다. 이벤트·메시지 저장·도구 출력 저장·파�
 한 스텝은 모델 스트림 1회와 그 도구 호출들이다. 도구는 순서대로 하나씩 실행하고 결과를 같은 스텝
 메시지에 붙인다. 승인이 필요하거나 ask_user가 오면 PendingInteraction을 남기고 waiting_input으로
 끝낸다. 재개는 같은 스텝 메시지의 남은 호출부터 이어 간다.
+
+call_agent(오케스트레이션)도 같은 방식으로 멈춘다. 자식 과업 런은 LoopPorts.start_child가 만들고
+루프는 child_run.started를 낸 뒤 waiting_input(agent_call)으로 끝난다. 자식이 끝나면 그 요약이 재개
+값으로 와서 같은 호출의 tool_result가 된다.
 """
 
 import asyncio
@@ -21,6 +25,14 @@ import structlog
 import uuid6
 from pydantic import BaseModel, Field
 
+from app.agent.child_runs import (
+    ChildCall,
+    ChildResultSummary,
+    ChildStarted,
+    ChildStartError,
+    format_child_result,
+    tool_status,
+)
 from app.agent.context import (
     ContextTracker,
     StepMessage,
@@ -47,6 +59,7 @@ from app.agent.tools.base import (
     utf8_len,
     validate_tool_input,
 )
+from app.agent.tools.call_agent import CallAgentTool
 from app.llm.base import ModelAdapter
 from app.llm.pricing import cost_usd
 from app.llm.types import (
@@ -99,6 +112,29 @@ def new_id() -> uuid.UUID:
     return uuid6.uuid7()
 
 
+def child_tool_result(summary: ChildResultSummary | None) -> ToolResult:
+    """끝난 자식 런 요약을 call_agent의 도구 결과로(오케스트레이션 3.4).
+
+    tool_call.completed의 필수 필드를 다 채운다. duration_ms는 자식의 벽시계 시간, 발췌는 결과
+    본문이다.
+    """
+    if summary is None:
+        return ToolResult.error("[하위 에이전트의 결과를 받지 못했다]", code="child_result_missing")
+    content, is_error = format_child_result(summary)
+    error = summary.error
+    return ToolResult(
+        status=tool_status(summary),
+        content=content,
+        is_error=is_error,
+        timed_out=error is not None and error.code == "timeout",
+        error_code=error.code if error is not None and is_error else None,
+        duration_ms=summary.duration_ms,
+        output_excerpt=content,
+        output_bytes=utf8_len(content),
+        child_run_id=str(summary.run_id),
+    )
+
+
 class CancelToken(Protocol):
     """런 취소 신호(app/runner/supervisor.py의 CancelSignal). reason이 shutdown이면 서버 종료다."""
 
@@ -134,6 +170,10 @@ class LoopPorts(Protocol):
 
     # 첨부 이미지의 base64. 읽지 못하면 None(어댑터가 "[이미지 첨부]" 글로 바꾼다).
     async def load_image(self, storage_key: str) -> str | None: ...
+
+    # call_agent의 자식 과업 런 행을 만든다. 큐에는 넣지 않는다(부모의 대기 상태를 저장한 뒤
+    # 실행기가 넣는다, 오케스트레이션 3.3). 만들지 못하면 ChildStartError이고 런은 계속한다.
+    async def start_child(self, call: ChildCall) -> ChildStarted | ChildStartError: ...
 
 
 @dataclass(frozen=True)
@@ -681,6 +721,9 @@ class AgentLoop:
             if resume is not None and resumed and resume.payload.kind == "question":
                 await self._record(message, call, ToolResult.ok(resume.payload.answer or ""))
                 continue
+            if resume is not None and resumed and resume.payload.kind == "agent_call":
+                await self._record(message, call, child_tool_result(resume.payload.child))
+                continue
             tool = self._tools.get(call.name)
             error = parse_errors.get(call.id)
             if error is None:
@@ -699,8 +742,17 @@ class AgentLoop:
                     )
                 continue
             self._invalid_streak = 0
-            if tool.pauses:
+            if tool.pause_kind == "question":
                 return await self._pause(message, call, tool, "question")
+            if tool.pause_kind == "agent_call" and isinstance(tool, CallAgentTool):
+                started = await self._start_child(tool, call, message)
+                if isinstance(started, ChildStartError):
+                    # 자식을 만들지 못해도 런은 계속한다. 모델이 다른 방법을 고른다(3.3).
+                    await self._record(
+                        message, call, ToolResult.error(started.content(), code=started.code)
+                    )
+                    continue
+                return await self._pause_child(message, call, tool, started)
             if resume is not None and resumed and resume.payload.decision == "reject":
                 rejected = ToolResult(
                     status="rejected", content=rejection_text(resume.payload.note)
@@ -754,20 +806,20 @@ class AgentLoop:
         )
         await self._ports.save_message(message)
         excerpt = result.output_excerpt or result.content
-        await self._emit(
-            "tool_call.completed",
-            {
-                "tool_call_id": call.id,
-                "status": result.status,
-                "exit_code": result.exit_code,
-                "timed_out": result.timed_out,
-                "duration_ms": result.duration_ms,
-                "peak_memory_bytes": result.peak_memory_bytes,
-                "output_excerpt": excerpt,
-                "output_bytes": result.output_bytes or utf8_len(excerpt),
-                "output_storage_key": result.output_storage_key,
-            },
-        )
+        data: dict[str, Any] = {
+            "tool_call_id": call.id,
+            "status": result.status,
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+            "duration_ms": result.duration_ms,
+            "peak_memory_bytes": result.peak_memory_bytes,
+            "output_excerpt": excerpt,
+            "output_bytes": result.output_bytes or utf8_len(excerpt),
+            "output_storage_key": result.output_storage_key,
+        }
+        if result.child_run_id is not None:
+            data["child_run_id"] = result.child_run_id
+        await self._emit("tool_call.completed", data)
         log.info(
             "agent.tool_completed",
             run_id=str(self._config.run_id),
@@ -812,6 +864,61 @@ class AgentLoop:
             run_id=str(self._config.run_id),
             kind=kind,
             tool=tool.name,
+            tool_call_id=call.id,
+        )
+        return self._outcome("waiting_input", pending=pending, final_message_id=message.id)
+
+    async def _start_child(
+        self, tool: CallAgentTool, call: ToolUseBlock, message: StepMessage
+    ) -> ChildStarted | ChildStartError:
+        child = tool.child_call(call.id, message.id, call.input)
+        if isinstance(child, ChildStartError):
+            return child
+        try:
+            return await self._ports.start_child(child)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.exception("agent.child_start_failed", run_id=str(self._config.run_id))
+            return ChildStartError(
+                code="child_start_failed", message=f"하위 에이전트 런을 만들지 못했다: {exc}"[:500]
+            )
+
+    async def _pause_child(
+        self,
+        message: StepMessage,
+        call: ToolUseBlock,
+        tool: CallAgentTool,
+        started: ChildStarted,
+    ) -> LoopOutcome:
+        """자식 런의 끝을 기다리며 멈춘다. 사람 입력이 아니라서 run.waiting_input은 없다(6.1)."""
+        choice = tool.agents.get(started.agent_slug)
+        pending = PendingInteraction(
+            interaction_id=str(new_id()),
+            kind="agent_call",
+            tool_call_id=call.id,
+            tool_name=tool.name,
+            message_id=message.id,
+            step=self._steps,
+            completed_tool_call_ids=list(message.results()),
+            elapsed_ms=self._elapsed_ms(),
+            created_at=self._now(),
+            child_run_id=started.child_run_id,
+            child_session_id=started.child_session_id,
+            agent_id=started.agent_id,
+            agent_slug=started.agent_slug,
+            agent_name=started.agent_name,
+            version=started.version,
+            depth=started.depth,
+            result=choice.result if choice is not None else None,
+            task_preview=started.task_preview,
+        )
+        await self._emit("child_run.started", started.event_data(call.id))
+        log.info(
+            "agent.waiting_child",
+            run_id=str(self._config.run_id),
+            child_run_id=str(started.child_run_id),
+            agent=started.agent_slug,
             tool_call_id=call.id,
         )
         return self._outcome("waiting_input", pending=pending, final_message_id=message.id)

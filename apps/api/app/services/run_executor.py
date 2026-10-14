@@ -10,22 +10,39 @@ DB에서 런·세션·버전을 읽고, 작업공간을 확보하고(WorkspacePr
 작업공간 행이 없는 세션의 첫 런은 버전의 발행 스냅샷에서 시작한다(3.12). 과업 런(4.10)은 입력을
 task/에 두고 submit_result를 붙여 돌리며, 끝나면 run.output을 채우고 ephemeral이면 작업공간을
 지운다(결과 파일은 이미 storage에 있다).
+
+하위 에이전트(오케스트레이션): 버전에 sub_agents가 있고 깊이·호출 수 한도 안이면 call_agent를
+붙인다. call_agent로 멈춘 런은 run.completed·bus.end 없이 waiting_input(agent_call)으로 저장하고, 그
+뒤에야 자식을 큐에 넣는다. 저장하는 트랜잭션에서 중지 요청을 보고 중지면 자식도 함께 닫는다(3.3,
+3.6). 자식 런이 끝날 때는 런을 끝내는 같은 트랜잭션에서 기다리던 부모를 queued로 돌리고 트랜잭션
+밖에서 넣는다. 재개된 부모는 루프를 돌리기 전에 자식 결과 파일을 작업공간 agents/로 복사한다(4.2).
 """
 
 import asyncio
 import base64
+import hashlib
 import json
 import shutil
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import IO, Any
 
 import structlog
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.child_runs import (
+    ChildCall,
+    ChildCorrelation,
+    ChildStarted,
+    ChildStartError,
+    SubAgentChoice,
+    can_call_children,
+    child_correlation,
+)
 from app.agent.context import (
     StepMessage,
     StoredMessage,
@@ -37,10 +54,11 @@ from app.agent.context import (
 from app.agent.file_collector import (
     MAX_FILE_BYTES,
     MAX_SCAN_ENTRIES,
+    AlreadyCollected,
     CopiedFile,
     CopyFailed,
+    changes_since,
     collect_files,
-    window_start,
 )
 from app.agent.interactions import (
     PendingInteraction,
@@ -64,6 +82,7 @@ from app.agent.prompt_builder import (
 )
 from app.agent.tools import tools_for_groups
 from app.agent.tools.base import OutputSink, Tool, ToolDefaults
+from app.agent.tools.call_agent import CallAgentTool
 from app.agent.tools.submit_result import SUBMIT_RESULT, SubmitResultTool
 from app.config import Settings
 from app.db.engine import Database
@@ -74,6 +93,7 @@ from app.db.models.enums import (
     SessionFileKind,
     WorkspaceInstanceStatus,
 )
+from app.db.repositories.agents import AgentRepository
 from app.db.repositories.messages import MessageRepository
 from app.db.repositories.runs import RunRepository
 from app.db.repositories.session_files import SessionFileRepository
@@ -83,7 +103,7 @@ from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
 from app.llm.base import ModelAdapter
 from app.llm.types import CanonicalMessage, ModelParams, TextBlock
-from app.runner.supervisor import CancelSignal
+from app.runner.supervisor import CancelSignal, Supervisor
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.sandbox.content import StorageProvisionContent
 from app.sandbox.paths import resolve_in_workspace
@@ -96,6 +116,13 @@ from app.schemas.events import MessageFileData, UsageTotal
 from app.schemas.task import TASK_INPUTS_PATH, TaskRunInput
 from app.schemas.workspace import WorkspaceSettings
 from app.services.agents import AgentService, RuntimeVersion, provision_content, snapshot_source
+from app.services.child_runs import (
+    ChildRunService,
+    ClaimedParent,
+    ParentRun,
+    claim_parent,
+    orphan_runs,
+)
 from app.services.errors import ServiceError
 from app.services.runs import (
     parse_run_key,
@@ -104,25 +131,26 @@ from app.services.runs import (
     task_input_of,
     task_output,
 )
-from app.storage.base import StorageBackend, StorageError, session_file_key, tool_output_key
+from app.storage.base import (
+    StorageBackend,
+    StorageError,
+    safe_tool_call_id,
+    session_file_key,
+    tool_output_key,
+)
 from app.streaming.event_bus import EventBus, RunRef
 
 log = structlog.get_logger("app.runner")
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-_SAFE_ID_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
-
-
-def safe_tool_call_id(tool_call_id: str) -> str:
-    """storage 키에 쓰는 도구 호출 id. 프로바이더가 주는 id에 '/' 같은 글자가 섞여도 된다."""
-    if 0 < len(tool_call_id) <= 64 and set(tool_call_id) <= _SAFE_ID_CHARS:
-        return tool_call_id.lstrip(".") or "call"
-    return "call-" + uuid.uuid5(uuid.NAMESPACE_URL, tool_call_id).hex
 
 
 @dataclass
 class _Job:
     ref: RunRef
+    # ref.session_id와 같다. 2단계에서 RunRef.session_id가 nullable이 되어 에이전트 런은
+    # 여기서 한 번 좁혀 둔다.
+    session_id: uuid.UUID
     agent_version_id: uuid.UUID
     user_message_id: uuid.UUID
     assistant_message_id: uuid.UUID | None
@@ -142,6 +170,21 @@ class _Job:
     payload: ResumePayload | None
     # 과업 런이면 run.input(4.10).
     task: TaskRunInput | None = None
+    # 변경 파일 mtime 기준선(3.13). 처음 시작할 때 작업공간을 준비한 뒤 정하고 재개 때는 이어 쓴다.
+    changes_since: datetime | None = None
+    # 이 런 앞에서 플랫폼이 작업공간을 마지막으로 만진 시각(앞 런 종료, 작업공간 초기화).
+    changes_floor: datetime | None = None
+    cancel: CancelSignal | None = None
+    agent_id: uuid.UUID | None = None
+    external_user: str | None = None
+    api_key_id: uuid.UUID | None = None
+    # call_agent로 만든 자식 런이면 부모와 correlation(깊이·조상).
+    parent_run_id: uuid.UUID | None = None
+    # 이번 실행 구간에서 만든 자식. 부모가 대기가 아닌 상태로 끝나면 큐에 넣지 못한 것을
+    # 닫는다(3.3).
+    children_created: list[uuid.UUID] | None = None
+    # call_agent에 붙일 하위 에이전트와 부모 정보. _loop_config가 채운다.
+    parent_info: ParentRun | None = None
 
     @property
     def resumed(self) -> bool:
@@ -150,6 +193,15 @@ class _Job:
     @property
     def ephemeral(self) -> bool:
         return self.task is not None and self.task.session_mode == "ephemeral"
+
+    @property
+    def correlation(self) -> ChildCorrelation | None:
+        return child_correlation(self.task.correlation) if self.task is not None else None
+
+    @property
+    def depth(self) -> int:
+        correlation = self.correlation
+        return correlation.depth if correlation is not None else 0
 
 
 class _FileSink:
@@ -197,6 +249,9 @@ class _DbPorts:
         self._last_assistant = job.assistant_message_id
         self._instance_created_at = job.instance_created_at
         self.collected: FileSummary | None = None
+        # 이 런이 이미 storage에 남긴 파일(call_agent 스테이징)의 경로별 sha256. 수집 때 같은 파일을
+        # 다시 남기지 않는다(오케스트레이션 4.1의 3번).
+        self._stored: dict[str, set[str]] = {}
 
     @property
     def _ws(self) -> uuid.UUID:
@@ -222,9 +277,9 @@ class _DbPorts:
             messages.add(
                 Message(
                     id=message.id,
-                    session_id=job.ref.session_id,
+                    session_id=job.session_id,
                     run_id=job.ref.run_id,
-                    seq=await messages.next_seq(job.ref.session_id),
+                    seq=await messages.next_seq(job.session_id),
                     role=MessageRole.ASSISTANT,
                     blocks=blocks,
                     text=message.text,
@@ -239,7 +294,7 @@ class _DbPorts:
             run = await RunRepository(session, self._ws).get(job.ref.run_id)
             if run is not None:
                 run.assistant_message_id = message.id
-            chat = await SessionRepository(session, self._ws).get(job.ref.session_id)
+            chat = await SessionRepository(session, self._ws).get(job.session_id)
             if chat is not None:
                 chat.message_count += 1
                 chat.last_message_at = self._x.now()
@@ -252,9 +307,9 @@ class _DbPorts:
             messages.add(
                 Message(
                     id=summary_id,
-                    session_id=job.ref.session_id,
+                    session_id=job.session_id,
                     run_id=job.ref.run_id,
-                    seq=await messages.next_seq(job.ref.session_id),
+                    seq=await messages.next_seq(job.session_id),
                     role=MessageRole.SYSTEM_SUMMARY,
                     blocks=encode_blocks([TextBlock(text=text)]),
                     text=text,
@@ -262,7 +317,7 @@ class _DbPorts:
                     usage=dict(usage) if usage is not None else None,
                 )
             )
-            chat = await SessionRepository(session, self._ws).get(job.ref.session_id)
+            chat = await SessionRepository(session, self._ws).get(job.session_id)
             if chat is not None:
                 chat.message_count += 1
                 chat.last_message_at = self._x.now()
@@ -281,7 +336,7 @@ class _DbPorts:
 
     async def recreate_workspace(self) -> WorkspaceHandle:
         result = await self._x.provisioner.ensure(
-            self._job.ref.session_id,
+            self._job.session_id,
             instance_created_at=self._instance_created_at,
             content=self._content,
             emit=self._x.provision_emitter(self._job.ref),
@@ -297,6 +352,15 @@ class _DbPorts:
             source = await asyncio.to_thread(resolve_in_workspace, self.handle.root, rel_path)
         except SandboxError as exc:
             raise CopyFailed(exc.message) from exc
+        hashes = self._stored.get(rel_path)
+        if hashes:
+            # 하위 에이전트에 넘기려고 이미 남긴 파일과 내용이 같으면 그 행이 자리를 대신한다.
+            try:
+                digest = await asyncio.to_thread(_sha256_of, source)
+            except OSError as exc:
+                raise CopyFailed(str(exc)) from exc
+            if digest in hashes:
+                raise AlreadyCollected(rel_path)
         key = session_file_key(self._job.ref.run_id, rel_path)
         try:
             stored = await self._x.storage.write_file(key, source, max_bytes=MAX_FILE_BYTES)
@@ -308,14 +372,19 @@ class _DbPorts:
         if self.collected is not None:
             return self.collected
         job = self._job
+        since = job.changes_since or changes_since(job.started_at)
         try:
             changes = await self._x.backend.changes(
-                self.handle, window_start(job.started_at), max_entries=MAX_SCAN_ENTRIES
+                self.handle, since, max_entries=MAX_SCAN_ENTRIES
             )
         except SandboxError as exc:
             log.warning("run.changes_failed", run_id=str(job.ref.run_id), error=exc.message)
             self.collected = FileSummary()
             return self.collected
+        async with self._x.db.read() as session:
+            self._stored = await SessionFileRepository(session, self._ws).stored_for_run(
+                job.ref.run_id
+            )
         result = await collect_files(changes, self._copy)
         files: list[MessageFileData] = []
         async with self._x.db.write() as session:
@@ -326,7 +395,7 @@ class _DbPorts:
                     rows.add(
                         SessionFile(
                             id=new_id(),
-                            session_id=job.ref.session_id,
+                            session_id=job.session_id,
                             run_id=job.ref.run_id,
                             message_id=self._last_assistant,
                             kind=SessionFileKind.OUTPUT,
@@ -379,11 +448,41 @@ class _DbPorts:
             return None
         return base64.b64encode(data).decode("ascii") if data is not None else None
 
+    async def start_child(self, call: ChildCall) -> ChildStarted | ChildStartError:
+        parent = self._job.parent_info
+        if parent is None:
+            return ChildStartError(
+                code="agent_not_allowed", message="이 런은 하위 에이전트를 부를 수 없다"
+            )
+        # 스테이징은 지금 작업공간(폴더를 다시 만들었으면 새 핸들)에서 한다.
+        parent = replace(parent, workspace_root=self.handle.root)
+        started = await self._x.children().create_child(parent, call)
+        if isinstance(started, ChildStarted):
+            created = self._job.children_created
+            if created is None:
+                created = self._job.children_created = []
+            created.append(started.child_run_id)
+        return started
+
+
+def _stopped_at_pause(outcome: LoopOutcome) -> LoopOutcome:
+    return outcome.model_copy(
+        update={"status": "cancelled", "pending": None, "interrupted": "cancel"}
+    )
+
 
 def _read_small(path: Path, limit: int) -> bytes | None:
     with path.open("rb") as file:
         data = file.read(limit + 1)
     return data if len(data) <= limit else None
+
+
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        while chunk := file.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class RunExecutor:
@@ -409,6 +508,21 @@ class RunExecutor:
         self._agents = AgentService(db, settings)
         self._prompts = PromptBuilder()
         self._shell: ShellName = effective_shell(settings.sandbox_shell, windows=IS_WINDOWS)
+        # 이 실행기를 부르는 에이전트 레인. Supervisor가 실행기를 받아 만들어지므로 main.py가 만든
+        # 뒤에 넣는다. 하위 에이전트 런·재개하는 부모를 큐에 넣을 때 쓴다. 없으면 queued로 두고
+        # 복구가 넣는다.
+        self.supervisor: Supervisor | None = None
+
+    def children(self) -> ChildRunService:
+        return ChildRunService(
+            self.db,
+            self.settings,
+            bus=self.bus,
+            supervisor=self.supervisor,
+            storage=self.storage,
+            backend=self.backend,
+            clock=self.now,
+        )
 
     async def publish(self, ref: RunRef, event_type: str, data: Mapping[str, Any]) -> None:
         await self.bus.publish(ref, event_type, data)
@@ -445,6 +559,7 @@ class RunExecutor:
         now = self.now()
         cancelled: RunRef | None = None
         completed: dict[str, Any] = {}
+        claimed: ClaimedParent | None = None
         async with self.db.write() as session:
             run = await RunRepository(session, workspace_id).get(run_id)
             if run is None or run.status != RunStatus.QUEUED:
@@ -461,6 +576,7 @@ class RunExecutor:
                     "usage_total": UsageTotal.model_validate(run.usage or {}).model_dump(),
                     "steps": run.steps,
                 }
+                claimed = await claim_parent(session, workspace_id, run, now)
             else:
                 pending = pending_of(run) if run.resume_payload else None
                 payload: ResumePayload | None = None
@@ -483,12 +599,14 @@ class RunExecutor:
                         }
                     except ValidationError:
                         log.warning("workspace.settings_invalid", workspace_id=str(workspace_id))
+                resumed = pending if payload is not None else None
                 run.status = RunStatus.RUNNING
                 run.started_at = run.started_at or now
                 run.pending_interaction = None
                 run.resume_payload = None
                 return _Job(
                     ref=ref,
+                    session_id=run.session_id,
                     agent_version_id=run.agent_version_id,
                     user_message_id=run.user_message_id,
                     assistant_message_id=run.assistant_message_id,
@@ -504,13 +622,26 @@ class RunExecutor:
                     instance_id=instance.id if instance is not None else None,
                     instance_created_at=instance.created_at if instance is not None else None,
                     model_prices=prices,
-                    pending=pending if payload is not None else None,
+                    pending=resumed,
                     payload=payload,
                     task=task_input_of(run),
+                    changes_since=resumed.changes_since if resumed is not None else None,
+                    changes_floor=(
+                        instance.last_activity_at
+                        if instance is not None and resumed is None
+                        else None
+                    ),
+                    cancel=cancel,
+                    agent_id=chat.agent_id,
+                    external_user=chat.external_user,
+                    api_key_id=chat.api_key_id,
+                    parent_run_id=run.parent_run_id,
                 )
         if cancelled is not None:
             await self.publish(cancelled, "run.completed", completed)
             self.bus.end(cancelled.run_id)
+            if claimed is not None:
+                await self.children().launch_parent(claimed)
         return None
 
     async def _execute(self, job: _Job, cancel: CancelSignal) -> None:
@@ -542,7 +673,7 @@ class RunExecutor:
         snapshot = await self._snapshot(job, runtime)
         try:
             result = await self.provisioner.ensure(
-                ref.session_id,
+                job.session_id,
                 instance_created_at=job.instance_created_at,
                 snapshot=snapshot,
                 content=content,
@@ -564,6 +695,15 @@ class RunExecutor:
             await self._copy_uploads(job, handle)
             if job.task is not None:
                 await self._prepare_task(job, job.task, handle)
+            # 복원·첨부 복사로 새로 찍힌 mtime은 이 런의 변경이 아니다. 준비를 마친 뒤부터 센다.
+            job.changes_since = changes_since(self.now(), job.changes_floor)
+        elif job.pending is not None and job.payload is not None and job.payload.child is not None:
+            # 하위 에이전트의 결과 파일을 agents/<slug>/<run_id>/로 받는다. 기준선 뒤에 생긴
+            # 파일이라 이 런이 끝날 때 부모 세션의 출력 파일로도 남는다(4.2).
+            child = await self.children().copy_results_to_parent(
+                ref.workspace_id, handle, job.pending, job.payload.child
+            )
+            job.payload = job.payload.model_copy(update={"child": child})
         history, open_step = await self._history(job)
         if job.pending is not None and open_step is None:
             await self._finish(
@@ -596,12 +736,19 @@ class RunExecutor:
         mode: ApprovalMode,
     ) -> LoopConfig:
         config: AgentVersionConfig = runtime.config
-        tools: list[Tool] = tools_for_groups(config.tools)
+        correlation = job.correlation
+        # call_agent로 만든 자식은 사용자에게 직접 묻지 못한다. 확인할 것은 결과 글로 돌려준다(3.5).
+        tools: list[Tool] = tools_for_groups(
+            config.tools, exclude=("ask_user",) if correlation is not None else ()
+        )
         task = job.task
         submit: SubmitResultTool | None = None
         if task is not None and task.output_schema is not None:
             submit = SubmitResultTool(task.output_schema)
             tools.append(submit)
+        choices, available = await self._sub_agents(job, runtime, handle)
+        if choices:
+            tools.append(CallAgentTool(choices))
         system = self._prompts.build(
             instructions=config.instructions,
             skills=[
@@ -615,10 +762,18 @@ class RunExecutor:
                 approval_mode=job.approval_mode,
             ),
             task_block=(
-                task_block(task.output_schema, submit_tool=SUBMIT_RESULT)
+                task_block(
+                    task.output_schema,
+                    submit_tool=SUBMIT_RESULT,
+                    parent_agent=(
+                        correlation.parent_agent_name if correlation is not None else None
+                    ),
+                )
                 if task is not None
                 else None
             ),
+            sub_agents=choices,
+            sub_agents_unavailable=bool(config.sub_agents) and not available,
         )
         digest = prompt_hash(system, [tool.spec() for tool in tools])
         if digest != job.prompt_hash:
@@ -628,7 +783,7 @@ class RunExecutor:
         params = config.model.params
         return LoopConfig(
             run_id=job.ref.run_id,
-            session_id=job.ref.session_id,
+            session_id=job.session_id,
             system_prompt=system,
             tools=tools,
             params=ModelParams(
@@ -662,6 +817,46 @@ class RunExecutor:
             ),
             submit_tool=submit.name if submit is not None else None,
         )
+
+    async def _sub_agents(
+        self, job: _Job, runtime: RuntimeVersion, handle: WorkspaceHandle
+    ) -> tuple[list[SubAgentChoice], bool]:
+        """call_agent에 넣을 하위 에이전트와, 깊이·호출 수 한도 안이라 붙일 수 있는지(3.9)."""
+        refs = runtime.config.sub_agents
+        if not refs:
+            return [], False
+        if not can_call_children(
+            job.depth, self.settings.orchestration_max_depth, job.limits.max_child_calls
+        ):
+            return [], False
+        workspace_id = job.ref.workspace_id
+        choices = await self.children().resolve_choices(workspace_id, refs)
+        if not choices:
+            return [], True
+        async with self.db.read() as session:
+            agent = await AgentRepository(session, workspace_id).get(runtime.agent_id)
+        correlation = job.correlation
+        job.parent_info = ParentRun(
+            workspace_id=workspace_id,
+            run_id=job.ref.run_id,
+            session_id=job.session_id,
+            agent_id=runtime.agent_id,
+            agent_name=agent.name if agent is not None else "",
+            draft=runtime.version_number is None,
+            depth=job.depth,
+            root_run_id=correlation.root_run_id if correlation is not None else job.ref.run_id,
+            ancestors=(
+                (*correlation.ancestors, runtime.agent_id)
+                if correlation is not None
+                else (runtime.agent_id,)
+            ),
+            max_child_calls=job.limits.max_child_calls,
+            approval_override=job.approval_override,
+            external_user=job.external_user,
+            api_key_id=job.api_key_id,
+            workspace_root=handle.root,
+        )
+        return choices, True
 
     async def _snapshot(self, job: _Job, runtime: RuntimeVersion) -> SnapshotSource | None:
         # 작업공간 행이 없는 세션의 첫 런만 발행 스냅샷에서 시작한다. 밖에서 지워진 폴더는
@@ -699,7 +894,7 @@ class RunExecutor:
                 log.warning(
                     "task.file_copy_failed",
                     run_id=str(job.ref.run_id),
-                    file_id=str(item.session_file_id),
+                    file_id=str(item.session_file_id or item.wf_file_id),
                     error=str(exc),
                 )
 
@@ -709,7 +904,7 @@ class RunExecutor:
 
     async def _update_prompt_hash(self, job: _Job, digest: str) -> None:
         async with self.db.write() as session:
-            chat = await SessionRepository(session, job.ref.workspace_id).get(job.ref.session_id)
+            chat = await SessionRepository(session, job.ref.workspace_id).get(job.session_id)
             if chat is not None:
                 chat.prompt_hash = digest
         if job.prompt_hash is not None:
@@ -735,12 +930,12 @@ class RunExecutor:
         ws = job.ref.workspace_id
         async with self.db.write() as session:
             instances = WorkspaceInstanceRepository(session, ws)
-            row = await instances.get_for_session(job.ref.session_id)
+            row = await instances.get_for_session(job.session_id)
             if row is None:
                 row = instances.add(
                     WorkspaceInstance(
                         id=instance_id or new_id(),
-                        session_id=job.ref.session_id,
+                        session_id=job.session_id,
                         backend=handle.backend,
                         root_path=str(handle.root),
                         status=WorkspaceInstanceStatus.BUSY,
@@ -759,7 +954,7 @@ class RunExecutor:
                     row.created_at = created_at
                 if restored_snapshot_id is not None:
                     row.restored_from_snapshot_id = restored_snapshot_id
-            chat = await SessionRepository(session, ws).get(job.ref.session_id)
+            chat = await SessionRepository(session, ws).get(job.session_id)
             if chat is not None and chat.workspace_instance_id != row.id:
                 chat.workspace_instance_id = row.id
             recorded = row.id
@@ -789,7 +984,7 @@ class RunExecutor:
     async def _history(self, job: _Job) -> tuple[list[CanonicalMessage], StepMessage | None]:
         async with self.db.read() as session:
             rows = await MessageRepository(session, job.ref.workspace_id).list_for_history(
-                job.ref.session_id
+                job.session_id
             )
         stored = [
             StoredMessage(
@@ -798,6 +993,8 @@ class RunExecutor:
                 role=row.role,  # pyright: ignore[reportArgumentType]
                 blocks=row.blocks or [],
                 text=row.text,
+                stop_reason=row.stop_reason,
+                usage=row.usage,
             )
             for row in rows
         ]
@@ -819,6 +1016,18 @@ class RunExecutor:
             error=LoopError(code=code, message=message),
         )
 
+    def _user_stopped(self, job: _Job) -> bool:
+        # 서버 종료 신호는 중지가 아니다. 하위 에이전트 대기는 그대로 저장하고 자식은 복구가 잇는다.
+        cancel = job.cancel
+        return cancel is not None and cancel.is_set() and cancel.reason != "shutdown"
+
+    async def _stop_requested(self, job: _Job) -> bool:
+        if self._user_stopped(job):
+            return True
+        async with self.db.read() as session:
+            run = await RunRepository(session, job.ref.workspace_id).get(job.ref.run_id)
+        return run is not None and run.cancel_requested_at is not None
+
     async def _finish(
         self,
         job: _Job,
@@ -827,6 +1036,13 @@ class RunExecutor:
         ports: _DbPorts | None = None,
     ) -> None:
         ref = job.ref
+        pending = outcome.pending if outcome.status == "waiting_input" else None
+        child_wait = pending is not None and pending.kind == "agent_call"
+        if child_wait and await self._stop_requested(job):
+            # call_agent로 멈추는 바로 그 스텝에 중지가 왔다. 루프의 멈춤은 취소를 보지 않으므로
+            # 여기서 런을 cancelled로 끝내고 자식은 큐에 넣지 않는다(3.6).
+            outcome = _stopped_at_pause(outcome)
+            pending, child_wait = None, False
         shutdown = outcome.interrupted == "shutdown"
         terminal = outcome.status != "waiting_input"
         # 종료 중에는 지우지 않는다(유예 시간 안에 끝내야 한다). 폴더는 세션과 함께 남는다.
@@ -847,9 +1063,16 @@ class RunExecutor:
         now = self.now()
         error = outcome.error.model_dump() if outcome.error is not None else None
         output: dict[str, Any] | None = None
+        orphaned: list[tuple[RunRef, dict[str, object]]] = []
+        claimed: ClaimedParent | None = None
         async with self.db.write() as session:
             run = await RunRepository(session, ref.workspace_id).get(ref.run_id)
             if run is not None:
+                if child_wait and run.cancel_requested_at is not None:
+                    # 위에서 본 뒤에 중지가 들어왔다. 같은 트랜잭션에서 보고 자식을 넣지 않는다.
+                    outcome = _stopped_at_pause(outcome)
+                    pending, child_wait, terminal = None, False, True
+                    error = None
                 run.status = outcome.status
                 run.steps = outcome.steps
                 run.usage = outcome.usage.model_dump(mode="json")
@@ -861,15 +1084,25 @@ class RunExecutor:
                     output = await task_output(
                         session, ref.workspace_id, run, status=outcome.status, result=result
                     )
+                    if outcome.limit is not None:
+                        # 하위 에이전트로 불린 과업이면 부모가 "스텝 한도"를 알아야 한다(3.4).
+                        output["limit"] = outcome.limit
                     run.output = output
                 if outcome.status == "waiting_input" and outcome.pending is not None:
-                    run.pending_interaction = outcome.pending.model_dump(mode="json")
+                    pending = outcome.pending.model_copy(
+                        update={"changes_since": job.changes_since}
+                    )
+                    run.pending_interaction = pending.model_dump(mode="json")
                     run.ended_at = None
                 else:
                     run.pending_interaction = None
                     run.ended_at = now
+                if terminal:
+                    # 이번 구간에 만들고 큐에 넣지 못한 자식은 기다릴 부모가 없다(3.3).
+                    orphaned = await self._orphan_created(session, job, now)
+                    claimed = await claim_parent(session, ref.workspace_id, run, now)
             instance = await WorkspaceInstanceRepository(session, ref.workspace_id).get_for_session(
-                ref.session_id
+                job.session_id
             )
             if instance is not None:
                 instance.status = WorkspaceInstanceStatus.READY
@@ -877,6 +1110,24 @@ class RunExecutor:
                 if disk is not None:
                     instance.disk_bytes, instance.disk_estimated = disk
                     instance.disk_measured_at = now
+        if child_wait and pending is not None and pending.child_run_id is not None:
+            # 부모는 run.completed 없이 열린 채로 둔다. 스트림은 자식이 도는 동안 ping으로 이어지고
+            # 재개 뒤의 이벤트가 같은 채널로 온다(6.1). 자식은 대기를 저장한 뒤에야 넣는다(3.3).
+            child_ref = RunRef(
+                run_id=pending.child_run_id,
+                session_id=pending.child_session_id,
+                workspace_id=ref.workspace_id,
+            )
+            children = self.children()
+            await children.launch_child(child_ref)
+            await children.settle_if_finished(ref.workspace_id, pending.child_run_id)
+            log.info(
+                "run.waiting_child",
+                run_id=str(ref.run_id),
+                child_run_id=str(pending.child_run_id),
+                steps=outcome.steps,
+            )
+            return
         completed: dict[str, Any] = {
             "status": outcome.status,
             "usage_total": outcome.usage.model_dump(mode="json"),
@@ -891,7 +1142,7 @@ class RunExecutor:
             await release_session_workspace(
                 self.db,
                 ref.workspace_id,
-                ref.session_id,
+                job.session_id,
                 backend=self.backend,
                 workspaces_dir=self.settings.data_dir / "workspaces",
             )
@@ -899,6 +1150,11 @@ class RunExecutor:
             await self.publish(ref, "run.error", error)
         await self.publish(ref, "run.completed", completed)
         self.bus.end(ref.run_id)
+        for orphan_ref, data in orphaned:
+            await self.publish(orphan_ref, "run.completed", data)
+            self.bus.end(orphan_ref.run_id)
+        if claimed is not None:
+            await self.children().launch_parent(claimed)
         log.info(
             "run.finished",
             run_id=str(ref.run_id),
@@ -908,6 +1164,18 @@ class RunExecutor:
             input_tokens=outcome.usage.input_tokens,
             output_tokens=outcome.usage.output_tokens,
         )
+
+    async def _orphan_created(
+        self, session: AsyncSession, job: _Job, now: datetime
+    ) -> list[tuple[RunRef, dict[str, object]]]:
+        created = job.children_created
+        if not created:
+            return []
+        runs = RunRepository(session, job.ref.workspace_id)
+        rows = [
+            row for row in [await runs.get(child_id) for child_id in created] if row is not None
+        ]
+        return await orphan_runs(session, job.ref.workspace_id, rows, now)
 
     def _model_info(self, job: _Job, current: Mapping[str, Any], used: list[str]) -> dict[str, Any]:
         info = dict(current)

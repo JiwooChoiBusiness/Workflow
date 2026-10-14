@@ -103,10 +103,14 @@ def test_snapshot_limits_name_the_biggest_folders(tmp_path: Path) -> None:
     with pytest.raises(SandboxError) as by_size:
         create_snapshot(root, tmp_path / "s.zip", max_bytes=1000)
     assert by_size.value.code == "snapshot_too_large"
-    assert "big" in by_size.value.message and "big/inner" in by_size.value.message
+    # 한도를 작게 잡아도 0MB처럼 보이지 않게 크기마다 단위를 고른다(disk.format_size).
+    message = by_size.value.message
+    assert "(파일 2개, 4.9KB / 한도 50000개, 1000B)" in message
+    assert message.endswith("큰 폴더: big 4.9KB, big/inner 4.9KB")
     with pytest.raises(SandboxError) as by_count:
         create_snapshot(root, tmp_path / "s.zip", max_bytes=10**9, max_files=1)
     assert by_count.value.code == "snapshot_too_large"
+    assert "(파일 2개, 4.9KB / 한도 1개, 953.7MB)" in by_count.value.message
     assert not (tmp_path / "s.zip").exists()
 
 
@@ -218,6 +222,7 @@ def test_restore_stops_zip_bombs(tmp_path: Path) -> None:
     with pytest.raises(SandboxError) as info:
         restore_snapshot(root, archive, max_bytes=1_000_000)
     assert info.value.code == "snapshot_too_large"
+    assert info.value.message == "압축을 풀면 1.9MB라 한도 976.6KB를 넘는다"
     assert list(root.iterdir()) == []
 
 

@@ -94,10 +94,12 @@ async def start_process(
             **platform_kwargs,
         )
     except NotImplementedError as exc:
-        # Windows의 SelectorEventLoop(uvicorn --reload)는 서브프로세스를 지원하지 않는다.
+        # Windows의 SelectorEventLoop는 서브프로세스를 지원하지 않는다. uvicorn을 직접 --reload로
+        # 띄우면 이 루프가 된다. platform serve --reload는 자체 리로더라 해당하지 않는다.
         raise SandboxError(
             "sandbox_unavailable",
-            "이 이벤트 루프는 서브프로세스를 띄울 수 없다. --reload 없이 서버를 띄운다",
+            "이 이벤트 루프는 서브프로세스를 띄울 수 없다. uvicorn을 직접 부르지 말고"
+            " `platform serve`(개발 중에는 --reload)로 서버를 띄운다",
         ) from exc
     except OSError as exc:
         raise SandboxError("sandbox_unavailable", f"{argv[0]}을 실행하지 못했다: {exc}") from exc

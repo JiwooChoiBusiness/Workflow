@@ -1,0 +1,81 @@
+# 병렬 iteration 안의 llm(기본값 오류 처리·재시도)과 탭·줄 끝 공백이 든 code. 이런 글은 YAML 블록으로
+# 쓸 수 없어 내보내기가 큰따옴표로 바꿔 쓴다.
+dsl_version: 1
+kind: workflow
+name: 주제별 요약 🧪
+icon: "🧠"
+description: "쉼표로 나눈 주제를 하나씩 요약한다"
+env_vars: []
+conversation_vars: []
+settings:
+  approval_mode: inherit
+  mask_secrets_in_outputs: false
+graph:
+  nodes:
+    - id: start
+      type: start
+      version: 1
+      title: 시작
+      position: { x: 0, y: 0 }
+      config:
+        fields:
+          - { name: topics, type: paragraph, label: 주제 목록, required: true }
+          - { name: docs, type: file_list, label: 자료 }
+    - id: split
+      type: code
+      version: 1
+      title: 나누기
+      position: { x: 300, y: 0 }
+      config:
+        code: "def main(topics: str) -> dict:\n\titems = [t.strip() for t in topics.split(',') if t.strip()]  \n\treturn {'items': items}\n"
+        inputs:
+          - { name: topics, var: start.topics }
+        outputs:
+          - { name: items, type: "array[string]" }
+        timeout_sec: 20
+    - id: each
+      type: iteration
+      version: 1
+      title: 주제마다
+      position: { x: 600, y: 0 }
+      config:
+        input_var: split.items
+        output_var: summarize.text
+        parallel: true
+        max_parallel: 2
+        error_mode: continue
+    - id: each_start
+      type: iteration_start
+      version: 1
+      title: 반복 시작
+      parent_id: each
+      position: { x: 24, y: 68 }
+      config: {}
+    - id: summarize
+      type: llm
+      version: 1
+      title: 요약
+      parent_id: each
+      position: { x: 240, y: 68 }
+      config:
+        prompt:
+          - { role: system, text: "한 문장으로 요약한다." }
+          - { role: user, text: "{{ each_start.index }}번째 주제: {{ each_start.item }}" }
+      error:
+        strategy: default
+        default_outputs: { text: "" }
+      retry: { max_attempts: 1, interval_ms: 2000 }
+    - id: done
+      type: end
+      version: 1
+      title: 끝
+      position: { x: 900, y: 0 }
+      config:
+        outputs:
+          - { name: summaries, var: each.output }
+          - { name: count, var: each.count }
+  edges:
+    - { id: e1, source: start, target: split }
+    - { id: e2, source: split, target: each }
+    - { id: e3, source: each_start, target: summarize }
+    - { id: e4, source: each, target: done }

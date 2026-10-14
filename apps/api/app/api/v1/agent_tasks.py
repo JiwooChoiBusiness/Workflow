@@ -14,7 +14,6 @@ from app.agent.task_service import AgentTaskSpec
 from app.api.console.runs import SSE_CONTENT, RunServiceDep, run_headers
 from app.api.v1.common import TaskServiceDep, file_scope, key_scope
 from app.auth.dependencies import ApiKeyAuth, require_scope
-from app.db.models.enums import SessionSource
 from app.schemas.service_api import AgentTaskCreate, ExternalUser
 from app.schemas.task import AgentTaskOut
 from app.streaming.sse import sse_response
@@ -66,8 +65,11 @@ async def get_task(
     runs: RunServiceDep,
     user: Annotated[ExternalUser | None, Query()] = None,
 ) -> AgentTaskOut:
-    """과업 상태와 결과. 진행 중이면 지금까지의 글과 사용량만 있다."""
+    """과업 상태와 결과. 진행 중이면 지금까지의 글과 사용량만 있다.
+
+    대화(api 세션)에서 부른 하위 에이전트의 과업 런도 키의 범위로 연다. 범위는 부모 사슬의 뿌리
+    세션으로 보므로 세션 소스를 task로 좁히지 않고, 과업 런인지는 view가 본다(오케스트레이션 6.3).
+    """
     require_scope(key, "tasks")
-    scope = key_scope(key, user=user, only=SessionSource.TASK)
-    await runs.check_run(key.workspace_id, run_id, scope)
+    await runs.check_run(key.workspace_id, run_id, key_scope(key, user=user))
     return await tasks.view(key.workspace_id, run_id)

@@ -8,13 +8,21 @@ import zipfile
 from pathlib import Path
 
 from app.sandbox.base import SandboxError, SnapshotInfo
-from app.sandbox.disk import JUNK_DIRS, JUNK_SUFFIXES, ScanEntry, Scanner, largest_dirs
+from app.sandbox.disk import (
+    JUNK_DIRS,
+    JUNK_SUFFIXES,
+    ScanEntry,
+    Scanner,
+    format_size,
+    largest_dirs,
+)
 from app.sandbox.paths import resolve_in_workspace, split_relative
 from app.sandbox.python_runner import REQUIREMENTS_PATH, parse_requirements
 
-# 스냅샷에 넣지 않는 최상위 폴더(3.4). 버전 설정에서 다시 채우거나 재설치로 되살린다.
+# 스냅샷에 넣지 않는 최상위 폴더(3.4). 버전 설정에서 다시 채우거나 재설치로 되살린다. agents는
+# 미리보기에서 부른 하위 에이전트의 결과 복사본이라 발행본에 담지 않는다(오케스트레이션 4.2).
 SNAPSHOT_EXCLUDED_TOP = frozenset(
-    {".packages", ".run", ".tmp", ".cache", "uploads", "task", "agent-files", "skills"}
+    {".packages", ".run", ".tmp", ".cache", "uploads", "task", "agent-files", "skills", "agents"}
 )
 MAX_SNAPSHOT_FILES = 50_000
 MAX_RESTORE_BYTES = 2 * 1024**3
@@ -55,11 +63,11 @@ def create_snapshot(
     files = snapshot_files(root)
     raw_total = sum(entry.size for entry in files)
     if raw_total > max_bytes or len(files) > max_files:
-        top = ", ".join(f"{path} {size / 2**20:.1f}MB" for path, size in largest_dirs(files))
+        top = ", ".join(f"{path} {format_size(size)}" for path, size in largest_dirs(files))
         raise SandboxError(
             "snapshot_too_large",
-            f"작업공간이 스냅샷 한도를 넘는다(파일 {len(files)}개, {raw_total / 2**20:.1f}MB / "
-            f"한도 {max_files}개, {max_bytes / 2**20:.0f}MB). 큰 폴더: {top or '없음'}",
+            f"작업공간이 스냅샷 한도를 넘는다(파일 {len(files)}개, {format_size(raw_total)} / "
+            f"한도 {max_files}개, {format_size(max_bytes)}). 큰 폴더: {top or '없음'}",
             status=413,
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -112,7 +120,9 @@ def _restore_plan(
     declared = sum(info.file_size for info in infos)
     if declared > max_bytes:
         raise SandboxError(
-            "snapshot_too_large", f"압축을 풀면 {max_bytes}바이트를 넘는다", status=413
+            "snapshot_too_large",
+            f"압축을 풀면 {format_size(declared)}라 한도 {format_size(max_bytes)}를 넘는다",
+            status=413,
         )
     plan: list[tuple[zipfile.ZipInfo, Path]] = []
     seen: set[str] = set()
@@ -173,7 +183,7 @@ def restore_snapshot(
                         if written > max_bytes:
                             raise SandboxError(
                                 "snapshot_too_large",
-                                f"압축을 풀면 {max_bytes}바이트를 넘는다",
+                                f"압축을 풀면 한도 {format_size(max_bytes)}를 넘는다",
                                 status=413,
                             )
                         sink.write(chunk)

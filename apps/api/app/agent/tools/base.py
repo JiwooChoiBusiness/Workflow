@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 # system은 에이전트 설정으로 고르는 그룹이 아니다. 과업 모드의 submit_result처럼 러너가 붙인다.
 ToolGroup = Literal["shell", "files", "http", "ask_user", "system"]
 OutputStream = Literal["stdout", "stderr"]
+# 실행하지 않고 런을 멈추는 도구의 멈춤 종류(interactions.PendingKind 중 도구가 만드는 것).
+PauseKind = Literal["question", "agent_call"]
 
 # 모델에 보내는 도구 결과 상한과 그 안의 앞·뒤 몫(4.6).
 MODEL_OUTPUT_BYTES = 32 * 1024
@@ -269,6 +271,8 @@ class ToolResult:
     output_excerpt: str = ""
     output_bytes: int = 0
     output_storage_key: str | None = None
+    # call_agent 결과면 그 자식 런. tool_call.completed에 실린다.
+    child_run_id: str | None = None
 
     @classmethod
     def ok(cls, content: str) -> "ToolResult":
@@ -293,8 +297,9 @@ class Tool:
     input_schema: ClassVar[dict[str, Any]]
     # 프로세스를 띄우는 도구. 중지할 때 백엔드 kill을 부른다.
     uses_process: ClassVar[bool] = False
-    # 실행하지 않고 런을 waiting_input으로 멈추는 도구(ask_user).
-    pauses: ClassVar[bool] = False
+    # 실행하지 않고 런을 waiting_input으로 멈추는 도구. ask_user는 question, call_agent는
+    # agent_call(자식 런의 끝을 기다린다)이다.
+    pause_kind: ClassVar[PauseKind | None] = None
     # 성공하면 런을 끝내는 도구(과업 모드의 submit_result, M8).
     terminal: ClassVar[bool] = False
 
@@ -315,6 +320,10 @@ class Tool:
     def timeout_for(self, data: Mapping[str, Any], defaults: ToolDefaults) -> int | None:
         return None
 
+    def input_validator(self) -> "Validator":
+        """입력 검증기. 스키마가 클래스마다 고정이라 이름으로 캐시한다."""
+        return _cached_validator(self)
+
     async def execute(self, ctx: ToolContext, data: dict[str, Any]) -> ToolResult:
         raise NotImplementedError
 
@@ -327,13 +336,17 @@ def clamp_timeout(requested: object, default: int, maximum: int) -> int:
 _validators: dict[str, "Validator"] = {}
 
 
-def _validator(tool: Tool) -> "Validator":
+def schema_input_validator(schema: Mapping[str, Any]) -> "Validator":
+    # jsonschema는 첫 도구 입력 검증 때 불러온다(2.7).
+    from jsonschema import Draft202012Validator
+
+    return Draft202012Validator(dict(schema))
+
+
+def _cached_validator(tool: Tool) -> "Validator":
     validator = _validators.get(tool.name)
     if validator is None:
-        # jsonschema는 첫 도구 입력 검증 때 불러온다(2.7).
-        from jsonschema import Draft202012Validator
-
-        validator = Draft202012Validator(tool.input_schema)
+        validator = schema_input_validator(tool.input_schema)
         _validators[tool.name] = validator
     return validator
 
@@ -341,7 +354,7 @@ def _validator(tool: Tool) -> "Validator":
 def validate_tool_input(tool: Tool, data: Mapping[str, Any]) -> str | None:
     """스키마에 맞지 않으면 모델에 돌려줄 오류 문장, 맞으면 None."""
     problems: list[str] = []
-    for error in _validator(tool).iter_errors(dict(data)):
+    for error in tool.input_validator().iter_errors(dict(data)):
         location = "/".join(str(part) for part in error.absolute_path) or "(입력)"
         problems.append(f"{location}: {error.message}")
         if len(problems) >= 5:

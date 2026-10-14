@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from app.agent.child_runs import ChildCall, ChildStarted, ChildStartError
 from app.agent.context import StepMessage, StoredMessage, build_history, decode_step, encode_step
 from app.agent.interactions import ResumePayload, effective_approval_mode
 from app.agent.loop import AgentLoop, FileSummary, LoopConfig, LoopOutcome, ResumeState
@@ -233,6 +234,11 @@ class RecordingPorts:
         self.recreated = 0
         self.collect_calls = 0
         self.files: list[MessageFileData] = []
+        # call_agent가 부르는 start_child. 테스트가 바꿔 끼운다. 기본은 거절이다.
+        self.child_calls: list[ChildCall] = []
+        self.child_reply: Callable[[ChildCall], ChildStarted | ChildStartError] = lambda call: (
+            ChildStartError(code="agent_not_allowed", message="테스트 기본값")
+        )
 
     async def emit(self, event_type: str, data: Mapping[str, Any]) -> None:
         payload = jsonable(dict(data))
@@ -249,6 +255,8 @@ class RecordingPorts:
             role="assistant",
             blocks=encode_step(message),
             text=message.text,
+            stop_reason=message.stop_reason,
+            usage=message.usage,
         )
         if message.id in self.messages:
             index = next(i for i, row in enumerate(self.rows) if row.id == message.id)
@@ -289,6 +297,10 @@ class RecordingPorts:
 
     async def load_image(self, storage_key: str) -> str | None:
         return "aW1hZ2U="
+
+    async def start_child(self, call: ChildCall) -> ChildStarted | ChildStartError:
+        self.child_calls.append(call)
+        return self.child_reply(call)
 
     def types(self) -> list[str]:
         return [event_type for event_type, _ in self.events]

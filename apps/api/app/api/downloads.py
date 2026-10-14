@@ -25,17 +25,19 @@ def safe_media_type(mime: str) -> str:
     return mime.strip() if media.startswith("text/") else media
 
 
-def content_disposition(filename: str) -> str:
-    # 한글 이름은 filename*로 주고, filename에는 ASCII로 바꾼 이름을 둔다(RFC 6266).
-    ascii_name = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")
+def content_disposition(filename: str, fallback: str | None = None) -> str:
+    # 한글 이름은 filename*로 주고, filename에는 ASCII로 바꾼 이름을 둔다(RFC 6266). 한글만인
+    # 이름은 ASCII로 바꾸면 거의 남지 않으므로 부르는 쪽이 fallback(slug 등)을 줄 수 있다.
+    source = fallback or filename
+    ascii_name = unicodedata.normalize("NFKD", source).encode("ascii", "ignore").decode("ascii")
     ascii_name = "".join(char for char in ascii_name if char.isprintable() and char not in '"\\')
     ascii_name = ascii_name.strip() or "download"
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename, safe='')}"
 
 
-def download_headers(filename: str) -> dict[str, str]:
+def download_headers(filename: str, fallback: str | None = None) -> dict[str, str]:
     return {
-        "Content-Disposition": content_disposition(filename),
+        "Content-Disposition": content_disposition(filename, fallback),
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
     }

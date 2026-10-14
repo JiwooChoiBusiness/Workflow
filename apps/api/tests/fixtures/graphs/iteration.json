@@ -1,0 +1,54 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "title": "시작",
+      "config": {
+        "fields": [{ "name": "docs", "type": "file_list", "label": "문서", "required": true }]
+      }
+    },
+    {
+      "id": "iteration_1",
+      "type": "iteration",
+      "title": "문서마다",
+      "config": {
+        "input_var": "start.docs",
+        "output_var": "template_2.output",
+        "parallel": false,
+        "error_mode": "terminate"
+      }
+    },
+    {
+      "id": "iteration_start_1",
+      "type": "iteration_start",
+      "title": "반복 시작",
+      "parent_id": "iteration_1",
+      "config": {}
+    },
+    {
+      "id": "template_2",
+      "type": "template",
+      "title": "파일 이름",
+      "parent_id": "iteration_1",
+      "config": {
+        "template": "{{ index }}: {{ doc }}",
+        "vars": [
+          { "name": "doc", "var": "iteration_start_1.item" },
+          { "name": "index", "var": "iteration_start_1.index" }
+        ]
+      }
+    },
+    {
+      "id": "end_1",
+      "type": "end",
+      "title": "끝",
+      "config": { "outputs": [{ "name": "names", "var": "iteration_1.output" }] }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "iteration_1" },
+    { "id": "e2", "source": "iteration_1", "target": "end_1" },
+    { "id": "e3", "source": "iteration_start_1", "target": "template_2" }
+  ]
+}

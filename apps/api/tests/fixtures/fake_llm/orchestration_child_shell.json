@@ -1,0 +1,57 @@
+{
+  "description": "승인 모드 all_shell인 하위 에이전트(shellbot)가 셸을 부른다. 자식이 승인을 기다리는 동안 부모는 하위 호출 대기다.",
+  "turns": [
+    [
+      {
+        "type": "tool_call_start",
+        "index": 0,
+        "id": "call_shellbot",
+        "name": "call_agent"
+      },
+      {
+        "type": "tool_call_delta",
+        "index": 0,
+        "json_fragment": "{\"agent\": \"shellbot\", \"task\": \"셸로 echo를 한 번 실행하고 결과를 알려 준다\"}"
+      },
+      {
+        "type": "tool_call_end",
+        "index": 0,
+        "id": "call_shellbot",
+        "name": "call_agent",
+        "arguments": "{\"agent\": \"shellbot\", \"task\": \"셸로 echo를 한 번 실행하고 결과를 알려 준다\"}"
+      }
+    ],
+    [
+      {
+        "type": "tool_call_start",
+        "index": 0,
+        "id": "call_echo",
+        "name": "shell"
+      },
+      {
+        "type": "tool_call_delta",
+        "index": 0,
+        "json_fragment": "{\"command\": \"echo child-ok\"}"
+      },
+      {
+        "type": "tool_call_end",
+        "index": 0,
+        "id": "call_echo",
+        "name": "shell",
+        "arguments": "{\"command\": \"echo child-ok\"}"
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "셸 결과: child-ok"
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "하위 에이전트가 셸 결과 child-ok를 돌려줬다."
+      }
+    ]
+  ]
+}

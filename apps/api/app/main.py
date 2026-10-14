@@ -1,12 +1,3 @@
-# ruff: noqa: E402
-import os
-import sys
-
-if __name__ == "__main__" and sys.path[0] == os.path.dirname(os.path.abspath(__file__)):
-    # 파일을 직접 실행하면(VS Code 실행 버튼) 이 폴더가 import 경로 맨 앞에 와서
-    # app/logging.py가 표준 logging 모듈을 가린다. 패키지는 가상환경에 설치돼 있으니 빼도 된다.
-    sys.path.pop(0)
-
 import asyncio
 import time
 from collections.abc import AsyncIterator, Callable
@@ -23,24 +14,33 @@ from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import Database
 from app.db.migrate import upgrade_head
-from app.housekeeping import Housekeeping, Retention
+from app.housekeeping import Housekeeping, Retention, WorkflowRetention
 from app.llm import make_adapter
 from app.llm.base import ModelAdapter
-from app.logging import configure_logging
+from app.logsetup import configure_logging
 from app.runner import recovery, winconsole
+from app.runner.shutdown import ShutdownCoordinator
 from app.runner.supervisor import Supervisor
 from app.sandbox import allowlist, make_backend
+from app.sandbox.allowlist import Allowlist
+from app.sandbox.http_client import HttpClient
 from app.security.rate_limit import new_api_limiter
+from app.services.child_runs import ChildRunService
 from app.services.llm_status import LlmStatusService
 from app.services.run_executor import RunExecutor
-from app.services.runs import RunMaintenance
+from app.services.runs import RunMaintenance, RunService
+from app.services.tasks import TaskService
+from app.services.workflow_executor import WF_WORKSPACES, WorkflowRunExecutor
+from app.services.workflow_runs import WorkflowParents
 from app.storage import make_storage
-from app.streaming.event_bus import EventBus, SqliteEventStore
+from app.streaming.event_bus import EventBus
+from app.streaming.stores import sqlite_stores
 from app.web_static import mount_web
+from app.workflow import render as workflow_render
 
 log = structlog.get_logger("app.main")
 
-DATA_SUBDIRS = ("storage", "workspaces", "cache/pip", "logs")
+DATA_SUBDIRS = ("storage", "workspaces", WF_WORKSPACES, "cache/pip", "logs")
 
 winconsole.ensure_proactor_loop_policy()
 
@@ -60,13 +60,27 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         for check in [*checks, subprocess_check]:
             if not check.ok:
                 log.warning("startup.check_failed", check=check.name, detail=check.detail)
+        # 과업 지시와 워크플로우 노드가 함께 쓰는 Jinja2 환경을 한 번만 만든다(2단계 설계 3.3).
+        workflow_render.setup()
 
         # SANDBOX_BACKEND=e2b면 여기서 기동이 실패한다(설계 3.1).
-        backend = make_backend(settings)
+        # 허용 목록과 HTTP 클라이언트는 하나를 만들어 두 백엔드와 워크플로우 노드가 나눠 쓴다
+        # (2단계 9.2). 두 번째 백엔드는 워크플로우 런 작업 폴더(DATA_DIR/wf-workspaces)다(9.1).
+        http = HttpClient(
+            Allowlist(settings.allowlist_file), max_body_bytes=settings.http_max_body_bytes
+        )
+        try:
+            backend = make_backend(settings, http_client=http)
+            wf_backend = make_backend(
+                settings, http_client=http, workspaces_dir=settings.data_dir / WF_WORKSPACES
+            )
+        except BaseException:
+            await http.aclose()
+            raise
         llm: ModelAdapter = app.state.llm
         db = Database(settings.data_dir / "app.db")
         storage = make_storage(settings)
-        bus = EventBus(SqliteEventStore(db))
+        bus = EventBus(sqlite_stores(db))
         executor = RunExecutor(
             db=db, settings=settings, llm=llm, backend=backend, storage=storage, bus=bus
         )
@@ -74,22 +88,73 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             executor,
             max_concurrent=settings.runner_max_concurrent_runs,
             grace_sec=settings.shutdown_grace_sec,
+            name="agent",
+        )
+        # 실행기가 하위 에이전트 런과 재개하는 부모를 같은 레인에 넣는다(오케스트레이션 3.3).
+        executor.supervisor = supervisor
+        # 워크플로우 런의 agent 노드는 자식 런을 ChildRunService로 만들어 에이전트 레인에 넣고 이
+        # 과업 서비스로 기다린다(오케스트레이션 9장).
+        tasks = TaskService(
+            db,
+            settings,
+            runs=RunService(
+                db, settings, bus=bus, supervisor=supervisor, storage=storage, backend=backend
+            ),
+            bus=bus,
+        )
+        children = ChildRunService(
+            db, settings, bus=bus, supervisor=supervisor, storage=storage, backend=backend
+        )
+        workflow_supervisor = Supervisor(
+            WorkflowRunExecutor(
+                db=db,
+                settings=settings,
+                bus=bus,
+                llm=llm,
+                sandbox=wf_backend,
+                http=http,
+                tasks=tasks,
+                children=children,
+                storage=storage,
+            ),
+            max_concurrent=settings.runner_max_concurrent_workflow_runs,
+            grace_sec=settings.shutdown_grace_sec,
+            name="workflow",
+        )
+        parents = WorkflowParents(db, bus, workflow_supervisor)
+        maintenance = RunMaintenance(
+            db, settings, bus=bus, storage=storage, parents=parents, supervisor=supervisor
         )
         housekeeping = Housekeeping(
             db=db,
             backend=backend,
             memory_budget_mb=settings.memory_budget_mb,
-            runs=RunMaintenance(db, settings, bus=bus, storage=storage),
+            runs=maintenance,
             retention=Retention(db, storage=storage, backend=backend),
+            workflows=WorkflowRetention(
+                db,
+                storage=storage,
+                backend=wf_backend,
+                retention_days=settings.run_event_retention_days,
+            ),
         )
-        # 종료 훅은 등록한 순서로 돈다. 콘솔 창 닫기처럼 lifespan을 거치지 않는 종료도 같은
-        # 순서로 정리되게 여기에 모은다. 런이 다 멈춘 뒤 하우스키핑을 세우고, 이벤트 버스가 남은
-        # 이벤트를 쓰고 SSE 구독을 닫은 다음 DB가 마지막에 닫힌다.
-        for hook in (housekeeping.stop, backend.aclose, llm.aclose, bus.close, db.close):
-            supervisor.add_shutdown_hook(hook)
+        # 종료 훅은 두 레인이 모두 끝난 뒤 등록한 순서로 돈다(2단계 3.6). 콘솔 창 닫기처럼
+        # lifespan을 거치지 않는 종료도 같은 순서로 정리되게 여기에 모은다. 런이 다 멈춘 뒤
+        # 하우스키핑을 세우고, 이벤트 버스가 남은 이벤트를 쓰고 SSE 구독을 닫은 다음 DB가 마지막에
+        # 닫힌다.
+        shutdown = ShutdownCoordinator([supervisor, workflow_supervisor])
+        for hook in (
+            housekeeping.stop,
+            backend.aclose,
+            wf_backend.aclose,
+            llm.aclose,
+            bus.close,
+            db.close,
+        ):
+            shutdown.add_hook(hook)
         loop = asyncio.get_running_loop()
-        uninstall_console_handler = winconsole.install(loop, supervisor)
-        uninstall_signal_chain = winconsole.chain_exit_signals(loop, supervisor)
+        uninstall_console_handler = winconsole.install(loop, shutdown)
+        uninstall_signal_chain = winconsole.chain_exit_signals(loop, shutdown)
         # 기동 도중 실패해도 finally가 엔진을 닫아야 한다.
         # 열린 aiosqlite 스레드가 남으면 프로세스가 끝나지 않는다.
         try:
@@ -99,13 +164,25 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             await upgrade_head(db)
             # 복구가 run.error·run.queued를 발행하므로 writer를 먼저 띄운다.
             bus.start()
+            # 워크플로우 런을 먼저 본다. 끝난 워크플로우 런의 queued 자식을 1단계 복구가 다시 넣기
+            # 전에 고아로 닫아야 한다(2단계 3.7의 5번).
+            await recovery.recover_workflows(db, workflow_supervisor, bus)
             await recovery.recover(db, supervisor, bus)
+            # 하위 에이전트를 기다리던 부모 중 자식이 이미 끝난 것(지난 종료 직전에 놓친 훅)을
+            # 잇는다.
+            await maintenance.reconcile_children()
             supervisor.start()
+            workflow_supervisor.start()
             housekeeping.start()
 
             app.state.db = db
             app.state.supervisor = supervisor
+            app.state.workflow_supervisor = workflow_supervisor
+            app.state.shutdown = shutdown
+            app.state.wf_parents = parents
             app.state.sandbox = backend
+            app.state.wf_sandbox = wf_backend
+            app.state.http = http
             app.state.storage = storage
             app.state.bus = bus
             app.state.started_at = started_at
@@ -115,12 +192,13 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
                 port=settings.server_port,
                 rss_mb=None if rss is None else round(rss / 2**20, 1),
                 workers=settings.runner_max_concurrent_runs,
+                workflow_workers=settings.runner_max_concurrent_workflow_runs,
                 loop=type(asyncio.get_running_loop()).__name__,
                 subprocess_ok=subprocess_check.ok,
             )
             yield
         finally:
-            await supervisor.shutdown()
+            await shutdown.shutdown()
             uninstall_signal_chain()
             uninstall_console_handler()
             log.info("server.stopped")

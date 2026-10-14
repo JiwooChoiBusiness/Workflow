@@ -23,6 +23,12 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pyright
       - run: uv run pytest
+      # 알려진 취약점 경고는 빌드를 막지 않는다. 결과를 보고 사람이 판단한다(설계 M10.1 (9)).
+      - run: uv export --frozen --no-hashes --no-emit-workspace -o requirements-audit.txt
+      - run: uvx pip-audit -r requirements-audit.txt
+        continue-on-error: true
+      # 메모리 기준은 windows 잡의 값이고 여기 값은 참고다. 둘 다 예산을 넘으면 실패한다(설계 2.7).
+      - run: uv run python scripts/memcheck.py
 
   # Job Object·PowerShell 실제 동작은 Windows에서만 확인된다(설계 12.1 Q6). windows 마커까지 전부 돈다.
   # live(실제 Gemini 호출)는 키가 없어 뺀다.
@@ -36,6 +42,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked
       - run: uv run pytest -m "not live"
+      - run: uv run python scripts/memcheck.py
 
   web:
     runs-on: ubuntu-latest
@@ -53,6 +60,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: apps/web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit
+        continue-on-error: true
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm typecheck
