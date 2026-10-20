@@ -29,8 +29,8 @@ class WfRun(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String, default=RunStatus.QUEUED)
     api_key_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("api_key.id"))
     external_user: Mapped[str | None] = mapped_column(String)
-    # 챗플로우 대화·메시지(M17의 wf_conversation·wf_message). 그 테이블이 생기기 전이라 외래 키가
-    # 없다.
+    # 챗플로우 대화와 이 런이 답을 쓰는 assistant 메시지(wf_conversation·wf_message). 그 표들이
+    # 생기기 전에 만든 열이라 외래 키가 없다(열에 외래 키를 더하려면 SQLite는 표를 다시 만든다).
     conversation_id: Mapped[uuid.UUID | None]
     message_id: Mapped[uuid.UUID | None]
     # 비밀 env 값을 가린 런 입력.

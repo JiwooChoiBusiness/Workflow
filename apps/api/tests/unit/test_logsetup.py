@@ -89,6 +89,24 @@ def test_configured_secrets_are_masked_in_log_file(tmp_path: Path) -> None:
         configure_logging("INFO")
 
 
+def test_http_client_request_lines_stay_out_of_the_log(tmp_path: Path) -> None:
+    # 요청 URL에 든 워크플로우 비밀 env 값은 마스커가 모르는 값이다. 그 줄 자체를 남기지 않는다.
+    log_file = tmp_path / "logs" / "app.log"
+    configure_logging("DEBUG", log_file)
+    try:
+        logging.getLogger("httpx").info("HTTP Request: GET https://h.example/?token=t0ken-value")
+        logging.getLogger("httpcore.http11").debug("send_request_headers.started")
+        logging.getLogger("httpx").warning("still kept")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+
+        text = log_file.read_text(encoding="utf-8")
+        assert "t0ken-value" not in text and "send_request_headers" not in text
+        assert "still kept" in text
+    finally:
+        configure_logging("INFO")
+
+
 def test_log_file_gets_masked_json_and_rotates(tmp_path: Path) -> None:
     log_file = tmp_path / "logs" / "app.log"
     configure_logging("INFO", log_file)

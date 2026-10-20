@@ -1,5 +1,6 @@
 import asyncio
 import sqlite3
+import uuid
 import warnings
 from collections.abc import AsyncIterator
 from contextlib import closing
@@ -21,10 +22,12 @@ from app.db.engine import Database
 from app.db.migrate import alembic_config, current_revision, run_in_transaction, upgrade_head
 from app.logsetup import configure_logging
 from app.main import create_app
+from app.security.tokens import hash_token
+from app.services.api_keys import ApiKeyService
 
-HEAD = "0004"
+HEAD = "0006"
 
-# 1단계 설계 5.1과 2단계 설계 4.1(0003)의 테이블 전부.
+# 1단계 설계 5.1과 2단계 설계 4.1(0003·0006)의 테이블 전부.
 TABLES = {
     "workspace",
     "account",
@@ -48,6 +51,8 @@ TABLES = {
     "wf_node_run",
     "wf_run_event",
     "wf_file",
+    "wf_conversation",
+    "wf_message",
 }
 
 
@@ -264,3 +269,75 @@ async def test_downgrade_restores_the_unique_constraint(migrated: Database) -> N
     assert "uq_agent_workspace_id_slug" not in agent
     assert [flags for flags in agent.values() if flags[1] == "u"] == [(1, "u", 0)]
     assert skill["uq_skill_workspace_id_scope_agent_id_slug"] == (1, "c", 0)
+
+
+async def test_agent_keys_from_0004_still_work_after_the_target_migration(tmp_path: Path) -> None:
+    # 0005는 api_key 표를 batch로 다시 만든다. 1단계에서 만든 키가 그대로 읽히고 인증돼야 한다.
+    db = Database(tmp_path / "app.db")
+    workspace_id = "00000000-0000-7000-8000-000000000011"
+    agent_id = "00000000-0000-7000-8000-000000000012"
+    key_id = "00000000-0000-7000-8000-000000000013"
+    raw = "sk-wf-" + "k" * 43
+    try:
+        await migrate_to(db, "0004")
+        async with db.write() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO workspace (id, name, slug, settings, created_at, updated_at)"
+                    " VALUES (:id, 'w', 'w', '{}', :ts, :ts)"
+                ),
+                {"id": workspace_id, "ts": STAMP},
+            )
+        await insert_agent(db, workspace_id, agent_id, "helper")
+        async with db.write() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO api_key (id, workspace_id, agent_id, name, key_prefix, key_hash,"
+                    " scopes, created_at, updated_at)"
+                    " VALUES (:id, :ws, :agent, '자동화', :prefix, :hash, '[\"chat\"]', :ts, :ts)"
+                ),
+                {
+                    "id": key_id,
+                    "ws": workspace_id,
+                    "agent": agent_id,
+                    "prefix": raw[:12],
+                    "hash": hash_token(raw),
+                    "ts": STAMP,
+                },
+            )
+
+        await migrate_to(db, "head")
+
+        assert await current_revision(db) == HEAD
+        async with db.read() as session:
+            row = (
+                await session.execute(
+                    text("SELECT id, agent_id, workflow_id, name, scopes, created_at FROM api_key")
+                )
+            ).one()
+        assert tuple(row) == (key_id, agent_id, None, "자동화", '["chat"]', STAMP)
+        authenticated = await ApiKeyService(db).authenticate(raw)
+        assert authenticated is not None
+        assert str(authenticated.agent_id) == agent_id and authenticated.workflow_id is None
+        assert authenticated.scopes == ("chat",)
+        # 대상이 없거나 둘 다인 행은 CHECK가 막는다.
+        for agent, workflow in ((None, None), (agent_id, "00000000-0000-7000-8000-000000000014")):
+            with pytest.raises(IntegrityError):
+                async with db.write() as session:
+                    await session.execute(
+                        text(
+                            "INSERT INTO api_key (id, workspace_id, agent_id, workflow_id, name,"
+                            " key_prefix, key_hash, scopes, created_at, updated_at)"
+                            " VALUES (:id, :ws, :agent, :workflow, 'x', 'x', :hash, '[]', :ts, :ts)"
+                        ),
+                        {
+                            "id": str(uuid.uuid4()),
+                            "ws": workspace_id,
+                            "agent": agent,
+                            "workflow": workflow,
+                            "hash": uuid.uuid4().hex * 2,
+                            "ts": STAMP,
+                        },
+                    )
+    finally:
+        await db.close()

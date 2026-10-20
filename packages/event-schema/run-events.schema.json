@@ -4219,6 +4219,108 @@
       "title": "WorkflowErrorData",
       "type": "object"
     },
+    "WorkflowFormData": {
+      "description": "human_input 노드가 기다리는 폼. 답은 /input에 kind=form과 values({필드 이름: 값})로\n보낸다.",
+      "properties": {
+        "form_id": {
+          "title": "Form Id",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/WorkflowFormField"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "form_id",
+        "fields",
+        "created_at"
+      ],
+      "title": "WorkflowFormData",
+      "type": "object"
+    },
+    "WorkflowFormField": {
+      "description": "human_input 폼의 입력 칸. start 필드와 같은 모양이고 값도 같은 규칙으로 검사·변환한다.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "paragraph",
+            "number",
+            "boolean",
+            "select",
+            "file",
+            "file_list"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "options": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Options"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "WorkflowFormField",
+      "type": "object"
+    },
     "WorkflowQueuedData": {
       "properties": {
         "position": {
@@ -4341,12 +4443,47 @@
           "title": "Child Run Id"
         },
         "interaction": {
-          "$ref": "#/$defs/RunWaitingInputData"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunWaitingInputData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "approval",
+                "question",
+                "form"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "form": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowFormData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
-        "node_id",
-        "interaction"
+        "node_id"
       ],
       "title": "WorkflowWaitingInputData",
       "type": "object"

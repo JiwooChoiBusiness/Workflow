@@ -5,14 +5,18 @@ app.mode가 workflow·advanced-chat인 Dify DSL(app, workflow.graph.nodes[].data
 바꾼다. Dify 소스는 보지 않고 공개 문서와 내보낸 파일의 구조만 보고 맞췄다. Dify 버전마다 필드가
 조금씩 달라 없는 필드는 기본값으로 읽는다.
 
-- 1차 노드 13종은 같은 뜻의 우리 노드로 옮긴다. 옮기지 못한 옵션은 경고로 남기거나, 뜻이 바뀌면
-  안 되는 것(조건 연산자 등)은 원래 값을 그대로 두어 검증 오류로 드러낸다.
-- 그 밖의 노드(2차 노드, 지식 검색, 에이전트, 트리거, 자바스크립트 code)는 원래 data를 담은
-  unsupported 노드로 두고 엣지는 그대로 잇는다.
+- 1차 노드 13종과 2차 노드(loop·list-operator·document-extractor·tool·human-input, M19)는 같은
+  뜻의 우리 노드로 옮긴다. 옮기지 못한 옵션은 경고로 남기거나, 뜻이 바뀌면 안 되는 것(조건 연산자
+  등)은 원래 값을 그대로 두어 검증 오류로 드러낸다. tool은 우리 내장 도구 넷(current_time·
+  json_parse·regex_extract·web_fetch)에 뚜렷이 맞는 Dify 도구만 옮긴다.
+- 그 밖의 노드(지식 검색, 에이전트, 트리거, 반복 끝내기 loop-end, 자바스크립트 code, 맞는 내장
+  도구가 없는 tool, 버튼마다 갈라지는 human-input)는 원래 data를 담은 unsupported 노드로 두고 엣지는
+  그대로 잇는다.
 - 노드 id는 우리 형식([a-z][a-z0-9_]{0,31})으로 바꾼다. 숫자 id는 n<id>다. {{#node.var#}}와
   value_selector는 {{ node.var }}·"node.var"로, sys.user_id 같은 시스템 변수는 우리 이름으로,
   env는 그대로, conversation은 conv로 바꾼다. iteration 안의 item·index는 Dify에서 iteration
-  노드 이름으로 읽지만 우리는 iteration_start의 출력이다.
+  노드 이름으로 읽지만 우리는 iteration_start의 출력이다. loop의 반복 변수는 Dify와 같이 loop 노드
+  이름으로 읽는다. 여러 파일을 읽는 document-extractor의 text(배열)는 우리 texts다.
 - 모델은 Gemini 폴백 목록의 첫 모델(model_id 없음)로 바꾸고 model_replaced 경고를 남긴다.
 - Dify의 기본 프롬프트는 {{#...#}}만 변수라서 그 밖의 {{·{%·{#는 글자 그대로 남도록 이스케이프한다.
 """
@@ -35,13 +39,33 @@ from app.workflow.dsl.schema import DSL_VERSION, DslDocument, DslError, validate
 from app.workflow.graph import UNSUPPORTED_TYPE
 from app.workflow.nodes.if_else import ELSE_HANDLE
 from app.workflow.nodes.iteration import MAX_PARALLEL
+from app.workflow.nodes.loop import MAX_ITERATIONS
 from app.workflow.variables import RESERVED_SCOPES
 
 MODES: dict[str, WorkflowKind] = {"workflow": "workflow", "advanced-chat": "chatflow"}
-# 우리 2차 노드(M19)에 같은 것이 있어 나중에 옮길 노드. 지금은 unsupported다.
-LATER_TYPES = frozenset(
-    {"loop", "loop-start", "loop-end", "list-operator", "document-extractor", "tool", "human-input"}
-)
+# 하위 그래프를 품는 Dify 노드와 그 진입 자리의 우리 타입.
+CONTAINER_STARTS = {"iteration": "iteration_start", "loop": "loop_start"}
+# 진입 노드가 없는 옛 그래프에 만들어 넣는 진입 노드의 제목. 화면의 표시 이름과 같다.
+START_TITLES = {"iteration_start": "반복 시작", "loop_start": "루프 시작"}
+# Dify (도구 공급자, 도구 이름) → (우리 내장 도구, Dify 매개변수 이름 → 우리 매개변수 이름).
+# 공급자는 플러그인 id(langgenius/time/time)의 끝 이름으로 맞춘다.
+DIFY_TOOLS: dict[tuple[str, str], tuple[str, dict[str, str]]] = {
+    ("time", "current_time"): ("current_time", {"timezone": "timezone", "format": "format"}),
+    ("json_process", "parse"): ("json_parse", {"content": "text", "json_filter": "path"}),
+    ("regex", "regex_extraction"): ("regex_extract", {"content": "text", "expression": "pattern"}),
+    ("webscraper", "webscraper"): ("web_fetch", {"url": "url"}),
+}
+# Dify list-operator의 파일 key → 우리 key. type·transfer_method·url은 우리에게 없다.
+LIST_FILE_KEYS = {"name": "name", "size": "size", "mime_type": "mime", "extension": "extension"}
+HUMAN_FIELD_TYPES = {
+    "paragraph": "paragraph",
+    "text-input": "string",
+    "select": "select",
+    "number": "number",
+    "checkbox": "boolean",
+    "file": "file",
+    "file-list": "file_list",
+}
 SYS_NAMES = {
     "query": "query",
     "files": "files",
@@ -263,11 +287,15 @@ class _Converter:
         self.ids: dict[str, str] = {}
         self.types: dict[str, str] = {}
         self.taken: set[str] = set()
-        # Dify iteration id → 그 하위 그래프의 iteration_start(우리 id). item·index가 여기 출력이다.
+        # Dify iteration·loop id → 그 하위 그래프의 진입 자리(우리 id). item·index가 여기 출력이다.
         self.items: dict[str, str] = {}
-        # iteration_start가 없던 옛 Dify 파일: (우리 iteration id, 만든 iteration_start id,
+        # 진입 자리가 없던 옛 Dify 파일: (우리 iteration·loop id, 만든 진입 자리 id, 그 타입,
         # 첫 하위 노드의 Dify id).
-        self.synthetic: list[tuple[str, str, str]] = []
+        self.synthetic: list[tuple[str, str, str, str]] = []
+        # Dify loop id → 반복 변수 이름. 반복 변수가 아닌 index는 loop_start의 출력이다.
+        self.loop_vars: dict[str, set[str]] = {}
+        # 여러 파일을 읽는 document-extractor. Dify의 text(배열)는 우리 texts다.
+        self.array_extractors: set[str] = set()
         # 묶음을 쓰는 변수 집계 노드: Dify id → 옮긴 첫 묶음 이름.
         self.groups: dict[str, str] = {}
         # 분기 노드의 Dify 핸들 → 우리 핸들.
@@ -285,6 +313,12 @@ class _Converter:
             "if-else": self._if_else,
             "iteration": self._iteration,
             "iteration-start": self._iteration_start,
+            "loop": self._loop,
+            "loop-start": self._loop_start,
+            "list-operator": self._list_operator,
+            "document-extractor": self._document_extractor,
+            "tool": self._tool,
+            "human-input": self._human_input,
             "template-transform": self._template,
             "variable-aggregator": self._aggregator,
             # 옛 Dify에서 변수 집계 노드의 타입 이름이었다.
@@ -319,13 +353,13 @@ class _Converter:
         nodes += [
             {
                 "id": start,
-                "type": "iteration_start",
-                "title": "반복 시작",
-                "parent_id": iteration,
+                "type": start_type,
+                "title": START_TITLES[start_type],
+                "parent_id": owner,
                 "position": {"x": 24.0, "y": 68.0},
                 "config": {},
             }
-            for iteration, start, _first in self.synthetic
+            for owner, start, start_type, _first in self.synthetic
         ]
         edges = self._edges(_dicts(graph.get("edges")))
         viewport = {
@@ -379,16 +413,30 @@ class _Converter:
         for item in kept:
             dify_id = _str(item.get("id")).strip()
             parent = self._parent(item)
-            if self.types[dify_id] == "iteration-start" and parent is not None:
+            if self.types[dify_id] in ("iteration-start", "loop-start") and parent is not None:
                 self.items.setdefault(parent, self.ids[dify_id])
         for item in kept:
             dify_id = _str(item.get("id")).strip()
             data = _dict(item.get("data"))
             dify_type = self.types[dify_id]
-            if dify_type == "iteration" and dify_id not in self.items:
+            if dify_type in CONTAINER_STARTS and dify_id not in self.items:
                 start = _unique(f"{self.ids[dify_id]}_start", self.taken)
                 self.items[dify_id] = start
-                self.synthetic.append((self.ids[dify_id], start, _str(data.get("start_node_id"))))
+                self.synthetic.append(
+                    (
+                        self.ids[dify_id],
+                        start,
+                        CONTAINER_STARTS[dify_type],
+                        _str(data.get("start_node_id")),
+                    )
+                )
+            if dify_type == "loop":
+                self.loop_vars[dify_id] = {
+                    _str(entry.get("label") or entry.get("name"))
+                    for entry in _dicts(data.get("loop_variables"))
+                }
+            elif dify_type == "document-extractor" and data.get("is_array_file") is True:
+                self.array_extractors.add(dify_id)
             elif dify_type in ("variable-aggregator", "variable-assigner"):
                 advanced = _dict(data.get("advanced_settings"))
                 groups = _dicts(advanced.get("groups"))
@@ -426,13 +474,19 @@ class _Converter:
             target = "env"
         elif scope == "conversation":
             target = "conv"
-        elif scope in self.items and name in ("item", "index"):
+        elif (
+            scope in self.items
+            and name in ("item", "index")
+            and name not in self.loop_vars.get(scope, set())
+        ):
             target = self.items[scope]
         else:
             target = self.ids.get(scope) or node_id_like(scope)
             dify_type = self.types.get(scope)
             if dify_type == "llm" and name == "structured_output":
                 name = "json"
+            elif scope in self.array_extractors and name == "text":
+                name = "texts"
             elif scope in self.groups and name == self.groups[scope] and rest[:1] == ["output"]:
                 name, rest = "output", rest[1:]
         path = "".join(f"[{part}]" if part.isdigit() else f".{part}" for part in rest)
@@ -507,8 +561,7 @@ class _Converter:
         convert = self.converters.get(dify_type)
         try:
             if convert is None:
-                what = "아직 옮기지 않는" if dify_type in LATER_TYPES else "지원하지 않는"
-                raise _Unsupported(f"Dify {dify_type or '(타입 없음)'} 노드는 {what} 노드다")
+                raise _Unsupported(f"Dify {dify_type or '(타입 없음)'} 노드는 지원하지 않는 노드다")
             node_type, config = convert(data, node_id, dify_id)
         except _Unsupported as exc:
             node["type"] = UNSUPPORTED_TYPE
@@ -854,6 +907,194 @@ class _Converter:
     ) -> tuple[str, dict[str, Any]]:
         return "iteration_start", {}
 
+    def _loop(self, data: dict[str, Any], node_id: str, dify_id: str) -> tuple[str, dict[str, Any]]:
+        loop_vars: list[dict[str, Any]] = []
+        for entry in _dicts(data.get("loop_variables")):
+            name = _str(entry.get("label") or entry.get("name"))
+            kind = self._value_type(entry.get("var_type"), node_id, f"반복 변수 {name}")
+            variable: dict[str, Any] = {"name": name, "type": kind}
+            value = entry.get("value")
+            if entry.get("value_type") == "variable":
+                variable["var"] = self.selector(value) or ""
+            else:
+                if isinstance(value, str) and kind.startswith(("object", "array")):
+                    try:
+                        value = json.loads(value)
+                    except ValueError:
+                        pass
+                variable["value"] = value
+            loop_vars.append(variable)
+        count = _int(data.get("loop_count")) or 10
+        if count > MAX_ITERATIONS:
+            message = f"최대 반복 수를 {count}에서 {MAX_ITERATIONS}로 줄였다"
+            self.warn("loop_count", message, node_id)
+        conditions = [
+            self._condition(item, node_id) for item in _dicts(data.get("break_conditions"))
+        ]
+        return "loop", {
+            "loop_vars": loop_vars,
+            "break_conditions": conditions,
+            "logical": "or" if data.get("logical_operator") == "or" else "and",
+            "max_iterations": _clamp(count, 1, MAX_ITERATIONS),
+        }
+
+    def _loop_start(
+        self, data: dict[str, Any], node_id: str, dify_id: str
+    ) -> tuple[str, dict[str, Any]]:
+        return "loop_start", {}
+
+    def _list_key(self, raw: object, node_id: str, file_list: bool) -> str:
+        key = _str(raw)
+        if not file_list or not key:
+            return key
+        mapped = LIST_FILE_KEYS.get(key)
+        if mapped is None:
+            message = f"파일 key {key}은(는) 옮기지 못했다(name·size·mime·extension만 있다)"
+            self.warn("list_key_unsupported", message, node_id)
+            return key
+        return mapped
+
+    def _list_operator(
+        self, data: dict[str, Any], node_id: str, dify_id: str
+    ) -> tuple[str, dict[str, Any]]:
+        config: dict[str, Any] = {"input_var": self.selector(data.get("variable")) or ""}
+        file_list = _str(data.get("item_var_type")) == "file" or _str(
+            data.get("var_type")
+        ).endswith("[file]")
+        filter_by = _dict(data.get("filter_by"))
+        conditions: list[dict[str, Any]] = []
+        if filter_by.get("enabled") is True:
+            for item in _dicts(filter_by.get("conditions")):
+                key = self._list_key(item.get("key"), node_id, file_list or bool(item.get("key")))
+                condition = self._condition({**item, "variable_selector": None}, node_id)
+                condition.pop("var", None)
+                value = condition.get("value")
+                if key == "extension" and isinstance(value, str) and value.startswith("."):
+                    condition["value"] = value[1:]
+                conditions.append({"key": key, **condition})
+        if conditions:
+            logical = "or" if filter_by.get("logical_operator") == "or" else "and"
+            config["filter"] = {"logical": logical, "conditions": conditions}
+        order_by = _dict(data.get("order_by"))
+        if order_by.get("enabled") is True:
+            config["sort"] = {
+                "key": self._list_key(order_by.get("key"), node_id, file_list),
+                "order": "desc" if order_by.get("value") == "desc" else "asc",
+            }
+        limit = _dict(data.get("limit"))
+        size = _int(limit.get("size"))
+        if limit.get("enabled") is True and size is not None and size >= 0:
+            config["slice"] = {"offset": 0, "limit": size}
+        extract = _dict(data.get("extract_by"))
+        serial = _int(extract.get("serial"))
+        if extract.get("enabled") is True and serial is not None and serial >= 1:
+            # Dify는 고른 원소 하나만 result에 남긴다. 같은 결과가 되게 그 자리 하나로 자른다.
+            config["slice"] = {"offset": serial - 1, "limit": 1}
+            if "sort" in config:
+                message = "정렬과 n번째 고르기를 함께 쓰면 고르는 원소가 Dify와 다를 수 있다"
+                self.warn("list_extract_order", message, node_id)
+        return "list_operator", config
+
+    def _document_extractor(
+        self, data: dict[str, Any], node_id: str, dify_id: str
+    ) -> tuple[str, dict[str, Any]]:
+        return "document_extractor", {
+            "file_var": self.selector(data.get("variable_selector")) or ""
+        }
+
+    def _tool_arg(self, entry: object) -> dict[str, Any]:
+        """Dify tool_parameters 값({type: mixed·variable·constant, value})을 우리 매개변수로."""
+        item = _dict(entry)
+        kind = _str(item.get("type"))
+        value = item.get("value")
+        if kind == "variable":
+            return {"mode": "var", "value": self.selector(value) or ""}
+        if kind == "mixed":
+            return {"mode": "template", "value": self.text(value)}
+        return {"mode": "const", "value": value}
+
+    def _tool(self, data: dict[str, Any], node_id: str, dify_id: str) -> tuple[str, dict[str, Any]]:
+        provider = _str(data.get("provider_id") or data.get("provider_name")).rsplit("/", 1)[-1]
+        name = _str(data.get("tool_name"))
+        mapping = DIFY_TOOLS.get((provider, name))
+        if mapping is None:
+            raise _Unsupported(
+                f"Dify 도구 {provider or '?'}/{name or '?'}에 맞는 내장 도구가 없다"
+                "(current_time·json_parse·regex_extract·web_fetch만 있다)"
+            )
+        tool, names = mapping
+        given: dict[str, dict[str, Any]] = {
+            key: {"mode": "const", "value": value}
+            for key, value in _dict(data.get("tool_configurations")).items()
+            if value not in (None, "")
+        }
+        for key, entry in _dict(data.get("tool_parameters")).items():
+            given[key] = self._tool_arg(entry)
+        params: dict[str, Any] = {}
+        for key, arg in given.items():
+            ours = names.get(key)
+            if ours is None:
+                self.warn("tool_param_dropped", f"도구 매개변수 {key}은(는) 옮기지 못했다", node_id)
+                continue
+            params[ours] = arg
+        path = params.get("path")
+        if tool == "json_parse" and path is not None and path.get("mode") == "const":
+            text = _str(path.get("value"))
+            if any(mark in text for mark in ("*", "?", "..", "@")):
+                message = "JSONPath의 와일드카드·필터는 우리 경로(items[0].name)로 옮기지 못했다"
+                self.warn("tool_path", message, node_id)
+        return "tool", {"tool": tool, "params": params}
+
+    def _human_input(
+        self, data: dict[str, Any], node_id: str, dify_id: str
+    ) -> tuple[str, dict[str, Any]]:
+        actions = _dicts(data.get("user_actions"))
+        if len(actions) > 1:
+            raise _Unsupported(
+                "버튼마다 갈라지는 Dify human-input은 옮기지 못한다"
+                "(우리 human_input은 가지가 하나다)"
+            )
+        if actions:
+            self.handles[dify_id] = {_str(actions[0].get("id")): OUT_HANDLE}
+        fields: list[dict[str, Any]] = []
+        for entry in _dicts(data.get("inputs")):
+            name = _str(entry.get("output_variable_name") or entry.get("variable"))
+            given = _str(entry.get("type")) or "paragraph"
+            field_type = HUMAN_FIELD_TYPES.get(given)
+            if field_type is None:
+                message = f"폼 칸 {name}의 Dify 타입 {given}을(를) 문단(paragraph)으로 바꿨다"
+                self.warn("human_input_field_type", message, node_id)
+                field_type = "paragraph"
+            field: dict[str, Any] = {
+                "name": name,
+                "type": field_type,
+                "label": _str(entry.get("label")) or name,
+                # Dify 폼은 문단만 비워 둘 수 있다.
+                "required": entry.get("required") is True or field_type != "paragraph",
+            }
+            default = _dict(entry.get("default"))
+            if default.get("type") == "variable":
+                message = f"폼 칸 {name}의 변수 기본값은 옮기지 못했다"
+                self.warn("human_input_default", message, node_id)
+            elif default.get("value") not in (None, "", []) and field_type not in (
+                "file",
+                "file_list",
+            ):
+                field["default"] = default.get("value")
+            if field_type == "select":
+                field["options"] = [_str(option) for option in _list(entry.get("options"))]
+            fields.append(field)
+        if not fields:
+            raise _Unsupported("입력 칸이 없는 Dify human-input은 옮기지 못한다")
+        ignored = [key for key in ("delivery_methods", "timeout", "timeout_unit") if data.get(key)]
+        if ignored:
+            message = f"전달 방법·대기 시간 설정은 옮기지 않았다({', '.join(ignored)})"
+            self.warn("human_input_settings", message, node_id)
+        return "human_input", {
+            "description": self.text(data.get("form_content")),
+            "fields": fields,
+        }
+
     def _template(
         self, data: dict[str, Any], node_id: str, dify_id: str
     ) -> tuple[str, dict[str, Any]]:
@@ -1012,7 +1253,7 @@ class _Converter:
                     "target": target,
                 }
             )
-        for _iteration, start, first in self.synthetic:
+        for _owner, start, _start_type, first in self.synthetic:
             target = self.ids.get(first)
             if target is not None:
                 edges.append({"id": f"e{len(edges) + 1}", "source": start, "target": target})

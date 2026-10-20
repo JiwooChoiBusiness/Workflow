@@ -8,13 +8,13 @@ NodeResult를 돌려주거나 NodeFailure를 던진다.
 
 import builtins
 import uuid
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
-from app.schemas.events import UsageTotal
+from app.schemas.events import UsageTotal, WorkflowFormData
 from app.schemas.run import PendingInteractionOut
 from app.schemas.workflow import (
     OUT_HANDLE,
@@ -27,6 +27,7 @@ from app.schemas.workflow import (
     VarType,
     WorkflowKind,
 )
+from app.workflow.memory import Turn
 from app.workflow.ports import CancelToken, EnginePorts
 from app.workflow.variables import PoolView
 
@@ -42,6 +43,8 @@ NODE_EVENT_TYPES = frozenset(
     {"node.text_delta", "node.progress", "node.waiting", "answer.delta", "node.usage"}
 )
 NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+# 재개할 때 엔진이 기다리던 노드의 state에 사람의 응답(human_input 폼)을 넣는 키.
+REPLY_STATE_KEY = "reply"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +61,8 @@ class VarRef:
     selector: str
     # 런타임에 ctx.resolve(selector, expect)로 읽는 타입. 검증의 type_mismatch 경고에 쓴다.
     expect: VarType | None = None
+    # 이 노드의 하위 그래프 안에서 읽는 참조(loop의 종료 조건). 하위 노드 출력과 반복 변수도 된다.
+    inner: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,8 +125,8 @@ class NodeResult(BaseModel):
     # 노드 런 process 열(모델 id, 상태 코드 등).
     process: dict[str, Any] = Field(default_factory=dict[str, Any])
     warnings: list[str] = Field(default_factory=list[str])
-    # waiting_input일 때 승인·질문(agent 노드).
-    pending: PendingInteractionOut | None = None
+    # waiting_input일 때 기다리는 것. agent 노드는 자식 런의 승인·질문, human_input은 폼이다.
+    pending: PendingInteractionOut | WorkflowFormData | None = None
     # 재개 때 run()의 state로 돌려받는 값(child_run_id 등).
     state: dict[str, Any] = Field(default_factory=dict[str, Any])
     # 여기부터는 설계 3.11에 더한 자리다. 노드 타입을 모르는 엔진이 타입별 효과를 받는다.
@@ -133,6 +138,8 @@ class NodeResult(BaseModel):
     answer: str | None = None
     # variable_assigner: 대화 변수의 새 값. 노드가 성공했을 때만 반영한다.
     conv_updates: dict[str, Any] = Field(default_factory=dict[str, Any])
+    # variable_assigner: 이 노드를 품은 loop의 반복 변수 이름 → 새 값. 성공했을 때만 반영한다.
+    loop_updates: dict[str, Any] = Field(default_factory=dict[str, Any])
     child_run_id: uuid.UUID | None = None
     child_session_id: uuid.UUID | None = None
 
@@ -173,6 +180,36 @@ class FramesOutcome(BaseModel):
     state: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
+@dataclass(frozen=True)
+class LoopPlan:
+    """loop 노드가 엔진에 맡기는 반복(설계 2.4, 3.5).
+
+    반복 변수는 처음 시작할 때 풀의 "<loop id>" 자리에 넣고, 하위 그래프 안의 variable_assigner가
+    바꾼다. 반복 하나가 끝날 때마다 until을 불러 참이면 멈추고, max_rounds번 돌면 멈춘다.
+    """
+
+    # 반복 변수의 처음 값. 재개할 때는 풀에 남은 지금 값을 이어 쓰므로 비워 둔다.
+    variables: Mapping[str, Any]
+    types: Mapping[str, VarType | None]
+    max_rounds: int
+    # 끝난 반복의 index가 적용된 풀 뷰를 받는다. NodeFailure를 던지면 loop가 실패한다.
+    until: Callable[[PoolView], bool] | None = None
+
+
+class LoopOutcome(BaseModel):
+    """loop 반복 결과. waiting_input이면 state를 NodeResult.state로 돌려주면 재개 때 이어 간다."""
+
+    status: Literal["succeeded", "failed", "waiting_input", "cancelled"]
+    # 끝난 반복 수.
+    rounds: int = 0
+    # 반복 변수의 마지막 값(succeeded일 때).
+    variables: dict[str, Any] = Field(default_factory=dict[str, Any])
+    # condition(종료 조건이 참), limit(max_rounds에 닿음).
+    stopped: Literal["condition", "limit"] | None = None
+    failure: FrameResult | None = None
+    state: dict[str, Any] = Field(default_factory=dict[str, Any])
+
+
 class NodeContext(Protocol):
     run_id: uuid.UUID
     node_id: str
@@ -186,6 +223,10 @@ class NodeContext(Protocol):
     cancel: CancelToken
     # 런 입력(start 노드가 쓴다).
     run_inputs: Mapping[str, Any]
+    # 챗플로우 대화의 앞 턴들(오래된 것부터). 메모리를 켠 llm 노드가 쓴다.
+    history: Sequence[Turn]
+    # answer 노드가 실행되기 전에 엔진이 이미 answer.delta로 흘린 글(3.8의 미리 흘리기).
+    streamed: str
 
     # NODE_EVENT_TYPES만. node_id·node_run_id는 엔진이 붙인다.
     async def emit(self, event_type: str, data: Mapping[str, Any]) -> None: ...
@@ -207,6 +248,9 @@ class NodeContext(Protocol):
         self, plan: FramePlan, state: Mapping[str, Any] | None
     ) -> FramesOutcome: ...
 
+    # loop 노드만 부른다. state는 앞 구간이 waiting_input으로 돌려준 LoopOutcome.state다.
+    async def run_loop(self, plan: LoopPlan, state: Mapping[str, Any] | None) -> LoopOutcome: ...
+
 
 class GraphView(Protocol):
     """NodeRunner.validate가 보는 그래프. 출력 타입은 검증을 통과한 config 기준이다."""
@@ -225,6 +269,9 @@ class GraphView(Protocol):
 
     def output_type(self, selector: str) -> VarType | None: ...
 
+    # container 노드가 돌고 있는 동안 하위 그래프에 보이는 값(loop의 반복 변수). 없으면 None.
+    def inner_outputs(self, node_id: str) -> Mapping[str, VarType] | None: ...
+
     # 대화 변수 목록을 모르면 None.
     def conversation_vars(self) -> Mapping[str, VarType] | None: ...
 
@@ -241,6 +288,8 @@ class NodeRunner[C: BaseModel]:
     # 클래스 본문의 type은 위의 노드 타입 이름이라 내장 type을 이름으로 가리킨다.
     Config: builtins.type[C]
     kinds: ClassVar[frozenset[WorkflowKind]] = ALL_KINDS
+    # kinds 밖이어도 loop 하위 그래프 안에서는 둘 수 있는 앱 종류(variable_assigner).
+    loop_kinds: ClassVar[frozenset[WorkflowKind]] = frozenset()
     error_strategies: ClassVar[frozenset[ErrorStrategy]] = ONLY_FAIL
     implemented: ClassVar[bool] = True
     # config와 관계없는 출력. outputs()의 기본값이고 노드 타입 목록에 그대로 나간다.
@@ -253,12 +302,18 @@ class NodeRunner[C: BaseModel]:
     concurrency: ClassVar[int | None] = None
     # False면 usage를 런 사용량에 더하지 않는다(agent 노드, 3.10). 토큰 예산에는 들어간다.
     counts_usage: ClassVar[bool] = True
+    # 대화 변수를 바꾸는 노드(variable_assigner). answer 미리 흘리기가 conv 값을 언제 믿을지 본다.
+    writes_conversation: ClassVar[bool] = False
 
     def parse_config(self, raw: Mapping[str, Any]) -> C:
         return self.Config.model_validate(dict(raw))
 
     def outputs(self, config: C) -> list[OutputSpec]:
         return list(self.fixed_outputs)
+
+    # container 노드가 돌고 있는 동안 하위 그래프 노드가 "<이 노드 id>.<이름>"으로 읽는 값.
+    def inner_outputs(self, config: C) -> list[OutputSpec] | None:
+        return None
 
     # 출발 핸들. 엔진이 error.strategy=branch면 fail을 더한다.
     def handles(self, config: C) -> list[str]:
@@ -269,6 +324,15 @@ class NodeRunner[C: BaseModel]:
 
     def template_fields(self, config: C) -> list[TemplateField]:
         return []
+
+    # 답을 흘리는 노드(answer)의 템플릿. 엔진이 미리 흘리기를 이 템플릿으로 정한다(3.8).
+    def answer_template(self, config: C) -> str | None:
+        return None
+
+    # node.text_delta를 이어 붙이면 그대로 이 이름의 출력이 되는 노드(llm의 text). 그런 노드만
+    # answer가 델타를 미리 흘릴 수 있다.
+    def stream_output(self, config: C) -> str | None:
+        return None
 
     # 참조·타입 검사(graph.py) 밖의 타입별 규칙.
     def validate(self, config: C, graph: GraphView) -> list[Issue]:
@@ -324,6 +388,7 @@ class NodeRegistry:
                 outputs=[OutputSpecOut(name=o.name, type=o.type) for o in runner.fixed_outputs],
                 dynamic_outputs=runner.dynamic_outputs,
                 branching=runner.branching,
+                loop_kinds=sorted(runner.loop_kinds),
             )
             for runner in self._runners.values()
         ]

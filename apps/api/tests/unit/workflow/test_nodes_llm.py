@@ -15,6 +15,7 @@ from app.schemas.workflow import WorkflowKind
 from app.workflow.graph import validate
 from app.workflow.nodes.llm import extract_json_object
 from app.workflow.ports import NodeSettings
+from app.workflow.variables import MASK
 
 Node = Callable[..., dict[str, Any]]
 
@@ -104,6 +105,52 @@ async def test_text_streams_as_node_deltas_and_usage_is_summed(kit: Any, make_no
         {"role": "user", "text": "지우에게 인사"},
     ]
     assert record.process["model"] == "fake-model" and record.process["stop_reason"] == "end_turn"
+
+
+async def test_secrets_split_across_deltas_stay_hidden(kit: Any, make_node: Node) -> None:
+    # 모델이 비밀 env 값을 되읊으면 그 값이 델타 경계에 걸쳐 두 조각으로 나뉠 수 있다(9.4).
+    hidden = "tok-1234567890"
+    said = f"설정된 키는 {hidden} 입니다"
+    adapter = FakeAdapter([[*fake_text(said, chunk_size=3), fake_end()] for _ in range(2)])
+    secrets: dict[str, Any] = {"env": {"TOKEN": hidden}, "secret_env": ["TOKEN"]}
+    graph = llm_graph(kit, make_node, {"prompt": prompt(("user", "키는 {{ env.TOKEN }}"))})
+
+    run = await kit.run(graph, inputs={"q": "x"}, ports=kit.ports(model=adapter), **secrets)
+
+    deltas = [d["text"] for d in run.of("node.text_delta")]
+    assert "".join(deltas) == f"설정된 키는 {MASK} 입니다"
+    assert not any("tok-1" in text for text in deltas)
+    assert run.outcome.outputs["text"] == f"설정된 키는 {MASK} 입니다"
+    # 붙잡아 둔 끝부분은 노드가 끝나기 전에 나간다.
+    last = max(i for i, event in enumerate(run.events) if event.type == "node.text_delta")
+    done = next(
+        i
+        for i, event in enumerate(run.events)
+        if event.type == "node.completed" and event.data["node_id"] == "llm_1"
+    )
+    assert last < done
+
+    chat = kit.graph(
+        [
+            make_node("start", "start"),
+            make_node("llm_1", "llm", {"prompt": prompt(("user", "{{ sys.query }}"))}),
+            make_node("answer_1", "answer", {"text": "답: {{ llm_1.text }}"}),
+        ],
+        ["start>llm_1", "llm_1>answer_1"],
+    )
+
+    run = await kit.run(
+        chat,
+        kind="chatflow",
+        system={"query": "키", "turn": 1},
+        ports=kit.ports(model=adapter),
+        **secrets,
+    )
+
+    assert run.outcome.status == "succeeded"
+    answered = "".join(d["text"] for d in run.of("answer.delta"))
+    assert answered == run.outcome.answer == f"답: 설정된 키는 {MASK} 입니다"
+    assert not any("tok-1" in d["text"] for d in run.of("answer.delta"))
 
 
 async def test_neighbouring_blocks_merge_and_empty_blocks_are_dropped(

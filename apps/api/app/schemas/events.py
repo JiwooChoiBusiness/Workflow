@@ -8,7 +8,9 @@ false를 두지 않는다.
 
 v2는 워크플로우 런 이벤트(workflow.*, node.*, iteration.*, answer.*)를 더하고 봉투의 session_id를
 nullable로 바꿨다. 워크플로우 런은 session_id가 null이고 챗플로우만 conversation_id가 있다. 같은 v2
-안에서 하위 에이전트 호출의 child_run.*과 tool_call.completed.child_run_id를 더했다.
+안에서 하위 에이전트 호출의 child_run.*과 tool_call.completed.child_run_id를 더했다. human_input
+노드(M19)의 폼 대기는 workflow.waiting_input에 kind=form과 form으로 싣고 그때 interaction은
+null이다. loop 노드도 iteration.* 이벤트를 쓰고 total은 max_iterations다.
 """
 
 import uuid
@@ -23,6 +25,9 @@ SCHEMA_VERSION = 2
 
 ToolCallStatus = Literal["ok", "error", "timeout", "cancelled", "rejected"]
 InteractionKind = Literal["question", "approval"]
+# 워크플로우 런의 입력 대기. approval·question은 agent 노드의 자식 런, form은 human_input 노드다.
+WfPendingKind = Literal["approval", "question", "form"]
+FormFieldType = Literal["string", "paragraph", "number", "boolean", "select", "file", "file_list"]
 RunEndStatus = Literal["succeeded", "failed", "cancelled", "waiting_input"]
 WorkflowKind = Literal["workflow", "chatflow"]
 WorkflowEndStatus = Literal["succeeded", "failed", "cancelled", "waiting_input"]
@@ -367,6 +372,7 @@ class NodeCompletedData(BaseModel):
 
 class IterationStartedData(BaseModel):
     node_id: str
+    # iteration은 원소 수, loop는 max_iterations(실제로 몇 번 돌지는 끝나야 안다).
     total: int
 
 
@@ -393,11 +399,42 @@ class AnswerCompletedData(BaseModel):
     message_id: uuid.UUID | None = None
 
 
+class WorkflowFormField(BaseModel):
+    """human_input 폼의 입력 칸. start 필드와 같은 모양이고 값도 같은 규칙으로 검사·변환한다."""
+
+    name: str
+    type: FormFieldType
+    label: str = ""
+    required: bool = False
+    default: Any = None
+    # select의 선택지.
+    options: list[str] | None = None
+    # string·paragraph의 글자 수 상한.
+    max_length: int | None = None
+
+
+class WorkflowFormData(BaseModel):
+    """human_input 노드가 기다리는 폼. 답은 /input에 kind=form과 values({필드 이름: 값})로
+    보낸다."""
+
+    form_id: str
+    # 렌더한 안내문(마크다운).
+    description: str = ""
+    fields: list[WorkflowFormField]
+    # 기다리기 시작한 때. WAITING_INPUT_TTL_HOURS가 지나면 노드가 input_timeout으로 실패한다.
+    created_at: datetime
+
+
 class WorkflowWaitingInputData(BaseModel):
     node_id: str
     iteration_index: int | None = None
     child_run_id: uuid.UUID | None = None
-    interaction: RunWaitingInputData
+    # approval·question이면 agent 노드의 자식 런이 묻는 것이고 form이면 null이다.
+    interaction: RunWaitingInputData | None = None
+    # M19 전에 남은 이벤트에는 없다. 그때는 interaction.kind를 본다.
+    kind: WfPendingKind | None = None
+    # kind=form(human_input 노드)일 때만 있다.
+    form: WorkflowFormData | None = None
 
 
 class WorkflowResumedData(BaseModel):

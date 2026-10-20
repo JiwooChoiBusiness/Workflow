@@ -21,9 +21,7 @@ from app.config import Settings
 from app.db.engine import Database
 from app.db.models import WfRun, WfVersion, Workflow
 from app.db.models.enums import RunStatus, WfRunTrigger, WorkflowKind
-from app.db.repositories.session_files import SessionFileRepository
 from app.db.repositories.workflows import (
-    WfFileRepository,
     WfRunRepository,
     WfVersionRepository,
     WorkflowRepository,
@@ -35,7 +33,7 @@ from app.schemas.webapp import FlowAppOut, FlowField, FlowRunResult
 from app.schemas.wf_run import WfRunList, WfRunOut
 from app.schemas.workflow import Graph, WfFileOut
 from app.services.errors import ServiceError, not_found
-from app.services.workflow_files import WorkflowFileService
+from app.services.workflow_files import FileDownload, WorkflowFileService, bind_run_uploads
 from app.services.workflow_runs import (
     StartedWfRun,
     enqueue,
@@ -57,7 +55,6 @@ from app.streaming.event_bus import EventBus
 from app.workflow import graph as graph_check
 from app.workflow.nodes.base import NodeRegistry
 from app.workflow.nodes.start import InputError, StartConfig, StartField, coerce_inputs
-from app.workflow.variables import is_file
 
 log = structlog.get_logger("app.services.workflow_webapp")
 
@@ -72,13 +69,6 @@ def app_not_found() -> ServiceError:
 class PublishedFlow:
     workflow: Workflow
     version: WfVersion
-
-
-@dataclass(frozen=True)
-class FileDownload:
-    storage_key: str
-    filename: str
-    mime: str
 
 
 def start_fields(graph: Graph | None) -> list[StartField]:
@@ -96,6 +86,29 @@ def start_fields(graph: Graph | None) -> list[StartField]:
         return []
 
 
+async def published_flow(
+    db: Database, workspace_id: uuid.UUID, workflow_id: uuid.UUID
+) -> PublishedFlow:
+    """살아 있는 워크플로우와 지금의 발행 버전.
+
+    없으면 404, 발행 전이면 409 workflow_not_published다.
+    """
+    version: WfVersion | None = None
+    async with db.read() as session:
+        workflow = await WorkflowRepository(session, workspace_id).get_active(workflow_id)
+        if workflow is None:
+            raise not_found("워크플로우")
+        if workflow.published_version_id is not None:
+            version = await WfVersionRepository(session, workspace_id).get(
+                workflow.published_version_id
+            )
+    if version is None:
+        raise ServiceError(
+            409, "workflow_not_published", "발행한 버전이 없다. 워크플로우를 먼저 발행한다"
+        )
+    return PublishedFlow(workflow=workflow, version=version)
+
+
 def flow_result(run: WfRunOut) -> FlowRunResult:
     return FlowRunResult(
         run_id=run.id,
@@ -105,19 +118,6 @@ def flow_result(run: WfRunOut) -> FlowRunResult:
         error=run.error,
         pending_interaction=run.pending_interaction,
     )
-
-
-def collect_file_refs(value: object, found: dict[str, str]) -> None:
-    """값 안의 파일 참조(FileRef)를 file_id → source(wf_file·session_file)로 모은다."""
-    if is_file(value):
-        ref = cast(dict[str, Any], value)
-        found[str(ref["file_id"])] = str(ref["source"])
-    elif isinstance(value, dict):
-        for item in cast(dict[str, Any], value).values():
-            collect_file_refs(item, found)
-    elif isinstance(value, list):
-        for item in cast(list[Any], value):
-            collect_file_refs(item, found)
 
 
 async def start_version_run(
@@ -202,6 +202,7 @@ async def start_version_run(
             )
         )
         await runs.flush()
+        await bind_run_uploads(session, run, resolved)
         ref = wf_run_ref(run)
     try:
         subscription = await enqueue(bus, supervisor, ref, subscribe=subscribe)
@@ -358,21 +359,7 @@ class WorkflowWebappService:
     async def run_file(
         self, workspace_id: uuid.UUID, run_id: uuid.UUID, file_id: uuid.UUID
     ) -> FileDownload:
-        """웹앱 런의 입력·출력에 들어 있는 파일. 노드가 이 런에서 만든 wf_file도 받는다.
-
-        agent 노드의 결과 파일은 자식 과업 세션의 파일(session_file)이라 출력의 참조로만 찾는다.
-        """
+        """웹앱 런을 거쳐 받는 파일. 규칙은 콘솔과 같다(WorkflowFileService.run_file)."""
         run = await self.check_run(workspace_id, run_id)
-        refs: dict[str, str] = {}
-        collect_file_refs(run.outputs, refs)
-        collect_file_refs(run.inputs, refs)
-        key = str(file_id)
-        async with self._db.read() as session:
-            row = await WfFileRepository(session, workspace_id).get(file_id)
-            if row is not None and (key in refs or row.wf_run_id == run.id):
-                return FileDownload(row.storage_key, row.filename, row.mime)
-            if refs.get(key) == "session_file":
-                found = await SessionFileRepository(session, workspace_id).get(file_id)
-                if found is not None and found.storage_key is not None:
-                    return FileDownload(found.storage_key, found.filename, found.mime)
-        raise not_found("파일")
+        files = WorkflowFileService(self._db, self._storage, clock=self._clock)
+        return await files.run_file(workspace_id, run_id, file_id, run=run)

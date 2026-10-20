@@ -398,6 +398,13 @@ def test_registry_describes_every_type() -> None:
         "iteration",
         "iteration_start",
         "agent",
+        # 2차 노드(M19)
+        "loop",
+        "loop_start",
+        "list_operator",
+        "document_extractor",
+        "tool",
+        "human_input",
     }
     assert set(described) == implemented
     assert all(item.implemented for item in described.values())

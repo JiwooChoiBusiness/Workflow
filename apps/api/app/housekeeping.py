@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import sysinfo
 from app.auth.session_store import SessionStore
@@ -18,6 +19,7 @@ from app.db.repositories.session_files import SessionFileRepository
 from app.db.repositories.sessions import SessionRepository
 from app.db.repositories.skill_versions import SkillVersionRepository
 from app.db.repositories.skills import SkillRepository
+from app.db.repositories.wf_conversations import WfConversationRepository, WfMessageRepository
 from app.db.repositories.workflows import (
     WfFileRepository,
     WfNodeRunRepository,
@@ -27,9 +29,9 @@ from app.db.repositories.workflows import (
 from app.db.repositories.workspace_instances import WorkspaceInstanceRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import utcnow
-from app.sandbox import disk
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.schemas.workspace import WorkspaceSettings
+from app.services.workflow_files import collect_file_refs
 from app.storage.base import StorageBackend, StorageError
 
 log = structlog.get_logger("app.housekeeping")
@@ -40,11 +42,14 @@ HOURLY_INTERVAL_SEC = 3600.0
 # 넣기 전까지 기다려 주는 기간이다.
 UNREFERENCED_GRACE = timedelta(days=7)
 UPLOADS_PREFIX = "uploads"
-DISK_FIELDS = ("workspaces_mb", "pip_cache_mb", "disk_estimated")
+DISK_FIELDS = (*(name for name, _, _ in sysinfo.DISK_FOLDERS), "disk_estimated")
 # 워크플로우 보존(2단계 4.4).
 WF_STATE_KEEP = timedelta(days=7)
 WF_SINGLE_RUN_KEEP = timedelta(days=7)
 WF_OUTPUT_FILE_KEEP = timedelta(days=90)
+# 런·대화를 가리키지 않는 업로드(올리고 쓰지 않은 파일)는 만든 지 이만큼 지나면 지운다.
+WF_LOOSE_UPLOAD_KEEP = timedelta(days=7)
+OPEN_RUN_STATUSES = (RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING_INPUT)
 # 실패 런의 작업 폴더는 로그를 확인할 수 있게 이만큼 남긴다.
 WF_WORKSPACE_KEEP = timedelta(hours=1)
 
@@ -256,13 +261,22 @@ class Retention:
         return live
 
 
+class FormTimeouts(Protocol):
+    """폼 대기 만료(app/services/workflow_runs.py의 WorkflowParents)."""
+
+    # 응답 없이 WAITING_INPUT_TTL_HOURS가 지난 human_input 폼 대기 런을 timeout 응답으로
+    # 다시 넣는다.
+    async def expire_forms(self) -> int: ...
+
+
 class WorkflowRetention:
     """워크플로우 보존 정리(2단계 4.4).
 
     보존 기간이 지난 런의 이벤트(iteration 하위 노드 런의 입출력도 비운다), 실패 런의 체크포인트,
-    단일 노드 실행 런, 출력 파일, 런 작업 폴더(DATA_DIR/wf-workspaces/<wf_run_id>)를 지운다. 대기
-    중인 런의 체크포인트는 재개에 필요해 건드리지 않는다. 대기는 자식 런의 입력 대기 상한에서
-    끝난다.
+    단일 노드 실행 런, 출력 파일, 런 작업 폴더(DATA_DIR/wf-workspaces/<wf_run_id>), 지운 챗플로우
+    대화에 붙어 남은 업로드, 런·대화를 가리키지 않는 오래된 업로드를 지운다. 대기 중인 런의
+    체크포인트는 재개에 필요해 건드리지 않는다. 대기는 자식 런의 입력 대기 상한에서 끝나고, 자식이
+    없는 폼 대기(human_input)는 forms가 같은 상한으로 끝낸다. 대화·메시지 행은 로그로 남긴다.
     """
 
     def __init__(
@@ -272,6 +286,7 @@ class WorkflowRetention:
         storage: StorageBackend,
         backend: SandboxBackend,
         retention_days: int,
+        forms: FormTimeouts | None = None,
         clock: Callable[[], datetime] = utcnow,
         batch_size: int = 200,
     ) -> None:
@@ -280,17 +295,23 @@ class WorkflowRetention:
         # DATA_DIR/wf-workspaces의 두 번째 로컬 백엔드.
         self._backend = backend
         self._retention_days = retention_days
+        self._forms = forms
         self._clock = clock
         self._batch = batch_size
 
     def jobs(self) -> list[tuple[str, Callable[[], Awaitable[int]]]]:
-        return [
+        jobs: list[tuple[str, Callable[[], Awaitable[int]]]] = [
             ("wf_run_events", self.purge_events),
             ("wf_states", self.clear_states),
             ("wf_single_runs", self.purge_single_runs),
             ("wf_output_files", self.purge_output_files),
             ("wf_workspaces", self.purge_workspaces),
+            ("wf_conversation_uploads", self.purge_conversation_uploads),
+            ("wf_loose_uploads", self.purge_loose_uploads),
         ]
+        if self._forms is not None:
+            jobs.append(("wf_form_timeouts", self._forms.expire_forms))
+        return jobs
 
     async def _workspaces(self) -> list[tuple[uuid.UUID, int]]:
         async with self._db.read() as session:
@@ -379,6 +400,48 @@ class WorkflowRetention:
                     break
         return removed
 
+    async def purge_conversation_uploads(self) -> int:
+        """지운 대화에 붙은 업로드(4.4). 대화를 지울 때 바로 지우고 실패해 남은 것만 여기서 본다."""
+        removed = 0
+        for workspace_id, _ in await self._workspaces():
+            async with self._db.write() as session:
+                files = WfFileRepository(session, workspace_id)
+                owners = await files.conversation_upload_owners()
+                deleted = await WfConversationRepository(session, workspace_id).deleted_ids(owners)
+                rows = await files.uploads_for_conversations(deleted)
+                await files.delete_many([row.id for row in rows])
+            await self._delete_keys(row.storage_key for row in rows)
+            removed += len(rows)
+        return removed
+
+    async def purge_loose_uploads(self) -> int:
+        """wf_run_id·conversation_id가 둘 다 없고 올린 지 7일이 지난 업로드(4.4).
+
+        워크플로우 런 입력(start 파일 필드)과 폼 파일 칸으로 쓴 업로드는 런을 만들거나 폼에 답할 때
+        그 런에 묶이므로(bind_run_uploads) 대상이 아니다. 묶이지 않은 것이라도 끝나지 않은 런의
+        입력·체크포인트·재개 값이 가리키는 파일과, 지우지 않은 대화의 마지막 user 메시지 입력이
+        가리키는 파일은 남긴다. 재개와 대화의 다음 턴이 그 파일을 다시 읽는다.
+        """
+        cutoff = self._clock() - WF_LOOSE_UPLOAD_KEEP
+        removed = 0
+        for workspace_id, _ in await self._workspaces():
+            after: uuid.UUID | None = None
+            while True:
+                # 런을 만드는 쓰기와 겹치지 않게 쓰기 트랜잭션 안에서 쓰는 곳을 다시 본다.
+                async with self._db.write() as session:
+                    files = WfFileRepository(session, workspace_id)
+                    rows = await files.loose_uploads_before(cutoff, after=after, limit=self._batch)
+                    owners = {row.workflow_id for row in rows}
+                    used = await _uploads_in_use(session, workspace_id, owners) if rows else set()
+                    stale = [row for row in rows if str(row.id) not in used]
+                    await files.delete_many([row.id for row in stale])
+                await self._delete_keys(row.storage_key for row in stale)
+                removed += len(stale)
+                if len(rows) < self._batch:
+                    break
+                after = rows[-1].id
+        return removed
+
     async def purge_workspaces(self) -> int:
         """런 행이 없거나 끝난 지 1시간이 지난 런의 작업 폴더. 대기·실행 중인 런의 폴더는 둔다."""
         workspaces = getattr(self._backend, "workspaces_dir", None)
@@ -408,6 +471,24 @@ class WorkflowRetention:
         # 잠겨서 이름만 바꿔 둔 .deleted-* 폴더도 다시 지운다.
         removed += await self._backend.purge_deleted()
         return removed
+
+
+async def _uploads_in_use(
+    session: AsyncSession, workspace_id: uuid.UUID, workflow_ids: Collection[uuid.UUID | None]
+) -> set[str]:
+    """끝나지 않은 런과 지우지 않은 대화의 마지막 user 메시지가 가리키는 파일 id."""
+    refs: dict[str, str] = {}
+    runs = await WfRunRepository(session, workspace_id).list_by_status(OPEN_RUN_STATUSES)
+    for run in runs:
+        for value in (run.inputs, run.state, run.resume_payload):
+            collect_file_refs(value, refs)
+    owners = [workflow_id for workflow_id in workflow_ids if workflow_id is not None]
+    conversations = await WfConversationRepository(session, workspace_id).live_ids(owners)
+    for inputs in await WfMessageRepository(session, workspace_id).latest_user_inputs(
+        conversations
+    ):
+        collect_file_refs(inputs, refs)
+    return set(refs)
 
 
 class Housekeeping:
@@ -517,20 +598,19 @@ class Housekeeping:
         return summary
 
     async def _measure_disk(self) -> dict[str, Any]:
-        """작업공간 합계와 pip 캐시 크기(3.14). 재기만 한다. cache/pip은 사용자가 지운다."""
+        """작업공간·pip 캐시와 워크플로우 폴더의 크기(3.14, 2단계 11.3). 재기만 한다.
+
+        cache/pip·cache/wf-extract는 사용자가 지운다.
+        """
         workspaces = getattr(self._backend, "workspaces_dir", None)
         if not isinstance(workspaces, Path):
             return dict.fromkeys(DISK_FIELDS)
-        # 로컬 백엔드의 작업공간 폴더가 DATA_DIR/workspaces라서 pip 캐시는 그 옆 cache/pip이다(2.8).
+        # 로컬 백엔드의 작업공간 폴더가 DATA_DIR/workspaces라서 나머지는 그 부모에서 잇는다(2.8).
         # 하우스키핑은 설정을 받지 않으므로(main.py) 경로를 여기서 잇는다.
-        pip_cache = workspaces.parent / "cache" / "pip"
-        used = await asyncio.to_thread(disk.measure, workspaces)
-        cached = await asyncio.to_thread(disk.measure, pip_cache)
-        return {
-            "workspaces_mb": _mb(used.total_bytes),
-            "pip_cache_mb": _mb(cached.total_bytes),
-            "disk_estimated": used.estimated or cached.estimated,
-        }
+        usage = await asyncio.to_thread(sysinfo.disk_usage, workspaces.parent)
+        sizes: dict[str, Any] = {name: _mb(item.total_bytes) for name, item in usage.items()}
+        sizes["disk_estimated"] = any(item.estimated for item in usage.values())
+        return sizes
 
     async def _memory_loop(self) -> None:
         while True:

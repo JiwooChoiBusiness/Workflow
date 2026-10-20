@@ -155,11 +155,22 @@ async def test_hourly_job_logs_disk_sizes_and_checkpoints_the_wal(
     pip_cache = backend.workspaces_dir.parent / "cache" / "pip"
     pip_cache.mkdir(parents=True)
     (pip_cache / "cached.whl").write_bytes(b"x" * (2**20 // 2))
+    # 2단계 폴더도 같이 잰다(2단계 설계 11.3).
+    data_dir = backend.workspaces_dir.parent
+    for parts in (("wf-workspaces", "r1"), ("storage", "wf-files", "w1"), ("cache", "wf-extract")):
+        folder = data_dir.joinpath(*parts)
+        folder.mkdir(parents=True)
+        (folder / "f.bin").write_bytes(b"x" * (2**20 // 2))
     housekeeping = Housekeeping(db=db, backend=backend, memory_budget_mb=300)
 
     summary = await housekeeping.run_hourly()
 
     assert (summary["workspaces_mb"], summary["pip_cache_mb"]) == (1.5, 0.5)
+    assert (summary["wf_workspaces_mb"], summary["wf_files_mb"], summary["wf_extract_mb"]) == (
+        0.5,
+        0.5,
+        0.5,
+    )
     assert summary["disk_estimated"] is False
     # 지운 로그인 세션까지 DB 파일로 옮겼다. 하우스키핑이 쓰기 락을 잡지 않아도 끝난다.
     assert summary["wal_frames"] > 0

@@ -8,23 +8,32 @@ agent 노드가 승인·질문을 기다리면 워크플로우 런도 waiting_in
 provide_input → (b) 워크플로우 런을 queued(resume)로 다시 넣기 순서다. 자식이 다른 경로로 입력
 대기에서 벗어나도(1단계 /runs/{rid}/input, 대기 만료, 중지) RunService가 WorkflowParents를 불러
 (b)를 한다. (b)는 조건부 갱신이라 두 번 불려도 한 번만 넣는다.
+
+human_input 노드의 폼 대기는 자식 런이 없다. 응답 값은 필드 정의로 검사·변환한 뒤 resume_payload의
+reply에 담아 (b)만 하고, 실행기가 그 값을 엔진에 넘긴다. 대기 상한은 자식 런과 같은
+WAITING_INPUT_TTL_HOURS이고, 지나면 timeout 응답으로 다시 넣어 노드가 input_timeout으로 끝난다.
+
+챗플로우 런은 대화의 assistant 메시지(wf_message) 하나를 맡는다. 실행기 밖에서 런을 끝내는 곳(중지,
+시작 전 실패, 기동 복구)도 settle_message로 그 메시지의 상태를 런에 맞춘다.
 """
 
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 import structlog
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.interactions import InteractionReply
 from app.agent.task_service import AgentTaskService
 from app.config import Settings
 from app.db.engine import Database
 from app.db.models import WfNodeRun, WfRun
-from app.db.models.enums import RunStatus, WfRunTrigger, WorkflowKind
+from app.db.models.enums import RunStatus, WfNodeRunStatus, WfRunTrigger, WorkflowKind
+from app.db.repositories.wf_conversations import WfMessageRepository
 from app.db.repositories.workflows import (
     WfNodeRunRepository,
     WfRunEventRepository,
@@ -32,6 +41,7 @@ from app.db.repositories.workflows import (
     WfVersionRepository,
     WorkflowRepository,
 )
+from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
 from app.runner.supervisor import Supervisor, SupervisorClosed
 from app.schemas.events import TERMINAL_EVENT_TYPES, NodeError, UsageTotal
@@ -45,12 +55,15 @@ from app.schemas.wf_run import (
     WfRunDetail,
     WfRunErrorOut,
     WfRunList,
+    WfRunLogItem,
+    WfRunLogList,
     WfRunOut,
 )
 from app.schemas.workflow import WorkflowSettings
+from app.services.access import FlowScope, scoped_wf_run
 from app.services.errors import ServiceError, not_found
 from app.services.runs import event_out, run_key
-from app.services.workflow_files import WorkflowFileService
+from app.services.workflow_files import WorkflowFileService, bind_run_uploads
 from app.services.workflows import (
     conversation_types,
     conversation_vars,
@@ -64,7 +77,7 @@ from app.storage.base import StorageBackend
 from app.streaming.event_bus import EventBus, RunRef, Subscription
 from app.workflow import graph as graph_check
 from app.workflow.nodes.base import NodeRegistry
-from app.workflow.nodes.start import InputError, StartConfig, coerce_inputs
+from app.workflow.nodes.start import InputError, StartConfig, StartField, coerce_inputs
 
 log = structlog.get_logger("app.services.workflow_runs")
 
@@ -160,6 +173,41 @@ def node_run_detail(row: WfNodeRun) -> WfNodeRunDetail:
     )
 
 
+async def settle_message(session: AsyncSession, run: WfRun, *, text: str | None = None) -> None:
+    """런이 맡은 assistant 메시지의 상태·사용량을 런에 맞춘다. 대화가 없는 런은 건너뛴다.
+
+    text를 주면 글도 바꾼다(실행기가 런을 끝낼 때의 답 글). 주지 않으면 멈춘 데까지의 글을 둔다.
+    """
+    if run.message_id is None:
+        return
+    message = await WfMessageRepository(session, run.workspace_id).get(run.message_id)
+    if message is None:
+        return
+    message.status = run.status
+    message.usage = UsageTotal.model_validate(run.usage or {}).model_dump(mode="json")
+    if text is not None:
+        message.text = text
+
+
+async def close_waiting_nodes(session: AsyncSession, run: WfRun, now: datetime) -> None:
+    """끝난 런에서 아직 입력을 기다리던 노드 런을 런과 같은 상태로 닫는다.
+
+    중지면 cancelled, 실패(대기 만료 input_timeout, 종료 shutdown 등)면 런의 오류를 붙인 failed다.
+    그러지 않으면 런 상세의 노드 줄에 "입력 대기"가 남는다. 행만 고치고 노드 이벤트는 내지 않는다.
+    런의 끝은 workflow.completed가 알린다.
+    """
+    if run.status == RunStatus.CANCELLED:
+        status, error = WfNodeRunStatus.CANCELLED, None
+    elif run.status == RunStatus.FAILED:
+        status = WfNodeRunStatus.FAILED
+        error = NodeError.model_validate(run.error).model_dump(mode="json") if run.error else None
+    else:
+        return
+    await WfNodeRunRepository(session, run.workspace_id).close_waiting(
+        run.id, now, status=status, error=error
+    )
+
+
 def elapsed_ms(run: WfRun) -> int:
     # 엔진이 잰 실행 시간(입력 대기 제외)은 체크포인트에만 남는다. 없으면 0이다.
     state = run.state or {}
@@ -227,6 +275,7 @@ async def fail_unstarted(db: Database, bus: EventBus, ref: RunRef, now: datetime
         run.status = RunStatus.FAILED
         run.error = error
         run.ended_at = now
+        await settle_message(session, run)
         data = completed_data(run, status=RunStatus.FAILED)
     await bus.publish(ref, "workflow.error", error)
     await bus.publish(ref, "workflow.completed", data)
@@ -248,12 +297,15 @@ async def requeue_waiting(
     wf_run_id: uuid.UUID,
     *,
     child_run_id: uuid.UUID | None = None,
+    form_id: str | None = None,
+    reply: Mapping[str, Any] | None = None,
     subscribe: bool = False,
 ) -> Requeued | None:
     """waiting_input인 런을 queued(resume)로 바꿔 다시 넣는다. 넣지 않았으면 None.
 
-    child_run_id를 주면 그 자식을 기다리는 런일 때만 넣는다. 이미 재개됐거나 끝난 런은 건너뛴다.
-    종료 중이라 큐에 못 넣으면 queued로 두고 다음 기동의 복구가 넣는다.
+    child_run_id를 주면 그 자식을 기다리는 런일 때만, form_id를 주면 그 폼을 기다리는 런일 때만
+    넣는다. reply(폼 응답)는 resume_payload에 담겨 기다리던 노드에 간다. 이미 재개됐거나 끝난 런은
+    건너뛴다. 종료 중이라 큐에 못 넣으면 queued로 두고 다음 기동의 복구가 넣는다.
     """
     async with db.write() as session:
         run = await WfRunRepository(session, workspace_id).get(wf_run_id)
@@ -262,8 +314,18 @@ async def requeue_waiting(
         pending = pending_of(run)
         if child_run_id is not None and (pending is None or pending.child_run_id != child_run_id):
             return None
+        if form_id is not None and (
+            pending is None or pending.form is None or pending.form.form_id != form_id
+        ):
+            return None
         run.status = RunStatus.QUEUED
-        run.resume_payload = {"node_id": pending.node_id if pending is not None else None}
+        payload: dict[str, Any] = {"node_id": pending.node_id if pending is not None else None}
+        if reply is not None and pending is not None:
+            payload["iteration_index"] = pending.iteration_index
+            payload["reply"] = dict(reply)
+            # 폼 파일 칸으로 받은 업로드도 런 입력처럼 이 런에 묶는다.
+            await bind_run_uploads(session, run, payload["reply"])
+        run.resume_payload = payload
         run.cancel_requested_at = None
         ref = wf_run_ref(run)
     try:
@@ -303,19 +365,68 @@ async def cancel_children(
     return stopped
 
 
+def form_expired(pending: WfPendingOut, now: datetime, ttl_hours: float) -> bool:
+    form = pending.form
+    return form is not None and now - form.created_at > timedelta(hours=ttl_hours)
+
+
 class WorkflowParents:
     """RunService의 ChildRunListener.
 
     자식 런으로 그 자식을 기다리는 워크플로우 런을 찾아 다시 넣는다.
 
     역조회는 wf_node_run.child_run_id 인덱스로 한다. run.input.correlation(JSON)은 조건에 쓰지
-    않는다(1단계 5장 규칙).
+    않는다(1단계 5장 규칙). 자식이 없는 폼 대기(human_input)의 만료도 여기서 한다(하우스키핑 매시).
     """
 
-    def __init__(self, db: Database, bus: EventBus, supervisor: Supervisor) -> None:
+    def __init__(
+        self,
+        db: Database,
+        bus: EventBus,
+        supervisor: Supervisor,
+        *,
+        waiting_ttl_hours: float | None = None,
+        clock: Callable[[], datetime] = utcnow,
+    ) -> None:
         self._db = db
         self._bus = bus
         self._supervisor = supervisor
+        self._ttl_hours = waiting_ttl_hours
+        self._clock = clock
+
+    async def expire_forms(self) -> int:
+        """응답 없이 대기 상한이 지난 폼 대기 런을 timeout 응답으로 다시 넣는다."""
+        if self._ttl_hours is None:
+            return 0
+        now = self._clock()
+        async with self._db.read() as session:
+            workspace_ids = [row.id for row in await WorkspaceRepository(session).list_all()]
+        expired: list[tuple[uuid.UUID, uuid.UUID, str]] = []
+        for workspace_id in workspace_ids:
+            async with self._db.read() as session:
+                runs = await WfRunRepository(session, workspace_id).list_by_status(
+                    [RunStatus.WAITING_INPUT]
+                )
+            for run in runs:
+                pending = pending_of(run)
+                if pending is not None and pending.form is not None:
+                    if form_expired(pending, now, self._ttl_hours):
+                        expired.append((workspace_id, run.id, pending.form.form_id))
+        count = 0
+        for workspace_id, run_id, form_id in expired:
+            requeued = await requeue_waiting(
+                self._db,
+                self._bus,
+                self._supervisor,
+                workspace_id,
+                run_id,
+                form_id=form_id,
+                reply={"form_id": form_id, "timeout": True},
+            )
+            if requeued is not None:
+                count += 1
+                log.info("wf_run.form_expired", run_id=str(run_id), form_id=form_id)
+        return count
 
     async def resume_parents(
         self, workspace_id: uuid.UUID, child_run_ids: Sequence[uuid.UUID]
@@ -446,6 +557,7 @@ class WorkflowRunService:
                 )
             )
             await runs.flush()
+            await bind_run_uploads(session, run, inputs)
             ref = wf_run_ref(run)
         try:
             subscription = await enqueue(self._bus, self._supervisor, ref, subscribe=subscribe)
@@ -479,6 +591,8 @@ class WorkflowRunService:
                 run.resume_payload = None
                 run.state = None
                 run.ended_at = now
+                await close_waiting_nodes(session, run, now)
+                await settle_message(session, run)
             out = wf_run_out(run)
         signalled = self._supervisor.cancel(run_key(workspace_id, run_id), "user")
         if finalized is not None:
@@ -499,13 +613,14 @@ class WorkflowRunService:
             if run is None:
                 raise not_found("워크플로우 런")
             if run.status == RunStatus.RUNNING:
+                now = self._clock()
                 data = completed_data(run, status=RunStatus.CANCELLED)
                 run.status = RunStatus.CANCELLED
                 run.state = None
-                run.ended_at = self._clock()
-                await WfNodeRunRepository(session, ref.workspace_id).close_running(
-                    run.id, self._clock()
-                )
+                run.ended_at = now
+                await WfNodeRunRepository(session, ref.workspace_id).close_running(run.id, now)
+                await close_waiting_nodes(session, run, now)
+                await settle_message(session, run)
             out = wf_run_out(run)
         if data is not None:
             await cancel_children(self._db, self._tasks, ref.workspace_id, ref.run_id)
@@ -543,6 +658,13 @@ class WorkflowRunService:
                 )
             ref = wf_run_ref(run)
             after = await WfRunEventRepository(session, workspace_id).max_seq(run_id)
+        if pending.kind == "form":
+            raise ServiceError(
+                409,
+                "wrong_input_kind",
+                "이 런은 폼 응답을 기다린다. kind=form과 values로 보낸다",
+                details={"kind": pending.kind, "node_id": pending.node_id},
+            )
         child_run_id = pending.child_run_id
         if child_run_id is None or self._tasks is None:
             raise ServiceError(409, "run_not_waiting", "응답을 넘길 자식 런이 없다")
@@ -561,6 +683,83 @@ class WorkflowRunService:
         log.info("wf_run.input_provided", run_id=str(run_id), child_run_id=str(child_run_id))
         return StartedWfRun(run_id=run_id, subscription=subscription)
 
+    async def provide_form(
+        self,
+        workspace_id: uuid.UUID,
+        run_id: uuid.UUID,
+        values: Mapping[str, Any],
+        *,
+        subscribe: bool,
+    ) -> StartedWfRun:
+        """human_input 폼 응답. 필드 정의로 검사·변환한 값을 담아 같은 런을 다시 넣는다(3.7).
+
+        파일 칸 값은 이 워크플로우에 올린 파일 id(목록이면 id 배열)다. 대기 상한이 지났으면 timeout
+        응답으로 다시 넣고 409 input_timeout이다.
+        """
+        self.ensure_accepting()
+        await self._bus.flush()
+        async with self._db.read() as session:
+            run = await WfRunRepository(session, workspace_id).get(run_id)
+            if run is None:
+                raise not_found("워크플로우 런")
+            pending = pending_of(run)
+            if run.status != RunStatus.WAITING_INPUT or pending is None:
+                raise ServiceError(
+                    409,
+                    "run_not_waiting",
+                    "답이나 승인을 기다리는 런이 아니다",
+                    details={"status": run.status},
+                )
+            ref = wf_run_ref(run)
+            after = await WfRunEventRepository(session, workspace_id).max_seq(run_id)
+        form = pending.form
+        if pending.kind != "form" or form is None:
+            raise ServiceError(
+                409,
+                "wrong_input_kind",
+                "이 런은 승인·질문 응답을 기다린다. answer나 decision으로 보낸다",
+                details={"kind": pending.kind, "node_id": pending.node_id},
+            )
+        if form_expired(pending, self._clock(), self._settings.waiting_input_ttl_hours):
+            await requeue_waiting(
+                self._db,
+                self._bus,
+                self._supervisor,
+                workspace_id,
+                run_id,
+                form_id=form.form_id,
+                reply={"form_id": form.form_id, "timeout": True},
+            )
+            raise ServiceError(409, "input_timeout", "응답 대기 시간이 지나 폼이 닫혔다")
+        fields = [StartField.model_validate(field.model_dump()) for field in form.fields]
+        resolved = await WorkflowFileService(self._db, self._storage).resolve_inputs(
+            workspace_id, run.workflow_id, fields, values
+        )
+        try:
+            coerced = coerce_inputs(fields, resolved)
+        except InputError as exc:
+            raise ServiceError(
+                422, "invalid_inputs", "폼 응답이 올바르지 않다", details=exc.errors
+            ) from None
+        requeued = await requeue_waiting(
+            self._db,
+            self._bus,
+            self._supervisor,
+            workspace_id,
+            run_id,
+            form_id=form.form_id,
+            reply={"form_id": form.form_id, "values": coerced},
+            subscribe=subscribe,
+        )
+        if requeued is None:
+            raise ServiceError(409, "run_not_waiting", "이미 다른 응답으로 이어졌거나 끝난 런이다")
+        subscription = requeued.subscription
+        if subscription is None and subscribe:
+            # 종료 중이라 큐에 넣지 못했다. 다음 기동의 복구가 이어 가고 그때까지 기록만 준다.
+            subscription = self._bus.subscribe(ref, after=after)
+        log.info("wf_run.form_provided", run_id=str(run_id), form_id=form.form_id)
+        return StartedWfRun(run_id=run_id, subscription=subscription)
+
     async def _requeue(
         self,
         workspace_id: uuid.UUID,
@@ -577,6 +776,38 @@ class WorkflowRunService:
             run_id,
             child_run_id=child_run_id,
             subscribe=subscribe,
+        )
+
+    async def check_run(
+        self, workspace_id: uuid.UUID, run_id: uuid.UUID, scope: FlowScope | None
+    ) -> WfRunOut:
+        """범위(웹앱·서비스 API) 안의 런. 아니면 404."""
+        async with self._db.read() as session:
+            return wf_run_out(await scoped_wf_run(session, workspace_id, run_id, scope))
+
+    async def list_for_key(
+        self,
+        workspace_id: uuid.UUID,
+        api_key_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        external_user: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> WfRunList:
+        """서비스 API 키 하나로 만든 런(최근 것부터)."""
+        async with self._db.read() as session:
+            rows = await WfRunRepository(session, workspace_id).list_for_key(
+                api_key_id,
+                status=status,
+                external_user=external_user,
+                limit=limit + 1,
+                offset=offset,
+            )
+        more = len(rows) > limit
+        return WfRunList(
+            items=[wf_run_out(row) for row in rows[:limit]],
+            next_offset=offset + limit if more else None,
         )
 
     async def get_run(self, workspace_id: uuid.UUID, run_id: uuid.UUID) -> WfRunDetail:
@@ -620,6 +851,48 @@ class WorkflowRunService:
             items=[wf_run_out(row) for row in rows[:limit]],
             next_offset=offset + limit if more else None,
         )
+
+    async def list_workspace_runs(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        workflow_id: uuid.UUID | None = None,
+        status: str | None = None,
+        trigger: str | None = None,
+        conversation_id: uuid.UUID | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> WfRunLogList:
+        """모든 워크플로우의 런(최근 것부터). 지운 워크플로우의 런도 나온다(로그 화면)."""
+        async with self._db.read() as session:
+            rows = await WfRunRepository(session, workspace_id).list_filtered(
+                workflow_id=workflow_id,
+                status=status,
+                trigger=trigger,
+                conversation_id=conversation_id,
+                since=since,
+                until=until,
+                limit=limit + 1,
+                offset=offset,
+            )
+            rows, more = rows[:limit], len(rows) > limit
+            workflows = await WorkflowRepository(session, workspace_id).get_many(
+                {row.workflow_id for row in rows}
+            )
+        by_id = {workflow.id: workflow for workflow in workflows}
+        items: list[WfRunLogItem] = []
+        for row in rows:
+            workflow = by_id.get(row.workflow_id)
+            items.append(
+                WfRunLogItem(
+                    **wf_run_out(row).model_dump(),
+                    workflow_name=workflow.name if workflow is not None else "",
+                    workflow_deleted=workflow is None or workflow.deleted_at is not None,
+                )
+            )
+        return WfRunLogList(items=items, next_offset=offset + limit if more else None)
 
     async def list_node_runs(
         self, workspace_id: uuid.UUID, run_id: uuid.UUID, *, iteration: str | None = None

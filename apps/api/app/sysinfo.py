@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import Settings
+from app.sandbox import disk
 
 # 작업공간 안의 깊은 패키지 경로가 260자 제한에 걸리지 않으려면 데이터 폴더가 짧아야 한다.
 DATA_DIR_MAX_LENGTH = 80
@@ -19,6 +20,15 @@ _BLOCKING_POLICIES = {"AllSigned", "Restricted"}
 SUBPROCESS_CHECK_TIMEOUT_SEC = 10.0
 # app/security/crypto.py의 KEY_BYTES. cryptography를 끌어오지 않으려고 따로 둔다.
 ENCRYPTION_KEY_BYTES = 32
+# DATA_DIR 아래에서 자동으로 지우지 않거나 쌓이기 쉬운 폴더(설계 3.14, 2단계 11.3). (매시
+# 하우스키핑 로그의 이름, doctor에 보일 이름, DATA_DIR 기준 경로)
+DISK_FOLDERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("workspaces_mb", "작업공간", ("workspaces",)),
+    ("pip_cache_mb", "pip 캐시", ("cache", "pip")),
+    ("wf_workspaces_mb", "워크플로우 런 폴더", ("wf-workspaces",)),
+    ("wf_files_mb", "워크플로우 파일", ("storage", "wf-files")),
+    ("wf_extract_mb", "문서 추출 파서", ("cache", "wf-extract")),
+)
 
 
 @dataclass(frozen=True)
@@ -233,6 +243,21 @@ def encryption_key_fingerprint(settings: Settings) -> str | None:
     return None if key is None else hashlib.sha256(key).hexdigest()[:8]
 
 
+def disk_usage(data_dir: Path) -> dict[str, disk.DiskUsage]:
+    """DISK_FOLDERS의 크기. 폴더마다 disk.measure의 시간 예산(3초) 안에서 잰다."""
+    return {name: disk.measure(data_dir.joinpath(*parts)) for name, _, parts in DISK_FOLDERS}
+
+
+def check_disk(settings: Settings) -> Check:
+    usage = disk_usage(settings.data_dir)
+    detail = ", ".join(
+        f"{label} {disk.format_size(usage[name].total_bytes)}" for name, label, _ in DISK_FOLDERS
+    )
+    if any(item.estimated for item in usage.values()):
+        detail += ". 시간 안에 다 재지 못한 폴더가 있어 실제보다 작을 수 있다"
+    return Check("디스크", True, detail)
+
+
 def check_encryption_key(settings: Settings) -> Check:
     name = "암호화 키"
     if settings.encryption_key is None:
@@ -295,5 +320,6 @@ def doctor_checks(settings: Settings) -> list[Check]:
         check_execution_policy(settings),
         check_port(settings.server_port),
         asyncio.run(check_subprocess()),
+        check_disk(settings),
         check_encryption_key(settings),
     ]

@@ -28,7 +28,7 @@ from app.schemas.wf_run import WfNodeRunCreate, WfSingleNodeInputs
 from app.schemas.workflow import VarType
 from app.schemas.workflow import WorkflowKind as WorkflowKindName
 from app.services.errors import ServiceError, not_found
-from app.services.workflow_files import WorkflowFileService
+from app.services.workflow_files import WorkflowFileService, bind_run_uploads
 from app.services.workflow_runs import (
     StartedWfRun,
     enqueue,
@@ -62,8 +62,8 @@ from app.workflow.variables import (
 
 log = structlog.get_logger("app.services.workflow_single_run")
 
-# 런 입력을 받는 start와 엔진이 값을 넣는 iteration_start는 혼자 돌릴 뜻이 없다.
-NOT_RUNNABLE = frozenset({"start", "iteration_start"})
+# 런 입력을 받는 start와 엔진이 값을 넣는 iteration_start·loop_start는 혼자 돌릴 뜻이 없다.
+NOT_RUNNABLE = frozenset({"start", "iteration_start", "loop_start"})
 FILE_TYPES: dict[VarType, bool] = {"file": False, "array[file]": True}
 
 
@@ -209,6 +209,7 @@ class WorkflowSingleRunService:
                 )
             )
             await runs.flush()
+            await bind_run_uploads(session, run, values)
             ref = wf_run_ref(run)
         try:
             subscription = await enqueue(self._bus, self._supervisor, ref, subscribe=subscribe)

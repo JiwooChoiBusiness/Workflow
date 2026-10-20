@@ -16,6 +16,13 @@ wf_file(kind=output) 행을 남기고, 노드 설정에는 WF_CODE_TIMEOUT_SEC�
 
 단일 노드 실행 런(trigger=single_node)은 inputs가 {node_id, values}이고 엔진을 그 노드 하나로
 돌린다.
+
+챗플로우 런(대화가 있는 런)은 그 턴의 user 메시지에서 sys.query·files·turn을, 대화에서 대화 변수
+현재값을, 앞 턴들에서 메모리(그래프의 가장 큰 창만큼)를 읽어 엔진에 넘긴다. 런이 끝나면(재개 뒤
+끝나는 경우 포함) assistant 메시지에 답 글·사용량·상태를 쓰고, 성공한 런만 대화 변수를 저장한다.
+
+human_input 폼 응답은 서비스가 wf_run.resume_payload의 reply에 담아 다시 넣는다. 재개할 때 그 값을
+RunContext.reply로 엔진에 넘기면 엔진이 기다리던 노드에 전한다.
 """
 
 import asyncio
@@ -25,7 +32,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from pydantic import ValidationError
@@ -34,10 +41,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.task_service import AgentTaskResult, AgentTaskService, AgentTaskSpec
 from app.config import Settings
 from app.db.engine import Database
-from app.db.models import WfFile, WfNodeRun
+from app.db.models import WfFile, WfNodeRun, WfRun, WfVersion
 from app.db.models.enums import RunStatus, SessionFileKind, WfFileKind, WfRunTrigger, WorkflowKind
 from app.db.repositories.runs import RunRepository
 from app.db.repositories.session_files import SessionFileRepository
+from app.db.repositories.wf_conversations import WfConversationRepository, WfMessageRepository
 from app.db.repositories.workflows import (
     WfFileRepository,
     WfNodeRunRepository,
@@ -61,7 +69,13 @@ from app.services.errors import ServiceError
 from app.services.files import guess_mime, sanitize_filename
 from app.services.runs import parse_run_key, waits_for_child, workspace_handle
 from app.services.workflow_files import MAX_WF_FILE_BYTES, file_ref
-from app.services.workflow_runs import cancel_children, completed_data, wf_run_ref
+from app.services.workflow_runs import (
+    cancel_children,
+    close_waiting_nodes,
+    completed_data,
+    settle_message,
+    wf_run_ref,
+)
 from app.services.workflows import (
     conversation_types,
     conversation_vars,
@@ -72,8 +86,18 @@ from app.services.workflows import (
 )
 from app.storage.base import StorageBackend, StorageError, StorageLimitExceeded, wf_file_key
 from app.streaming.event_bus import EventBus, RunRef, jsonable
-from app.workflow.engine import Engine, EngineLimits, NodeRunRecord, RunContext, RunOutcome, WfEvent
+from app.workflow.engine import (
+    Engine,
+    EngineLimits,
+    NodeReply,
+    NodeRunRecord,
+    RunContext,
+    RunOutcome,
+    WfEvent,
+)
 from app.workflow.frames import Checkpoint
+from app.workflow.memory import Turn, memory_window
+from app.workflow.nodes import default_registry
 from app.workflow.nodes.base import NodeRegistry
 from app.workflow.ports import (
     ChildRunView,
@@ -90,10 +114,26 @@ log = structlog.get_logger("app.runner")
 
 # wf_run 행을 고친 뒤에 내는 런의 끝 이벤트(엔진이 마지막에 차례로 낸다).
 TAIL_EVENTS = frozenset({"workflow.error", "workflow.waiting_input", "workflow.completed"})
+# document_extractor가 pdf·docx 파서를 받아 두는 DATA_DIR 아래 폴더.
+WF_EXTRACT_CACHE = ("cache", "wf-extract")
 NODE_RUN_MAX_BYTES = 64 * 1024
 # iteration 하위 노드 런은 반복마다 생겨 3,000행이 될 수 있어 작게 자른다(3.10).
 ITERATION_NODE_RUN_MAX_BYTES = 8 * 1024
 WF_WORKSPACES = "wf-workspaces"
+
+
+def reply_of(payload: Mapping[str, Any]) -> NodeReply | None:
+    """wf_run.resume_payload의 사람 응답(human_input 폼). 승인·질문 재개에는 없다."""
+    data = payload.get("reply")
+    node_id = payload.get("node_id")
+    if not isinstance(data, dict) or not isinstance(node_id, str):
+        return None
+    index = payload.get("iteration_index")
+    return NodeReply(
+        node_id=node_id,
+        iteration_index=index if isinstance(index, int) else None,
+        data=cast(dict[str, Any], data),
+    )
 
 
 def engine_limits(raw: Mapping[str, Any]) -> EngineLimits:
@@ -134,6 +174,12 @@ class _Job:
     approval_off: bool = False
     single_node: str | None = None
     seed: dict[str, Any] = field(default_factory=dict[str, Any])
+    # 챗플로우 턴의 sys 값, 대화 변수 현재값, 메모리로 쓸 앞 턴.
+    system: dict[str, Any] = field(default_factory=dict[str, Any])
+    conversation: dict[str, Any] = field(default_factory=dict[str, Any])
+    history: list[Turn] = field(default_factory=list[Turn])
+    # 재개할 때 기다리던 노드에 넘길 사람 응답(human_input 폼).
+    reply: NodeReply | None = None
 
     @property
     def run_id(self) -> uuid.UUID:
@@ -142,6 +188,13 @@ class _Job:
     @property
     def workspace_id(self) -> uuid.UUID:
         return self.ref.workspace_id
+
+
+@dataclass
+class _Chat:
+    system: dict[str, Any] = field(default_factory=dict[str, Any])
+    conversation: dict[str, Any] = field(default_factory=dict[str, Any])
+    history: list[Turn] = field(default_factory=list[Turn])
 
 
 class _Failure(Exception):
@@ -291,7 +344,7 @@ class _FilesPort:
             await self._storage.delete(key)
             raise
 
-    async def read_bytes(self, ref: Mapping[str, Any], *, max_bytes: int) -> bytes:
+    async def _locate(self, ref: Mapping[str, Any]) -> tuple[FileRef, str, int]:
         try:
             file = FileRef.model_validate(dict(ref))
             file_id = uuid.UUID(file.file_id)
@@ -307,10 +360,35 @@ class _FilesPort:
                     key, size = row.storage_key, row.size_bytes
             else:
                 found = await SessionFileRepository(session, self._job.workspace_id).get(file_id)
-                if found is not None:
+                if found is not None and found.storage_key is not None:
                     key, size = found.storage_key, found.size_bytes
         if key is None:
             raise FilePortError("file_not_found", f"파일을 찾지 못했다: {file.filename}")
+        return file, key, size
+
+    async def copy_to(self, ref: Mapping[str, Any], dest: Path, *, max_bytes: int) -> int:
+        file, key, size = await self._locate(ref)
+        too_large = f"{file.filename}이(가) {max_bytes // 2**20}MB를 넘는다"
+        if size > max_bytes:
+            raise FilePortError("file_too_large", too_large)
+        written = 0
+        try:
+            await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
+            target = await asyncio.to_thread(dest.open, "wb")
+            try:
+                async for chunk in self._storage.read_stream(key):
+                    written += len(chunk)
+                    if written > max_bytes:
+                        raise FilePortError("file_too_large", too_large)
+                    await asyncio.to_thread(target.write, chunk)
+            finally:
+                await asyncio.to_thread(target.close)
+        except (OSError, StorageError) as exc:
+            raise FilePortError("file_read_failed", f"파일을 옮기지 못했다: {exc}") from None
+        return written
+
+    async def read_bytes(self, ref: Mapping[str, Any], *, max_bytes: int) -> bytes:
+        file, key, size = await self._locate(ref)
         too_large = f"{file.filename}이(가) {max_bytes // 2**20}MB를 넘는다"
         if size > max_bytes:
             raise FilePortError("file_too_large", too_large)
@@ -338,6 +416,7 @@ class _Ports:
         self._settings = NodeSettings(
             code_timeout_sec=executor.settings.wf_code_timeout_sec,
             model_prices=job.model_prices,
+            extract_cache_dir=executor.settings.data_dir.joinpath(*WF_EXTRACT_CACHE),
         )
 
     @property
@@ -452,7 +531,9 @@ class WorkflowRunExecutor:
             if graph is None:
                 raise _Failure("graph_invalid", "저장된 그래프를 읽지 못했다")
             resume: Checkpoint | None = None
+            reply: NodeReply | None = None
             if run.resume_payload is not None:
+                reply = reply_of(run.resume_payload)
                 if version.graph_hash != run.graph_hash:
                     raise _Failure(
                         "graph_changed", "대기하는 동안 초안 그래프가 바뀌어 이어서 실행할 수 없다"
@@ -476,6 +557,9 @@ class WorkflowRunExecutor:
                     single = WfSingleNodeInputs.model_validate(inputs)
                 except ValidationError:
                     raise _Failure("invalid_inputs", "단일 노드 실행 입력을 읽지 못했다") from None
+            chat = _Chat()
+            if run.conversation_id is not None and single is None:
+                chat = await self._chat(session, run, version, graph)
             job = _Job(
                 ref=wf_run_ref(run),
                 workflow_id=run.workflow_id,
@@ -496,12 +580,57 @@ class WorkflowRunExecutor:
                 approval_off=settings.approval_mode == "off",
                 single_node=single.node_id if single is not None else None,
                 seed=dict(single.values) if single is not None else {},
+                system=chat.system,
+                conversation=chat.conversation,
+                history=chat.history,
+                reply=reply,
             )
             run.status = RunStatus.RUNNING
             run.started_at = run.started_at or now
             run.pending_interaction = None
             run.resume_payload = None
+            await settle_message(session, run)
             return job
+
+    async def _chat(
+        self, session: AsyncSession, run: WfRun, version: WfVersion, graph: Graph
+    ) -> _Chat:
+        """챗플로우 턴의 sys 값·대화 변수·메모리. 재개할 때는 엔진이 체크포인트의 풀을 쓴다."""
+        workspace_id = run.workspace_id
+        conversation_id = run.conversation_id
+        messages = WfMessageRepository(session, workspace_id)
+        user = await messages.user_for_run(run.id)
+        chat = (
+            await WfConversationRepository(session, workspace_id).get(conversation_id)
+            if conversation_id is not None
+            else None
+        )
+        if chat is None or user is None:
+            raise _Failure("conversation_missing", "런의 대화나 사용자 메시지가 없다")
+        stored = dict(chat.conversation_vars or {})
+        values = {
+            item.name: stored.get(item.name, item.default)
+            for item in conversation_vars(version.conversation_vars)
+        }
+        ids: list[uuid.UUID] = []
+        for raw in user.files or []:
+            try:
+                ids.append(uuid.UUID(str(raw)))
+            except ValueError:
+                continue
+        rows = {row.id: row for row in await WfFileRepository(session, workspace_id).get_many(ids)}
+        system: dict[str, Any] = {
+            "query": user.text,
+            "files": [file_ref(rows[file_id]) for file_id in ids if file_id in rows],
+            "conversation_id": str(chat.id),
+            "message_id": str(run.message_id) if run.message_id is not None else None,
+            "user": chat.external_user,
+            "turn": await messages.user_count(chat.id, up_to_seq=user.seq),
+        }
+        window = memory_window(graph, self.registry or default_registry())
+        pairs = await messages.history(chat.id, before_seq=user.seq, turns=window)
+        history = [Turn(query.text, answer.text) for query, answer in pairs]
+        return _Chat(system=system, conversation=values, history=history)
 
     async def _model_prices(
         self, session: AsyncSession, workspace_id: uuid.UUID
@@ -539,6 +668,10 @@ class WorkflowRunExecutor:
             mask_outputs=job.mask_outputs,
             single_node=job.single_node,
             seed=job.seed,
+            system=job.system,
+            conversation=job.conversation,
+            history=job.history,
+            reply=job.reply,
         )
         tail: list[WfEvent] = []
         run = Engine(self.registry).run(context)
@@ -616,6 +749,7 @@ class WorkflowRunExecutor:
     async def _finish(self, job: _Job, outcome: RunOutcome, tail: list[WfEvent]) -> None:
         status = outcome.status
         now = self.now()
+        answered: uuid.UUID | None = None
         async with self.db.write() as session:
             run = await WfRunRepository(session, job.workspace_id).get(job.run_id)
             if run is not None:
@@ -631,13 +765,32 @@ class WorkflowRunExecutor:
                 else:
                     run.pending_interaction = None
                     run.ended_at = now
+                    # 병렬 가지에서 기다리던 노드는 런이 중지·실패(대기 만료 포함)하면 다시 돌지
+                    # 않고 waiting_input으로 남는다.
+                    await close_waiting_nodes(session, run, now)
                 # 성공·취소 런의 체크포인트는 쓸 일이 없다. 실패·대기 런은 남긴다(4.4).
                 if status in ("succeeded", "cancelled"):
                     run.state = None
+                if run.conversation_id is not None:
+                    await settle_message(session, run, text=outcome.answer)
+                    chat = await WfConversationRepository(session, job.workspace_id).get(
+                        run.conversation_id
+                    )
+                    if chat is not None:
+                        # 실패·취소·대기 런의 대화 변수 변경은 남기지 않는다(3.2).
+                        if status == "succeeded":
+                            chat.conversation_vars = jsonable(outcome.conversation)
+                        chat.last_message_at = now
+                    if status == "succeeded":
+                        answered = run.message_id
         if status in ("failed", "cancelled"):
             await cancel_children(self.db, self.tasks, job.workspace_id, job.run_id)
         if status in ("succeeded", "cancelled"):
             await self._release_workspace(job)
+        if answered is not None:
+            await self.bus.publish(
+                job.ref, "answer.completed", {"text": outcome.answer, "message_id": answered}
+            )
         for event in tail:
             data = event.data
             if event.type == "workflow.completed":
@@ -684,11 +837,15 @@ class WorkflowRunExecutor:
             run = await WfRunRepository(session, workspace_id).get(run_id)
             if run is None or run.status != RunStatus.QUEUED:
                 return
+            now = self.now()
             run.status = RunStatus.FAILED
             run.error = error
             run.pending_interaction = None
             run.resume_payload = None
-            run.ended_at = self.now()
+            run.ended_at = now
+            # 다시 넣은 대기 런이면 노드 런이 아직 waiting_input이다.
+            await close_waiting_nodes(session, run, now)
+            await settle_message(session, run)
             ref = wf_run_ref(run)
             data = completed_data(run, status=RunStatus.FAILED)
         await cancel_children(self.db, self.tasks, workspace_id, run_id)
@@ -705,13 +862,14 @@ class WorkflowRunExecutor:
                 run = await WfRunRepository(session, job.workspace_id).get(job.run_id)
                 if run is None or run.status != RunStatus.RUNNING:
                     return
+                now = self.now()
                 run.status = RunStatus.FAILED
                 run.error = error
                 run.pending_interaction = None
-                run.ended_at = self.now()
-                await WfNodeRunRepository(session, job.workspace_id).close_running(
-                    job.run_id, self.now()
-                )
+                run.ended_at = now
+                await WfNodeRunRepository(session, job.workspace_id).close_running(job.run_id, now)
+                await close_waiting_nodes(session, run, now)
+                await settle_message(session, run)
                 data = completed_data(run, status=RunStatus.FAILED)
             # 종료 유예가 끝난 뒤에는 시간이 없다. 자식 런은 에이전트 레인의 종료가 정리한다.
             if code != "shutdown":

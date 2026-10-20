@@ -1,14 +1,14 @@
 # pyright: strict
 """실행 프레임과 노드·엣지 상태 기계(설계 3.4, 3.5, 3.7).
 
-프레임은 루트 그래프 한 번, 또는 iteration 하위 그래프의 한 반복이다. 상태 키는 노드·엣지 id에
+프레임은 루트 그래프 한 번, 또는 iteration·loop 하위 그래프의 한 반복이다. 상태 키는 노드·엣지 id에
 "@<index>"를 붙여 반복끼리 구분한다(루트는 붙이지 않는다). 노드가 끝나면 FrameState.complete()가
 나가는 엣지를 활성·비활성으로 해결하고, 들어오는 엣지가 모두 해결된 노드를 준비(하나 이상 활성)나
 skipped(모두 비활성)로 넘긴다. skipped는 나가는 엣지를 모두 비활성으로 만들며 그 자리에서 전파한다.
 
-반복 프레임은 iteration_start를 실행하지 않는다. 엔진이 item·index를 풀에 넣고 enter()로 그
-자리를 끝낸 뒤 이어지는 노드부터 돈다. 반복 안의 노드가 오류 정책 fail로 실패하면 런이 아니라 그
-반복이 실패하고(failure), iteration의 error_mode가 나머지를 정한다.
+반복 프레임은 진입 자리(iteration_start·loop_start)를 실행하지 않는다. 엔진이 item·index를 풀에 넣고
+enter()로 그 자리를 끝낸 뒤 이어지는 노드부터 돈다. 반복 안의 노드가 오류 정책 fail로 실패하면 런이
+아니라 그 반복이 실패하고(failure), iteration의 error_mode나 loop가 나머지를 정한다.
 """
 
 import uuid
@@ -32,6 +32,11 @@ SETTLED: frozenset[NodeState] = frozenset({"succeeded", "failed", "skipped"})
 START_TYPE = "start"
 ITERATION_TYPE = "iteration"
 ITERATION_START_TYPE = "iteration_start"
+LOOP_TYPE = "loop"
+LOOP_START_TYPE = "loop_start"
+# 하위 그래프를 품는 노드와 그 하위 그래프의 진입 자리. 서로 겹쳐 둘 수 없다(중첩 금지).
+CONTAINER_ENTRIES = {ITERATION_TYPE: ITERATION_START_TYPE, LOOP_TYPE: LOOP_START_TYPE}
+ENTRY_TYPES = (START_TYPE, ITERATION_START_TYPE, LOOP_START_TYPE)
 
 
 def state_key(item_id: str, index: int | None = None) -> str:
@@ -43,7 +48,7 @@ class FrameGraph:
     """프레임 하나의 고정 구조. iteration_id가 None이면 루트다."""
 
     iteration_id: str | None
-    # start 또는 iteration_start. 없으면(검증 오류) 아무것도 돌지 않는다.
+    # start, iteration_start, loop_start. 없으면(검증 오류) 아무것도 돌지 않는다.
     entry: str | None
     nodes: tuple[str, ...]
     edges: tuple[Edge, ...]
@@ -61,7 +66,7 @@ def build_frames(graph: Graph) -> dict[str | None, FrameGraph]:
             continue
         parents[node.id] = node.parent_id
         members.setdefault(node.parent_id, []).append(node.id)
-        if node.type in (START_TYPE, ITERATION_START_TYPE) and node.parent_id not in entries:
+        if node.type in ENTRY_TYPES and node.parent_id not in entries:
             entries[node.parent_id] = node.id
     edges: dict[str | None, list[Edge]] = {}
     for edge in graph.edges:
@@ -147,7 +152,7 @@ class FrameState:
         return [entry] if entry is not None and self.nodes.get(entry) == "pending" else []
 
     def enter(self) -> Transition:
-        """반복 프레임의 iteration_start를 실행 없이 끝낸다. 값은 엔진이 먼저 풀에 넣는다."""
+        """반복 프레임의 진입 자리를 실행 없이 끝낸다. 값은 엔진이 먼저 풀에 넣는다."""
         entry = self.graph.entry
         if entry is None or self.nodes.get(entry) != "pending":
             return Transition()
@@ -259,6 +264,18 @@ class IterationProgress(BaseModel):
     elapsed_ms: int = 0
 
 
+class LoopProgress(BaseModel):
+    """입력 대기로 멈춘 loop 노드의 NodeResult.state.
+
+    반복 변수의 지금 값은 풀의 "<loop id>" 자리(체크포인트 pool)에 있으므로 멈춘 반복과 앞
+    구간들에서 반복을 돈 시간만 남긴다. 멈춘 반복은 재개 때 체크포인트의 @index 노드·엣지 상태로
+    잇는다.
+    """
+
+    round: int = 0
+    elapsed_ms: int = 0
+
+
 class Checkpoint(BaseModel):
     """wf_run.state에 쓰는 런 상태(3.7). waiting_input 전환 직전과 런 실패 때 쓴다.
 
@@ -280,6 +297,8 @@ class Checkpoint(BaseModel):
     frames: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
     outputs: dict[str, Any] = Field(default_factory=dict[str, Any])
     answer_text: str = ""
+    # 미리 흘리다 멈춘 answer 노드 → 흘린 조각 수(answer_stream). 재개하면 그 뒤부터 흘린다.
+    answer_cursors: dict[str, int] = Field(default_factory=dict[str, int])
     conv_vars: dict[str, Any] = Field(default_factory=dict[str, Any])
     usage: UsageTotal = Field(default_factory=UsageTotal)
     # 자식 런을 포함한 토큰 합. max_total_tokens 판정에 쓴다.
@@ -290,7 +309,7 @@ class Checkpoint(BaseModel):
 
 
 def inner_nodes(frames: Iterable[FrameGraph]) -> dict[str, frozenset[str]]:
-    """iteration id → 그 하위 그래프 노드 id."""
+    """iteration·loop id → 그 하위 그래프 노드 id."""
     return {
         frame.iteration_id: frozenset(frame.nodes)
         for frame in frames

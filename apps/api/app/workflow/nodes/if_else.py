@@ -3,7 +3,8 @@
 활성이다.
 
 변수 타입에 맞지 않는 연산자는 검증 오류다. 런타임에 null인 변수(건너뛴 노드 등)는 is_empty만 참이고
-≠·not_contains·not_in은 참, 나머지는 거짓이다.
+≠·not_contains·not_in은 참, 나머지는 거짓이다. 조건 평가(evaluate)와 연산자·값 검사는 loop의 종료
+조건과 list_operator의 필터가 같이 쓴다.
 """
 
 import re
@@ -87,10 +88,18 @@ def case_handle(case_id: str) -> str:
     return f"case_{case_id}"
 
 
-def _group(var_type: VarType | None) -> str | None:
+def type_group(var_type: VarType | None) -> str | None:
     if var_type is None or var_type == "any":
         return None
     return "array" if var_type in ARRAY_ITEM else var_type
+
+
+def operator_issue(op: str, var_type: VarType | None) -> str | None:
+    """var_type 값에 쓸 수 없는 연산자면 그 설명."""
+    group = type_group(var_type)
+    if group is not None and op not in _OPS_BY_GROUP[group]:
+        return f"{var_type} 변수에는 {op} 연산자를 쓸 수 없다"
+    return None
 
 
 def _is_number(value: object) -> bool:
@@ -175,8 +184,9 @@ def evaluate(op: str, actual: Any, expected: Any) -> bool:
     raise NodeFailure("invalid_config", f"모르는 연산자: {op}")
 
 
-def _value_issue(condition: Condition, group: str | None) -> str | None:
-    op, value = condition.op, condition.value
+def value_issue(op: str, value: Any, var_type: VarType | None) -> str | None:
+    """연산자에 맞지 않는 비교 값이면 그 설명."""
+    group = type_group(var_type)
     if op in UNARY_OPS:
         return None
     if op in LIST_OPS:
@@ -196,6 +206,19 @@ def _value_issue(condition: Condition, group: str | None) -> str | None:
     if (op in ORDER_OPS or group == "number") and value is not None and _number(value) is None:
         return "숫자 비교의 value는 숫자여야 한다"
     return None
+
+
+def condition_issues(condition: Condition, var_type: VarType | None, field: str) -> list[Issue]:
+    """조건 하나의 연산자·비교 값 검사. field는 "cases[0].conditions[1]"처럼 그 조건의 위치다."""
+    problem = operator_issue(condition.op, var_type)
+    if problem is not None:
+        return [Issue(level="error", code="invalid_operator", message=problem, field=f"{field}.op")]
+    problem = value_issue(condition.op, condition.value, var_type)
+    if problem is not None:
+        return [
+            Issue(level="error", code="invalid_config", message=problem, field=f"{field}.value")
+        ]
+    return []
 
 
 class IfElseRunner(NodeRunner[IfElseConfig]):
@@ -218,28 +241,7 @@ class IfElseRunner(NodeRunner[IfElseConfig]):
         for ci, case in enumerate(config.cases):
             for ki, condition in enumerate(case.conditions):
                 field = f"cases[{ci}].conditions[{ki}]"
-                var_type = graph.output_type(condition.var)
-                group = _group(var_type)
-                if group is not None and condition.op not in _OPS_BY_GROUP[group]:
-                    issues.append(
-                        Issue(
-                            level="error",
-                            code="invalid_operator",
-                            message=f"{var_type} 변수에는 {condition.op} 연산자를 쓸 수 없다",
-                            field=f"{field}.op",
-                        )
-                    )
-                    continue
-                problem = _value_issue(condition, group)
-                if problem is not None:
-                    issues.append(
-                        Issue(
-                            level="error",
-                            code="invalid_config",
-                            message=problem,
-                            field=f"{field}.value",
-                        )
-                    )
+                issues += condition_issues(condition, graph.output_type(condition.var), field)
         return issues
 
     async def run(

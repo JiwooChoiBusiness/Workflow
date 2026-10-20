@@ -121,7 +121,9 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             grace_sec=settings.shutdown_grace_sec,
             name="workflow",
         )
-        parents = WorkflowParents(db, bus, workflow_supervisor)
+        parents = WorkflowParents(
+            db, bus, workflow_supervisor, waiting_ttl_hours=settings.waiting_input_ttl_hours
+        )
         maintenance = RunMaintenance(
             db, settings, bus=bus, storage=storage, parents=parents, supervisor=supervisor
         )
@@ -136,6 +138,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
                 storage=storage,
                 backend=wf_backend,
                 retention_days=settings.run_event_retention_days,
+                forms=parents,
             ),
         )
         # 종료 훅은 두 레인이 모두 끝난 뒤 등록한 순서로 돈다(2단계 3.6). 콘솔 창 닫기처럼

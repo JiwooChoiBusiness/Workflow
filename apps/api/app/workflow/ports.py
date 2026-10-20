@@ -53,8 +53,8 @@ class FilePortError(Exception):
 class FilePort(Protocol):
     """런이 만든 파일을 wf_file(kind=output)로 남기고, 파일 참조(FileRef)의 내용을 읽는다.
 
-    save_output은 FileRef 모양의 사전(source=wf_file)을 돌려준다. read_bytes는 참조의 저장소 키를
-    믿지 않고 id로 행을 다시 찾는다. 둘 다 실패하면 FilePortError다.
+    save_output은 FileRef 모양의 사전(source=wf_file)을 돌려준다. read_bytes·copy_to는 참조의 저장소
+    키를 믿지 않고 id로 행을 다시 찾는다. 모두 실패하면 FilePortError다.
     """
 
     async def save_output(
@@ -62,6 +62,9 @@ class FilePort(Protocol):
     ) -> dict[str, Any]: ...
 
     async def read_bytes(self, ref: Mapping[str, Any], *, max_bytes: int) -> bytes: ...
+
+    # 메모리에 다 올리지 않고 dest 파일로 흘려 쓴다. 쓴 바이트 수를 돌려준다(document_extractor).
+    async def copy_to(self, ref: Mapping[str, Any], dest: Path, *, max_bytes: int) -> int: ...
 
 
 class TaskPortError(Exception):
@@ -115,6 +118,9 @@ class NodeSettings:
     model_prices: Mapping[str, Mapping[str, Any]] = field(
         default_factory=dict[str, Mapping[str, Any]]
     )
+    # document_extractor가 pdf·docx 파서를 받아 두는 폴더(DATA_DIR/cache/wf-extract). None이면
+    # pdf·docx를 읽지 못한다.
+    extract_cache_dir: Path | None = None
 
 
 class EnginePorts(Protocol):

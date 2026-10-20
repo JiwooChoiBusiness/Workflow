@@ -13,7 +13,9 @@ from app.db.models.session_file import SessionFile
 from app.db.models.skill import Skill
 from app.db.models.skill_version import SkillVersion
 from app.db.models.snapshot import Snapshot
+from app.db.models.wf_conversation import WfConversation
 from app.db.models.wf_file import WfFile
+from app.db.models.wf_message import WfMessage
 from app.db.models.wf_node_run import WfNodeRun
 from app.db.models.wf_run import WfRun
 from app.db.models.wf_run_event import WfRunEvent
@@ -37,7 +39,9 @@ __all__ = [
     "Skill",
     "SkillVersion",
     "Snapshot",
+    "WfConversation",
     "WfFile",
+    "WfMessage",
     "WfNodeRun",
     "WfRun",
     "WfRunEvent",

@@ -6,6 +6,10 @@
 call_agent가 만든 자식 세션(source=task, 다른 에이전트)은 그 자체로는 범위 밖이다. 자식 런의
 parent_run_id를 따라 뿌리 런까지 올라가 뿌리 런의 세션이 범위 안이면 허용한다(오케스트레이션 6.3).
 그래서 엔드포인트를 더하지 않아도 자식 세션의 기존 경로(이벤트·파일·중지·응답)가 열린다.
+
+챗플로우 대화(wf_conversation)와 워크플로우 런(wf_run)은 FlowScope로 본다(2단계 6.2, 6.3). 웹앱은
+webapp 대화·런이고 워크플로우가 발행되어 webapp_enabled여야 한다. 서비스 API는 그 키로 만든 api
+대화·런이고, user를 주면 그 외부 사용자의 것만이다.
 """
 
 import uuid
@@ -14,10 +18,12 @@ from dataclasses import dataclass, replace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ChatSession
+from app.db.models import ChatSession, WfConversation, WfRun
 from app.db.repositories.agents import AgentRepository
 from app.db.repositories.runs import RunRepository
 from app.db.repositories.sessions import SessionRepository
+from app.db.repositories.wf_conversations import WfConversationRepository
+from app.db.repositories.workflows import WfRunRepository, WorkflowRepository
 from app.services.errors import not_found
 
 
@@ -88,3 +94,82 @@ async def scoped_session(
     if scope is not None and not await in_scope(session, workspace_id, chat, scope):
         raise not_found("세션")
     return chat
+
+
+@dataclass(frozen=True)
+class FlowScope:
+    # 대화 source(preview·webapp·api) 또는 런 trigger(webapp·api).
+    sources: frozenset[str]
+    # 서비스 API: 이 키로 만든 대화·런만.
+    api_key_id: uuid.UUID | None = None
+    external_user: str | None = None
+    # 웹앱: 워크플로우가 발행되어 있고 webapp_enabled여야 한다.
+    webapp: bool = False
+
+
+async def _flow_in_scope(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    scope: FlowScope,
+    *,
+    source: str,
+    workflow_id: uuid.UUID,
+    api_key_id: uuid.UUID | None,
+    external_user: str | None,
+) -> bool:
+    if source not in scope.sources:
+        return False
+    if scope.api_key_id is not None and api_key_id != scope.api_key_id:
+        return False
+    if scope.external_user is not None and external_user != scope.external_user:
+        return False
+    if scope.webapp:
+        workflow = await WorkflowRepository(session, workspace_id).get_active(workflow_id)
+        if workflow is None or not workflow.webapp_enabled or workflow.published_version_id is None:
+            return False
+    return True
+
+
+async def scoped_conversation(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    scope: FlowScope | None,
+) -> WfConversation:
+    """살아 있고 범위 안의 챗플로우 대화. 아니면 404."""
+    chat = await WfConversationRepository(session, workspace_id).get_active(conversation_id)
+    if chat is None or (
+        scope is not None
+        and not await _flow_in_scope(
+            session,
+            workspace_id,
+            scope,
+            source=chat.source,
+            workflow_id=chat.workflow_id,
+            api_key_id=chat.api_key_id,
+            external_user=chat.external_user,
+        )
+    ):
+        raise not_found("대화")
+    return chat
+
+
+async def scoped_wf_run(
+    session: AsyncSession, workspace_id: uuid.UUID, run_id: uuid.UUID, scope: FlowScope | None
+) -> WfRun:
+    """범위 안의 워크플로우 런. 아니면 404."""
+    run = await WfRunRepository(session, workspace_id).get(run_id)
+    if run is None or (
+        scope is not None
+        and not await _flow_in_scope(
+            session,
+            workspace_id,
+            scope,
+            source=run.trigger,
+            workflow_id=run.workflow_id,
+            api_key_id=run.api_key_id,
+            external_user=run.external_user,
+        )
+    ):
+        raise not_found("워크플로우 런")
+    return run

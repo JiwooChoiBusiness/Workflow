@@ -11,6 +11,10 @@ from structlog.typing import EventDict, Processor, WrappedLogger
 MASK = "***"
 LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
 LOG_FILE_BACKUPS = 5
+# httpx는 요청마다 INFO로 URL 전체를 남기고 httpcore는 DEBUG로 헤더까지 남긴다. HTTP 요청 노드·
+# web_fetch·http_request 도구의 URL에 들어간 워크플로우 비밀 env 값은 여기서 모르는 값이라 가릴 수
+# 없으므로(2단계 9.4) 이 둘은 경고부터만 남긴다.
+QUIET_LOGGERS = ("httpx", "httpcore")
 
 # 키 이름은 '_'로 나눈 단어 단위로 본다. input_tokens, storage_key 같은 일반 필드는 가리지 않는다.
 _SENSITIVE_KEY = re.compile(
@@ -115,6 +119,9 @@ def configure_logging(
     root = logging.getLogger()
     root.handlers = list(handlers)
     root.setLevel(level.upper())
+
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     # uvicorn이 따로 붙이는 핸들러를 떼어 내 같은 JSON 형식으로 모은다.
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):

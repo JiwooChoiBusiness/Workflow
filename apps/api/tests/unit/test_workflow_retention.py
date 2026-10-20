@@ -12,7 +12,16 @@ from sqlalchemy import func, select
 from app.config import Settings
 from app.db.engine import Database
 from app.db.migrate import upgrade_head
-from app.db.models import WfFile, WfNodeRun, WfRun, WfRunEvent, WfVersion, Workflow
+from app.db.models import (
+    WfConversation,
+    WfFile,
+    WfMessage,
+    WfNodeRun,
+    WfRun,
+    WfRunEvent,
+    WfVersion,
+    Workflow,
+)
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
 from app.housekeeping import Housekeeping, WorkflowRetention
@@ -62,6 +71,7 @@ class Seed:
         ended: datetime | None,
         trigger: str = "preview",
         state: dict[str, Any] | None = None,
+        inputs: dict[str, Any] | None = None,
     ) -> uuid.UUID:
         run_id = new_id()
         async with self.db.write() as session:
@@ -75,6 +85,7 @@ class Seed:
                     trigger=trigger,
                     status=status,
                     state=state,
+                    inputs=inputs or {},
                     graph_hash="0" * 64,
                     ended_at=ended,
                 )
@@ -130,6 +141,64 @@ class Seed:
                 )
             )
         return file_id, key
+
+    async def upload(
+        self, *, age: timedelta, conversation_id: uuid.UUID | None = None
+    ) -> tuple[uuid.UUID, str]:
+        file_id = new_id()
+        key = f"wf-files/{self.workspace_id}/{file_id}"
+        path = self.storage.local_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"u")
+        async with self.db.write() as session:
+            session.add(
+                WfFile(
+                    id=file_id,
+                    workspace_id=self.workspace_id,
+                    kind="upload",
+                    workflow_id=self.workflow_id,
+                    conversation_id=conversation_id,
+                    filename="in.txt",
+                    mime="text/plain",
+                    size_bytes=1,
+                    sha256="0" * 64,
+                    storage_key=key,
+                    created_at=NOW - age,
+                )
+            )
+        return file_id, key
+
+    async def conversation(
+        self, inputs: list[dict[str, Any]], *, deleted: bool = False
+    ) -> uuid.UUID:
+        """user 메시지 inputs를 차례로 단 대화. 마지막 것이 다음 턴에 다시 쓰인다."""
+        conversation_id = new_id()
+        async with self.db.write() as session:
+            session.add(
+                WfConversation(
+                    id=conversation_id,
+                    workspace_id=self.workspace_id,
+                    workflow_id=self.workflow_id,
+                    wf_version_id=self.version_id,
+                    source="preview",
+                    deleted_at=NOW if deleted else None,
+                )
+            )
+            await session.flush()
+            for seq, values in enumerate(inputs, start=1):
+                session.add(
+                    WfMessage(
+                        id=new_id(),
+                        workspace_id=self.workspace_id,
+                        conversation_id=conversation_id,
+                        seq=seq * 2 - 1,
+                        role="user",
+                        text="q",
+                        inputs=values,
+                        files=[],
+                    )
+                )
+        return conversation_id
 
     async def count(self, model: Any, run_id: uuid.UUID) -> int:
         column = model.wf_run_id if model is not WfRun else model.id
@@ -255,5 +324,56 @@ async def test_housekeeping_reports_workflow_jobs(
         "wf_single_runs",
         "wf_output_files",
         "wf_workspaces",
+        "wf_loose_uploads",
     ):
         assert summary[f"purged_{name}"] == 0
+
+
+def ref(file_id: uuid.UUID) -> dict[str, Any]:
+    return {
+        "file_id": str(file_id),
+        "filename": "in.txt",
+        "mime": "text/plain",
+        "size_bytes": 1,
+        "storage_key": "k",
+        "source": "wf_file",
+    }
+
+
+async def test_loose_uploads_go_after_a_week_unless_something_still_reads_them(
+    parts: tuple[Seed, WorkflowRetention, Path],
+) -> None:
+    seed, retention, _ = parts
+    week = timedelta(days=8)
+    unused, unused_key = await seed.upload(age=week)
+    fresh, _ = await seed.upload(age=timedelta(days=2))
+    attached, _ = await seed.upload(age=week, conversation_id=new_id())
+    waiting_input, _ = await seed.upload(age=week)
+    finished_input, finished_key = await seed.upload(age=week)
+    next_turn, _ = await seed.upload(age=week)
+    earlier_turn, _ = await seed.upload(age=week)
+    deleted_chat, _ = await seed.upload(age=week)
+    await seed.run("waiting_input", ended=None, inputs={"doc": ref(waiting_input)})
+    await seed.run("succeeded", ended=NOW - week, inputs={"doc": ref(finished_input)})
+    await seed.conversation([{"doc": ref(earlier_turn)}, {"doc": ref(next_turn)}])
+    await seed.conversation([{"doc": ref(deleted_chat)}], deleted=True)
+    output, _ = await seed.output_file(await seed.run("succeeded", ended=NOW - week))
+    # 끝나지 않은 런과 대화의 다음 턴이 읽을 파일을 남겨도 다음 묶음으로 넘어간다.
+    small = WorkflowRetention(
+        seed.db,
+        storage=seed.storage,
+        backend=retention._backend,  # pyright: ignore[reportPrivateUsage]
+        retention_days=90,
+        clock=lambda: NOW,
+        batch_size=2,
+    )
+
+    assert await small.purge_loose_uploads() == 4
+
+    async with seed.db.read() as session:
+        left = set((await session.scalars(select(WfFile.id))).all())
+    assert left == {fresh, attached, waiting_input, next_turn, output}
+    assert not seed.storage.local_path(unused_key).exists()
+    assert not seed.storage.local_path(finished_key).exists()
+    assert unused not in left and earlier_turn not in left and deleted_chat not in left
+    assert await retention.purge_loose_uploads() == 0

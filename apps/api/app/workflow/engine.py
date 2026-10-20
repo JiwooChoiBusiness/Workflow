@@ -12,8 +12,18 @@ iteration 노드는 run_frames로 하위 그래프를 반복마다 한 프레임
 입력 대기가 생기면 그 반복을 멈춘 채로 두고(순차면 새 반복을 시작하지 않는다) iteration 노드가
 waiting_input으로 끝난다. 재개하면 체크포인트의 @index 상태로 멈춘 반복부터 잇는다.
 
+loop 노드는 run_loop로 같은 프레임 기계를 하나씩 차례로 돌린다. 반복 변수는 풀의 "<loop id>"
+자리에 두고 하위 그래프의 variable_assigner가 바꾸며(NodeResult.loop_updates), 반복이 끝날 때마다
+종료 조건을 본다. loop가 끝나면 그 자리는 loop 노드의 최종 출력으로 바뀐다.
+
+입력 대기는 agent 노드의 승인·질문과 human_input 노드의 폼 두 가지다. 폼 응답은 재개할 때
+RunContext.reply로 들어와 그 노드 state의 "reply"로 넘어간다.
+
 단일 노드 실행(RunContext.single_node)은 그 노드 하나(iteration이면 하위 그래프까지)만 돈다. 노드가
 참조하는 변수는 seed로 받은 값을 풀에 먼저 넣는다.
+
+챗플로우의 answer는 상류 llm 델타를 노드가 ready가 되기 전에 answer.delta로 미리 흘릴 수 있다(3.8).
+그 판단과 흘리기는 answer_stream.AnswerStreams가 루트 프레임 노드의 시작·델타·완료를 받아서 한다.
 
 이벤트는 Engine.run()이 돌려주는 비동기 반복자로 나간다. 엔진은 이벤트 하나를 내고 소비자가 다음
 이벤트를 달라고 할 때까지 기다린다. 그래서 소비자(M12의 실행기)가 노드 런 행을 쓰는 동안 엔진은
@@ -24,16 +34,16 @@ import asyncio
 import contextlib
 import uuid
 from collections import deque
-from collections.abc import AsyncGenerator, Collection, Mapping
+from collections.abc import AsyncGenerator, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 import uuid6
 from pydantic import BaseModel, Field, ValidationError
 
-from app.schemas.events import UsageTotal
+from app.schemas.events import UsageTotal, WfPendingKind, WorkflowFormData
 from app.schemas.run import PendingInteractionOut
 from app.schemas.workflow import (
     FAIL_HANDLE,
@@ -47,24 +57,31 @@ from app.schemas.workflow import (
     WorkflowEndStatus,
     WorkflowKind,
 )
+from app.workflow.answer_stream import AnswerStreams
 from app.workflow.frames import (
     Checkpoint,
     FrameFailure,
     FrameGraph,
     FrameState,
     IterationProgress,
+    LoopProgress,
     WaitingRun,
     inner_nodes,
     single_frame,
+    state_key,
 )
 from app.workflow.graph import Analysis, analyze
+from app.workflow.memory import Turn
 from app.workflow.nodes import default_registry
 from app.workflow.nodes.base import (
     NODE_EVENT_TYPES,
+    REPLY_STATE_KEY,
     AnyRunner,
     FramePlan,
     FrameResult,
     FramesOutcome,
+    LoopOutcome,
+    LoopPlan,
     NodeFailure,
     NodeNotImplemented,
     NodeRegistry,
@@ -82,6 +99,7 @@ from app.workflow.variables import (
     PoolView,
     Selector,
     SelectorError,
+    StreamMasker,
     VariableError,
     VariablePool,
     coerce,
@@ -92,6 +110,9 @@ from app.workflow.variables import (
 )
 
 log = structlog.get_logger("app.workflow")
+
+# 글을 조각으로 흘리는 이벤트. 비밀값 마스킹을 스트림 단위로 한다.
+STREAMED_EVENTS = frozenset({"node.text_delta", "answer.delta"})
 
 
 @dataclass(frozen=True)
@@ -104,6 +125,18 @@ class EngineLimits:
     pool_max_bytes: int = POOL_MAX_BYTES
     # 0이면 끈다. 켜면 노드가 끝날 때 마지막 저장 뒤 이만큼 지났으면 체크포인트를 쓴다(3.7의 (3)).
     checkpoint_interval_sec: float = 0
+
+
+@dataclass(frozen=True)
+class NodeReply:
+    """입력 대기로 멈춘 노드에 사람이 낸 응답(human_input 폼).
+
+    재개하면 그 노드 state["reply"]가 된다.
+    """
+
+    node_id: str
+    iteration_index: int | None
+    data: Mapping[str, Any]
 
 
 @dataclass
@@ -133,6 +166,10 @@ class RunContext:
     single_node: str | None = None
     # 단일 노드 실행에서 노드가 참조하는 변수의 값. 키는 "<scope>.<name>"이다.
     seed: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    # 챗플로우 대화의 앞 턴(오래된 것부터). 실행기가 메모리 창만큼 읽어 둔다.
+    history: Sequence[Turn] = ()
+    # 재개할 때 기다리던 노드에 넘길 응답(human_input 폼). agent 노드는 자식 런이 답을 받는다.
+    reply: NodeReply | None = None
 
 
 class NodeRunRecord(BaseModel):
@@ -177,18 +214,25 @@ class RunError(BaseModel):
 
 
 class PendingWait(BaseModel):
-    """wf_run.pending_interaction(3.7). 병렬 가지가 같이 멈춰도 하나(노드 id·index 순)만 담는다."""
+    """wf_run.pending_interaction(3.7). 병렬 가지가 같이 멈춰도 하나(노드 id·index 순)만 담는다.
+
+    approval·question은 agent 노드의 자식 런 승인·질문(interaction), form은 human_input 노드의
+    폼이다.
+    """
 
     node_id: str
     iteration_index: int | None = None
     child_run_id: uuid.UUID | None = None
-    interaction: PendingInteractionOut
+    interaction: PendingInteractionOut | None = None
+    kind: WfPendingKind
+    form: WorkflowFormData | None = None
 
 
 class RunOutcome(BaseModel):
     status: WorkflowEndStatus
     # end 출력의 합. mask_outputs면 마스킹했다. 단일 노드 실행이면 그 노드의 출력이다.
     outputs: dict[str, Any] = Field(default_factory=dict[str, Any])
+    # answer 노드들이 낸 글을 완료 순서로 이은 것. 런이 멈추거나 실패했으면 그때까지 흘린 글이다.
     answer: str = ""
     # 대화 변수 최종값. 서비스가 성공한 런에서만 wf_conversation에 쓴다.
     conversation: dict[str, Any] = Field(default_factory=dict[str, Any])
@@ -238,10 +282,14 @@ class _NodeCtx:
         self.attempt = record.attempt
         self.kind: WorkflowKind = context.kind
         self.iteration_index = frame.index
+        self._stream = frame.key(node.id)
         self.pool = execution.view(frame)
         self.ports = context.ports
         self.cancel = context.cancel
         self.run_inputs = context.inputs
+        self.history = context.history
+        # answer 노드면 엔진이 시작 전에 채운다.
+        self.streamed = ""
         self.warnings: list[str] = []
         self.seen: dict[str, Any] = {}
 
@@ -249,7 +297,7 @@ class _NodeCtx:
         if event_type not in NODE_EVENT_TYPES:
             raise ValueError(f"노드가 낼 수 없는 이벤트다: {event_type}")
         payload = {**data, "node_id": self.node_id, "node_run_id": self.node_run_id}
-        await self._execution.emit_node_event(event_type, payload)
+        await self._execution.emit_node_event(event_type, payload, stream=self._stream)
 
     def render(self, template: str, variables: Mapping[str, Any] | None = None) -> str:
         context = dict(variables) if variables is not None else self.pool.template_context()
@@ -289,6 +337,9 @@ class _NodeCtx:
     async def run_frames(self, plan: FramePlan, state: Mapping[str, Any] | None) -> FramesOutcome:
         return await self._execution.run_frames(self._node, plan, state)
 
+    async def run_loop(self, plan: LoopPlan, state: Mapping[str, Any] | None) -> LoopOutcome:
+        return await self._execution.run_loop(self._node, plan, state)
+
 
 _Item = tuple[WfEvent, asyncio.Future[None]]
 
@@ -306,6 +357,8 @@ class _Execution:
         self.masker = Masker(
             ctx.env[name] for name in ctx.secret_env if isinstance(ctx.env.get(name), str)
         )
+        # (이벤트 타입, 프레임 키) → 그 스트림의 마스커와 끝부분을 낼 때 붙일 id들.
+        self._deltas: dict[tuple[str, str], tuple[StreamMasker, dict[str, Any]]] = {}
         self.pool = VariablePool(ctx.limits.pool_max_bytes)
         self.analysis: Analysis | None = None
         self.outputs: dict[str, Any] = {}
@@ -333,14 +386,22 @@ class _Execution:
         self._inflight: dict[str, NodeRunRecord] = {}
         self._node_state: dict[str, dict[str, Any]] = {}
         self._waiting: dict[str, WaitingRun] = {}
-        # 승인·질문을 실제로 기다리는 노드(agent). 반복을 멈춘 iteration은 _waiting에만 있다.
-        self._pending: dict[str, PendingInteractionOut] = {}
+        # 승인·질문·폼을 실제로 기다리는 노드(agent, human_input). 반복을 멈춘 iteration·loop는
+        # _waiting에만 있다.
+        self._pending: dict[str, PendingInteractionOut | WorkflowFormData] = {}
+        reply = ctx.reply
+        self._reply = reply
+        self._reply_key = (
+            state_key(reply.node_id, reply.iteration_index) if reply is not None else None
+        )
         self._resume_waiting: dict[str, WaitingRun] = {}
         self._resume_state: dict[str, dict[str, Any]] = {}
         self._resume_nodes: dict[str, str] = {}
         self._resume_edges: dict[str, str] = {}
         self._cancel_waiter: asyncio.Future[None] | None = None
         self._root: FrameState | None = None
+        # 챗플로우에서 미리 흘릴 answer가 있을 때만 있다.
+        self.streams: AnswerStreams | None = None
         # 돌고 있거나 입력 대기로 멈춘 반복 프레임. 키는 "<iteration id>@<index>"다.
         self._subframes: dict[str, FrameState] = {}
 
@@ -381,10 +442,48 @@ class _Execution:
         self._queue.put_nowait((WfEvent(event_type, data, node_run), ack))
         await ack
 
-    async def emit_node_event(self, event_type: str, data: dict[str, Any]) -> None:
-        if event_type != "answer.delta" or self.ctx.mask_outputs:
-            data = self.masker.mask(data)
-        await self._emit(event_type, data)
+    async def emit_node_event(
+        self, event_type: str, data: dict[str, Any], *, stream: str | None = None
+    ) -> None:
+        text = data.get("text")
+        if event_type == "answer.delta" and not self.ctx.mask_outputs:
+            await self._emit(event_type, data)
+        elif event_type in STREAMED_EVENTS and stream is not None and isinstance(text, str):
+            await self._emit_streamed(event_type, stream, data)
+        else:
+            await self._emit(event_type, self.masker.mask(data))
+        if event_type == "node.text_delta" and self.streams is not None and isinstance(text, str):
+            await self.streams.delta(str(data["node_id"]), text)
+
+    async def emit_answer(self, node_id: str, text: str) -> None:
+        """answer 노드가 돌기 전에 흘리는 글(3.8). 노드 런이 아직 없어 node_run_id가 없다.
+
+        루트 프레임의 answer만 미리 흘리므로 스트림 키가 노드 id이고, 노드가 시작해 나머지를 낼 때도
+        같은 키를 써서 미리 흘린 끝과 노드가 낸 앞에 걸친 비밀값도 가린다.
+        """
+        data: dict[str, Any] = {"text": text, "node_id": node_id}
+        if not self.ctx.mask_outputs:
+            await self._emit("answer.delta", data)
+            return
+        await self._emit_streamed("answer.delta", node_id, data)
+
+    async def _emit_streamed(self, event_type: str, stream: str, data: dict[str, Any]) -> None:
+        key = (event_type, stream)
+        ids = {name: value for name, value in data.items() if name != "text"}
+        found = self._deltas.get(key)
+        masker = found[0] if found is not None else StreamMasker(self.masker)
+        self._deltas[key] = (masker, ids)
+        text = masker.feed(str(data["text"]))
+        if text:
+            await self._emit(event_type, {**ids, "text": text})
+
+    async def _flush_streamed(self, stream: str | None = None) -> None:
+        """붙잡아 둔 델타 끝부분을 낸다. stream이 없으면 남은 것 전부(런이 멈추거나 끝날 때)."""
+        for key in [key for key in self._deltas if stream is None or key[1] == stream]:
+            masker, ids = self._deltas.pop(key)
+            rest = masker.flush()
+            if rest:
+                await self._emit(key[0], {**ids, "text": rest})
 
     async def _main(self) -> None:
         try:
@@ -466,6 +565,14 @@ class _Execution:
         except VariableError as exc:
             self._skip_checkpoint = True
             return await self._finish(None, RunError(code=exc.code, message=exc.message))
+        if ctx.kind == "chatflow" and ctx.single_node is None:
+            streams = AnswerStreams(
+                analysis,
+                root,
+                context=lambda: self.view(root).template_context(),
+                emit=self.emit_answer,
+            )
+            self.streams = streams if streams.active else None
         ready = self._restore(root, resume) if resume is not None else root.begin()
         if resume is not None and resume.waiting:
             # 반복을 멈춘 iteration보다 실제로 답을 기다리던 노드를 알린다.
@@ -562,7 +669,10 @@ class _Execution:
         self._resume_state = dict(resume.node_state)
         self._resume_nodes = dict(resume.node_states)
         self._resume_edges = dict(resume.edge_states)
-        return root.restore(resume.node_states, resume.edge_states)
+        ready = root.restore(resume.node_states, resume.edge_states)
+        if self.streams is not None:
+            self.streams.restore(resume.answer_cursors)
+        return ready
 
     def _on_cancel(self) -> None:
         if self._stopping:
@@ -702,6 +812,9 @@ class _Execution:
         key = frame.key(node_id)
         resumed = self._resume_waiting.pop(key, None)
         state = self._resume_state.pop(key, {}) if resumed is not None else None
+        if resumed is not None and self._reply is not None and key == self._reply_key:
+            state = {**(state or {}), REPLY_STATE_KEY: dict(self._reply.data)}
+            self._reply = None
         async with self._slot(runner):
             attempt = 1
             while True:
@@ -711,10 +824,15 @@ class _Execution:
                 resumed = None
                 self._inflight[key] = record
                 ctx = _NodeCtx(self, frame, node, record)
+                streams = self.streams if frame is self._root else None
+                if streams is not None:
+                    ctx.streamed = streams.take(node.id)
                 await self._emit("node.started", self._started_data(record, child, session), record)
+                if streams is not None:
+                    await streams.started(node.id)
                 started = self.ctx.ports.monotonic()
                 result, fatal = await self._invoke(runner, ctx, config, state, record)
-                result = self._normalize(runner, config, result, ctx)
+                result = self._normalize(runner, config, result, ctx, node)
                 error = result.error
                 if (
                     result.status != "failed"
@@ -771,7 +889,7 @@ class _Execution:
             return _failed("node_error", f"{type(exc).__name__}: {exc}"), False
 
     def _normalize(
-        self, runner: AnyRunner, config: BaseModel, result: NodeResult, ctx: _NodeCtx
+        self, runner: AnyRunner, config: BaseModel, result: NodeResult, ctx: _NodeCtx, node: Node
     ) -> NodeResult:
         update: dict[str, Any] = {
             "warnings": [*ctx.warnings, *(w for w in result.warnings if w not in ctx.warnings)],
@@ -783,6 +901,8 @@ class _Execution:
                 update["branch"] = self._branch(runner, config, result.branch)
                 for value in result.conv_updates.values():
                     measure(value)
+                if result.loop_updates:
+                    self._check_loop_updates(node, result.loop_updates)
             elif result.status == "failed" and result.error is None:
                 update["error"] = NodeError(code="node_error", message="노드가 이유 없이 실패했다")
             elif (
@@ -795,6 +915,18 @@ class _Execution:
                 update={"warnings": update["warnings"], "inputs": update["inputs"]}
             )
         return result.model_copy(update=update)
+
+    def _check_loop_updates(self, node: Node, updates: Mapping[str, Any]) -> None:
+        # 노드를 품은 loop의 반복 변수만 바꿀 수 있다. 단일 노드 실행도 부모 loop 자리를 쓴다.
+        variables = self._analysis().inner_outputs.get(node.parent_id or "")
+        unknown = sorted(set(updates) - set(variables or {}))
+        if variables is None or unknown:
+            names = ", ".join(unknown) or ", ".join(sorted(updates))
+            raise NodeFailure(
+                "invalid_result", f"이 노드를 품은 loop의 반복 변수가 아니다: {names}"
+            )
+        for value in updates.values():
+            measure(value)
 
     def _typed_outputs(
         self, runner: AnyRunner, config: BaseModel, outputs: Mapping[str, Any]
@@ -888,6 +1020,9 @@ class _Execution:
                 for name, value in result.conv_updates.items():
                     self.pool.assign(name, value)
                     self.conversation[name] = value
+                if result.loop_updates and node.parent_id is not None:
+                    for name, value in result.loop_updates.items():
+                        self.pool.assign(name, value, scope=node.parent_id)
         except PoolLimitError as exc:
             self._fail(RunError(code="variable_pool_limit", message=str(exc), node_id=node_id))
             handles = None
@@ -931,6 +1066,8 @@ class _Execution:
                 await self._record_skipped(frame, skipped)
             queue.extend(transition.ready)
         self._check_budget()
+        if self.streams is not None and frame is self._root:
+            await self.streams.settled()
 
     def _output_types(self, runner: AnyRunner, config: BaseModel) -> dict[str, VarType | None]:
         return {spec.name: spec.type for spec in runner.outputs(config)}
@@ -1031,6 +1168,7 @@ class _Execution:
             }
         )
         outputs_preview, truncated = preview(masked_outputs)
+        await self._flush_streamed(state_key(record.node_id, record.iteration_index))
         await self._emit(
             "node.completed",
             {
@@ -1096,7 +1234,11 @@ class _Execution:
                     self._subframes[frame.frame_key] = frame
                     await self._emit("iteration.next", {"node_id": owner.id, "index": index})
                     ready = await self._open_frame(
-                        owner, frame, plan.items[index], index in resumed
+                        owner,
+                        frame,
+                        {"item": plan.items[index], "index": index},
+                        {"item": None, "index": "number"},
+                        index in resumed,
                     )
                     if ready is None:
                         self._subframes.pop(frame.frame_key, None)
@@ -1170,10 +1312,126 @@ class _Execution:
             return FramesOutcome(status="failed", results=ordered, failure=failure)
         return FramesOutcome(status="succeeded", results=ordered)
 
+    async def run_loop(
+        self, owner: Node, plan: LoopPlan, state: Mapping[str, Any] | None
+    ) -> LoopOutcome:
+        """owner(loop)의 하위 그래프를 반복 하나씩 차례로 돈다(2.4, 3.5).
+
+        반복 변수는 처음 시작할 때 풀의 "<loop id>" 자리에 넣고, 반복이 끝날 때마다 plan.until로
+        종료 조건을 본다. 반복 안에서 입력 대기가 생기면 그 반복을 멈춘 채 waiting_input으로
+        돌아가고, 재개하면 iteration.started를 다시 내고 멈췄던 반복을 체크포인트의 @index 상태로
+        잇는다.
+        """
+        graph = self._analysis().frames.get(owner.id)
+        if graph is None or graph.entry is None:
+            raise NodeFailure("invalid_loop", "하위 그래프에 loop_start가 없다")
+        try:
+            progress = LoopProgress.model_validate(dict(state or {}))
+        except ValidationError as exc:
+            raise NodeFailure("invalid_loop", f"반복을 이어 갈 수 없다: {exc}") from None
+        scope = owner.id
+        current = self.pool.scope(scope)
+        try:
+            if current is None:
+                for name, value in plan.variables.items():
+                    self.pool.put(scope, name, value, plan.types.get(name))
+            else:
+                # 체크포인트에서 되살린 값에는 선언 타입이 없다. 이어 쓰는 값에 타입만 다시 붙인다.
+                for name, variable in dict(current).items():
+                    self.pool.put(scope, name, variable.value, plan.types.get(name))
+        except PoolLimitError as exc:
+            self._fail(RunError(code="variable_pool_limit", message=str(exc), node_id=owner.id))
+            return LoopOutcome(status="cancelled")
+        except VariableError as exc:
+            raise NodeFailure(exc.code, exc.message) from None
+        inner = self._inner.get(owner.id, frozenset[str]())
+        started = self.ctx.ports.monotonic()
+        total = plan.max_rounds
+        await self._emit("iteration.started", {"node_id": owner.id, "total": total})
+        index = progress.round
+        resumed = state is not None
+        stopped: Literal["condition", "limit"] = "limit"
+
+        def elapsed() -> int:
+            return progress.elapsed_ms + int((self.ctx.ports.monotonic() - started) * 1000)
+
+        async def completed(count: int, failed: int) -> None:
+            await self._emit(
+                "iteration.completed",
+                {
+                    "node_id": owner.id,
+                    "count": count,
+                    "failed_count": failed,
+                    "duration_ms": elapsed(),
+                },
+            )
+
+        while index < total:
+            if self._stopping:
+                return LoopOutcome(status="cancelled", rounds=index)
+            frame = FrameState(graph, index)
+            self._subframes[frame.frame_key] = frame
+            await self._emit("iteration.next", {"node_id": owner.id, "index": index})
+            ready = await self._open_frame(
+                owner, frame, {"index": index}, {"index": "number"}, resumed
+            )
+            resumed = False
+            if ready is None:
+                self._subframes.pop(frame.frame_key, None)
+                return LoopOutcome(status="cancelled", rounds=index)
+            await self._run_frame(frame, ready)
+            if frame.failure is not None:
+                await self._close_frame(frame)
+                failure = FrameResult(
+                    index=index,
+                    status="failed",
+                    error=frame.failure.error,
+                    node_id=frame.failure.node_id,
+                )
+                await completed(index + 1, 1)
+                return LoopOutcome(status="failed", rounds=index + 1, failure=failure)
+            if self._stopping:
+                # 실패 체크포인트에 남도록 프레임 표에서 빼지 않는다.
+                return LoopOutcome(status="cancelled", rounds=index)
+            if frame.waiting:
+                waiting = LoopProgress(round=index, elapsed_ms=elapsed())
+                return LoopOutcome(
+                    status="waiting_input",
+                    rounds=index,
+                    state=waiting.model_dump(mode="json"),
+                )
+            self._subframes.pop(frame.frame_key, None)
+            index += 1
+            if plan.until is None:
+                continue
+            try:
+                done = plan.until(PoolView(self.pool, inner=inner, index=index - 1))
+            except (NodeFailure, VariableError) as exc:
+                error = NodeError(code=exc.code, message=self.masker.text(exc.message))
+                await completed(index, 1)
+                failure = FrameResult(index=index - 1, status="failed", error=error)
+                return LoopOutcome(status="failed", rounds=index, failure=failure)
+            if done:
+                stopped = "condition"
+                break
+        variables = {name: var.value for name, var in (self.pool.scope(scope) or {}).items()}
+        # 반복 변수 자리를 비워야 loop 노드의 최종 출력을 같은 이름으로 넣을 수 있다.
+        self.pool.drop(scope)
+        await completed(index, 0)
+        return LoopOutcome(status="succeeded", rounds=index, variables=variables, stopped=stopped)
+
     async def _open_frame(
-        self, owner: Node, frame: FrameState, item: Any, resumed: bool
+        self,
+        owner: Node,
+        frame: FrameState,
+        values: Mapping[str, Any],
+        types: Mapping[str, VarType | None],
+        resumed: bool,
     ) -> list[str] | None:
-        """반복 하나를 시작할 준비를 한다. 돌릴 노드를 돌려주고, 런이 실패하면 None."""
+        """반복 하나를 시작할 준비를 한다. values는 진입 자리의 출력(item·index)이다.
+
+        돌릴 노드를 돌려주고, 런이 실패하면 None.
+        """
         graph = frame.graph
         entry = graph.entry
         if entry is None:
@@ -1185,9 +1443,7 @@ class _Execution:
         key = frame.key(entry)
         if self.pool.scope(key) is None:
             try:
-                self.pool.put_outputs(
-                    key, {"item": item, "index": frame.index}, {"item": None, "index": "number"}
-                )
+                self.pool.put_outputs(key, values, types)
             except PoolLimitError as exc:
                 self._fail(RunError(code="variable_pool_limit", message=str(exc), node_id=owner.id))
                 return None
@@ -1275,6 +1531,7 @@ class _Execution:
         conversation, usage = dict(self.conversation), self.usage.model_copy()
         budget, next_index, node_runs = self._budget_tokens, self._next_index, self.node_runs
         elapsed = self._elapsed_ms()
+        cursors = self.streams.cursors() if self.streams is not None else {}
 
         # 풀이 수 MB면 마스킹·검증이 루프를 붙잡으므로 스레드에서 만든다(3.7).
         def build() -> Checkpoint:
@@ -1289,6 +1546,7 @@ class _Execution:
                 frames=frames,
                 outputs=mask.mask(outputs),
                 answer_text=mask.text(answer),
+                answer_cursors=cursors,
                 conv_vars=mask.mask(conversation),
                 usage=usage,
                 budget_tokens=budget,
@@ -1323,14 +1581,20 @@ class _Execution:
             self.outputs = {**self.outputs, **{name: var.value for name, var in variables.items()}}
 
     async def _finish(self, root: FrameState | None, failure: RunError | None) -> RunOutcome:
+        if self._reply is not None:
+            # 응답을 받을 노드가 체크포인트에서 기다리고 있지 않았다. 다시 물으면 사람이 다시
+            # 답한다.
+            log.warning("workflow.reply_unused", run_id=str(self.ctx.run_id), key=self._reply_key)
         if failure is None and not self._cancelled and self._waiting and not self._pending:
             failure = RunError(
                 code="invalid_wait", message="입력 대기로 멈췄는데 기다리는 승인·질문이 없다"
             )
         self._single_outputs()
+        await self._flush_streamed()
         mask = self.masker if self.ctx.mask_outputs else Masker()
         outputs: dict[str, Any] = mask.mask(self.outputs)
-        answer = mask.text(self.answer)
+        prestreamed = self.streams.pending() if self.streams is not None else ""
+        answer = mask.text(self.answer + prestreamed)
         checkpoint: Checkpoint | None = None
         pending: PendingWait | None = None
         if failure is not None:
@@ -1346,24 +1610,25 @@ class _Execution:
             status = "waiting_input"
             key = min(self._pending, key=_key_order)
             node_id, _, index = key.partition("@")
-            interaction = self._pending[key]
-            waiting = self._waiting.get(key)
-            pending = PendingWait(
-                node_id=node_id,
-                iteration_index=int(index) if index else None,
-                child_run_id=waiting.child_run_id if waiting is not None else None,
-                interaction=interaction,
-            )
+            pending = self._pending_wait(key, node_id, int(index) if index else None)
             checkpoint = await self._checkpoint()
+            interaction = pending.interaction
+            form = pending.form
             await self._emit(
                 "workflow.waiting_input",
                 {
                     "node_id": node_id,
                     "iteration_index": pending.iteration_index,
                     "child_run_id": pending.child_run_id,
-                    "interaction": self.masker.mask(
-                        interaction.model_dump(mode="json", exclude={"created_at"})
+                    "interaction": (
+                        self.masker.mask(
+                            interaction.model_dump(mode="json", exclude={"created_at"})
+                        )
+                        if interaction is not None
+                        else None
                     ),
+                    "kind": pending.kind,
+                    "form": form.model_dump(mode="json") if form is not None else None,
                 },
             )
             await self._emit("workflow.completed", self._completed_data(status, None, None))
@@ -1381,6 +1646,23 @@ class _Execution:
             checkpoint=checkpoint,
             node_runs=self.node_runs,
             duration_ms=self._elapsed_ms(),
+        )
+
+    def _pending_wait(self, key: str, node_id: str, iteration_index: int | None) -> PendingWait:
+        waiting_on = self._pending[key]
+        if isinstance(waiting_on, WorkflowFormData):
+            # 안내문은 풀 값으로 렌더한 글이라 이벤트와 대기 기록 모두 비밀값을 가린다.
+            form = WorkflowFormData.model_validate(self.masker.mask(waiting_on.model_dump()))
+            return PendingWait(
+                node_id=node_id, iteration_index=iteration_index, kind="form", form=form
+            )
+        waiting = self._waiting.get(key)
+        return PendingWait(
+            node_id=node_id,
+            iteration_index=iteration_index,
+            child_run_id=waiting.child_run_id if waiting is not None else None,
+            interaction=waiting_on,
+            kind=waiting_on.kind,
         )
 
     def _analysis(self) -> Analysis:

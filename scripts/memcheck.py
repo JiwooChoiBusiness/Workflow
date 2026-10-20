@@ -1,7 +1,9 @@
 # 플랫폼 서버를 따로 띄워 /healthz의 rss_mb를 0.5초마다 잰다(설계 2.7). 유휴 상태를 잰 뒤 가짜
-# 어댑터로 셸 도구를 쓰는 런 1개를 돌리고, 이어서 start → llm → end 워크플로우 미리보기 런 1개를
-# 돌린 다음(2단계 8장), 런이 끝난 뒤 다시 같은 시간만큼 잰다. 런 중 구간은 초기 설정·로그인부터
-# run.completed까지, 워크플로우 런 중 구간은 워크플로우를 만들 때부터 workflow.completed까지다.
+# 어댑터로 셸 도구를 쓰는 런 1개를 돌리고, 이어서 워크플로우 미리보기 런 1개(llm, code, 원소 20개
+# iteration 안의 code, txt 파일을 읽는 document_extractor)와 챗플로우 미리보기 대화 3턴(llm 메모리,
+# answer)을 돌린 다음(2단계 8장), 런이 끝난 뒤 다시 같은 시간만큼 잰다. 런 중 구간은 초기 설정·
+# 로그인부터 run.completed까지, 워크플로우 런 중 구간은 워크플로우를 만들 때부터 workflow.completed
+# 까지, 챗플로우 구간은 챗플로우를 만들 때부터 세 번째 턴의 workflow.completed까지다.
 # 최댓값이 MEMORY_BUDGET_MB(기본 300)를 넘으면 종료 코드 1, 서버가 뜨지 않거나 런이 succeeded로
 # 끝나지 않으면 2다.
 #
@@ -24,6 +26,7 @@ import sysconfig
 import tempfile
 import threading
 import time
+import uuid
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -37,13 +40,25 @@ SAMPLE_INTERVAL_SEC = 0.5
 FAKE_DELAY_SEC = "1"
 EMAIL = "memcheck@example.com"
 PASSWORD = "memcheck-password"  # noqa: S105  임시 DATA_DIR에만 만드는 계정
-PHASES = {"idle": "유휴", "run": "런 중", "workflow": "워크플로우 런 중", "after": "런 뒤"}
+PHASES = {
+    "idle": "유휴",
+    "run": "런 중",
+    "workflow": "워크플로우 런 중",
+    "chat": "챗플로우 3턴 중",
+    "after": "런 뒤",
+}
+ITERATION_ITEMS = 20
+CHAT_TURNS = 3
+# document_extractor가 서버 안에서 읽는 txt(pdf·docx와 달리 파서 설치가 없다).
+DOC_TEXT = "메모리 확인용 문서\n" * 200
 WORKFLOW_GRAPH = {
     "nodes": [
         {
             "id": "start",
             "type": "start",
-            "config": {"fields": [{"name": "q", "type": "string"}]},
+            "config": {
+                "fields": [{"name": "q", "type": "string"}, {"name": "doc", "type": "file"}]
+            },
         },
         {
             "id": "llm_1",
@@ -51,14 +66,67 @@ WORKFLOW_GRAPH = {
             "config": {"prompt": [{"role": "user", "text": "{{ start.q }}"}]},
         },
         {
+            "id": "code_1",
+            "type": "code",
+            "config": {
+                "code": f"def main():\n    return {{'items': list(range({ITERATION_ITEMS}))}}\n",
+                "outputs": [{"name": "items", "type": "array[number]"}],
+            },
+        },
+        {
+            "id": "iteration_1",
+            "type": "iteration",
+            "config": {"input_var": "code_1.items", "output_var": "code_2.v"},
+        },
+        {"id": "iteration_start_1", "type": "iteration_start", "parent_id": "iteration_1"},
+        {
+            "id": "code_2",
+            "type": "code",
+            "parent_id": "iteration_1",
+            "config": {
+                "code": "def main(item):\n    return {'v': item * 2}\n",
+                "inputs": [{"name": "item", "var": "iteration_start_1.item"}],
+                "outputs": [{"name": "v", "type": "number"}],
+            },
+        },
+        {"id": "doc_1", "type": "document_extractor", "config": {"file_var": "start.doc"}},
+        {
             "id": "end_1",
             "type": "end",
-            "config": {"outputs": [{"name": "answer", "var": "llm_1.text"}]},
+            "config": {
+                "outputs": [
+                    {"name": "answer", "var": "llm_1.text"},
+                    {"name": "doubled", "var": "iteration_1.output"},
+                    {"name": "text", "var": "doc_1.text"},
+                ]
+            },
         },
     ],
     "edges": [
         {"id": "e1", "source": "start", "target": "llm_1"},
-        {"id": "e2", "source": "llm_1", "target": "end_1"},
+        {"id": "e2", "source": "llm_1", "target": "code_1"},
+        {"id": "e3", "source": "code_1", "target": "iteration_1"},
+        {"id": "e4", "source": "iteration_1", "target": "doc_1"},
+        {"id": "e5", "source": "doc_1", "target": "end_1"},
+        {"id": "e6", "source": "iteration_start_1", "target": "code_2"},
+    ],
+}
+CHAT_GRAPH = {
+    "nodes": [
+        {"id": "start", "type": "start", "config": {"fields": []}},
+        {
+            "id": "llm_1",
+            "type": "llm",
+            "config": {
+                "prompt": [{"role": "user", "text": "{{ sys.query }}"}],
+                "memory": {"enabled": True, "window_turns": 2},
+            },
+        },
+        {"id": "answer_1", "type": "answer", "config": {"text": "{{ llm_1.text }}"}},
+    ],
+    "edges": [
+        {"id": "e1", "source": "start", "target": "llm_1"},
+        {"id": "e2", "source": "llm_1", "target": "answer_1"},
     ],
 }
 
@@ -136,6 +204,32 @@ class Console:
             for name, morsel in SimpleCookie(header).items():
                 self.cookies[name] = morsel.value
 
+    def upload(self, path: str, filename: str, data: bytes) -> dict[str, Any]:
+        """multipart 한 파일. 업로드 경로의 CSRF 검사는 X-Requested-With: fetch로 통과한다."""
+        boundary = uuid.uuid4().hex
+        head = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            "Content-Type: text/plain\r\n\r\n"
+        )
+        body = head.encode() + data + f"\r\n--{boundary}--\r\n".encode()
+        headers = {
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "X-Requested-With": "fetch",
+            "Cookie": "; ".join(f"{name}={value}" for name, value in self.cookies.items()),
+        }
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+        try:
+            conn.request("POST", path, body=body, headers=headers)
+            response = conn.getresponse()
+            payload = response.read()
+        finally:
+            conn.close()
+        if response.status != 201:
+            detail = payload[:300].decode("utf-8", errors="replace")
+            raise ScenarioError(f"POST {path} 응답이 {response.status}다: {detail}")
+        return json.loads(payload)
+
     def call(self, method: str, path: str, body: Any, *, expect: int) -> dict[str, Any]:
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
         try:
@@ -191,13 +285,10 @@ def _run_agent(console: Console) -> str:
     return console.stream_message(session["id"], "메모리 확인")
 
 
-def _run_workflow(console: Console) -> str:
-    """start → llm → end 초안을 저장하고 미리보기 런을 workflow.completed까지 받는다."""
-    workflow = console.call("POST", "/api/console/workflows", {"name": "memcheck"}, expect=201)
-    base = f"/api/console/workflows/{workflow['id']}"
+def _save_draft(console: Console, base: str, graph: dict[str, Any]) -> None:
     draft = console.call("GET", f"{base}/draft", None, expect=200)
     body = {
-        "graph": WORKFLOW_GRAPH,
+        "graph": graph,
         "env_vars": [],
         "conversation_vars": [],
         "settings": draft["settings"],
@@ -206,10 +297,33 @@ def _run_workflow(console: Console) -> str:
     saved = console.call("PUT", f"{base}/draft", body, expect=200)
     errors = [issue for issue in saved["issues"] if issue["level"] == "error"]
     if errors:
-        raise ScenarioError(f"워크플로우 초안 검증 오류: {errors[0]['message']}")
-    return console.stream_until(
-        f"{base}/draft/runs", {"inputs": {"q": "메모리 확인"}}, "workflow.completed"
+        raise ScenarioError(f"초안 검증 오류: {errors[0]['message']}")
+
+
+def _run_workflow(console: Console) -> str:
+    """WORKFLOW_GRAPH 초안을 저장하고 txt를 올려 미리보기 런을 workflow.completed까지 받는다."""
+    workflow = console.call("POST", "/api/console/workflows", {"name": "memcheck"}, expect=201)
+    base = f"/api/console/workflows/{workflow['id']}"
+    _save_draft(console, base, WORKFLOW_GRAPH)
+    uploaded = console.upload(f"{base}/files", "memo.txt", DOC_TEXT.encode("utf-8"))
+    inputs = {"q": "메모리 확인", "doc": uploaded["id"]}
+    return console.stream_until(f"{base}/draft/runs", {"inputs": inputs}, "workflow.completed")
+
+
+def _run_chatflow(console: Console) -> str:
+    """llm(메모리) → answer 챗플로우의 미리보기 대화에서 CHAT_TURNS턴을 차례로 보낸다."""
+    workflow = console.call(
+        "POST", "/api/console/workflows", {"name": "memcheck-chat", "kind": "chatflow"}, expect=201
     )
+    base = f"/api/console/workflows/{workflow['id']}"
+    _save_draft(console, base, CHAT_GRAPH)
+    conversation = console.call("POST", f"{base}/preview/conversations", {}, expect=201)
+    path = f"/api/console/wf-conversations/{conversation['id']}/messages"
+    for turn in range(1, CHAT_TURNS + 1):
+        status = console.stream_until(path, {"text": f"{turn}번째 질문"}, "workflow.completed")
+        if status != "succeeded":
+            return status
+    return "succeeded"
 
 
 def _measure(
@@ -236,6 +350,10 @@ def _measure(
             status = _run_workflow(console)
             if status != "succeeded":
                 raise ScenarioError(f"워크플로우 런이 {status}로 끝났다")
+            sampler.phase = "chat"
+            status = _run_chatflow(console)
+            if status != "succeeded":
+                raise ScenarioError(f"챗플로우 턴이 {status}로 끝났다")
             sampler.phase = "after"
             time.sleep(seconds)
     finally:

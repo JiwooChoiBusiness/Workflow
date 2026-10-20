@@ -2,8 +2,9 @@
 
 초안은 검증 오류가 있어도 저장하고 응답에 issues를 싣는다. 실행과 발행은 오류가 하나라도 있으면
 거부한다. 발행은 초안을 번호 있는 불변 버전으로 복제하고(1단계 에이전트와 같다) 비밀 env 값은
-암호문 그대로 옮긴다. 런(workflow_runs.py)과 실행기(workflow_executor.py)도 여기의 버전 해석
-함수(그래프·env·대화 변수·설정)를 쓴다.
+암호문 그대로 옮긴다. 챗플로우 초안을 저장할 때는 answer 노드마다 미리 흘릴 수 있는 llm을
+계산해 ui.prestream_sources로 둔다(3.8, 캔버스의 "스트리밍 가능" 표시). 런(workflow_runs.py)과
+실행기(workflow_executor.py)도 여기의 버전 해석 함수(그래프·env·대화 변수·설정)를 쓴다.
 """
 
 import copy
@@ -24,6 +25,7 @@ from app.db.engine import Database
 from app.db.models import WfVersion, Workflow
 from app.db.models.enums import AgentVersionStatus, WorkflowKind
 from app.db.repositories.agents import AgentRepository
+from app.db.repositories.api_keys import ApiKeyRepository
 from app.db.repositories.workflows import WfVersionRepository, WorkflowRepository
 from app.db.types import new_id, utcnow
 from app.schemas.agent_version import EnvVarIn
@@ -56,10 +58,13 @@ from app.security.crypto import CryptoError, SecretCipher, cipher_from_settings
 from app.services.agents import slugify
 from app.services.errors import Problems, ServiceError, not_found
 from app.workflow import graph as graph_check
+from app.workflow.answer_stream import prestream_sources
 from app.workflow.graph import MAX_GRAPH_BYTES
+from app.workflow.memory import MemoryConfig
 from app.workflow.nodes import default_registry
 from app.workflow.nodes.base import NodeRegistry
-from app.workflow.nodes.llm import DEFAULT_SYSTEM_PROMPT, LlmConfig, MemoryConfig, PromptMessage
+from app.workflow.nodes.llm import DEFAULT_SYSTEM_PROMPT, LlmConfig, PromptMessage
+from app.workflow.tools import describe_tools
 
 log = structlog.get_logger("app.services.workflows")
 
@@ -117,6 +122,25 @@ def conversation_types(kind: str, items: Sequence[ConversationVar]) -> dict[str,
     if kind != WorkflowKind.CHATFLOW:
         return {}
     return {item.name: item.type for item in items}
+
+
+def with_prestream(graph: Graph, kind: str, *, registry: NodeRegistry | None = None) -> Graph:
+    """챗플로우 루트 answer 노드의 ui.prestream_sources를 다시 계산한 그래프(3.8).
+
+    엔진은 ui를 읽지 않고 실행할 때 같은 판정을 다시 한다. 이 값은 캔버스 표시용이다.
+    """
+    if kind != WorkflowKind.CHATFLOW:
+        return graph
+    sources = prestream_sources(graph_check.analyze(graph, "chatflow", registry=registry))
+    if not sources:
+        return graph
+    nodes = [
+        node.model_copy(update={"ui": {**node.ui, "prestream_sources": sources[node.id]}})
+        if node.id in sources
+        else node
+        for node in graph.nodes
+    ]
+    return graph.model_copy(update={"nodes": nodes})
 
 
 def decrypt_env(
@@ -316,7 +340,7 @@ class WorkflowService:
 
     def node_types(self) -> NodeTypeList:
         registry = self._registry or default_registry()
-        return NodeTypeList(items=registry.describe())
+        return NodeTypeList(items=registry.describe(), tools=describe_tools())
 
     async def list_workflows(
         self, workspace_id: uuid.UUID, *, kind: str | None = None
@@ -346,7 +370,10 @@ class WorkflowService:
             raise ServiceError(
                 422, "template_kind_mismatch", "chat_basic 템플릿은 chatflow에만 쓴다"
             )
-        graph = default_graph(body.kind, body.template)
+        # 템플릿의 answer 노드도 저장한 초안처럼 ui.prestream_sources(캔버스 표시)를 갖고 시작한다.
+        graph = with_prestream(
+            default_graph(body.kind, body.template), body.kind, registry=self._registry
+        )
         try:
             async with self._db.write() as session:
                 workflows = WorkflowRepository(session, workspace_id)
@@ -419,8 +446,11 @@ class WorkflowService:
     async def delete_workflow(self, workspace_id: uuid.UUID, workflow_id: uuid.UUID) -> None:
         async with self._db.write() as session:
             workflow = await self._active(session, workspace_id, workflow_id)
+            now = self._clock()
             # 행은 런 로그를 위해 남기고 slug는 다시 쓸 수 있게 된다(부분 유니크 인덱스).
-            workflow.deleted_at = self._clock()
+            workflow.deleted_at = now
+            # 지운 워크플로우의 키가 서비스 API를 계속 부르지 못하게 바로 폐기한다(에이전트와 같다).
+            await ApiKeyRepository(session, workspace_id).revoke_all_for_workflow(workflow.id, now)
         log.info("workflow.deleted", workflow_id=str(workflow_id))
 
     async def get_draft(
@@ -461,8 +491,9 @@ class WorkflowService:
                 )
             env_vars = self._merge_env(draft.env_vars, body.env_vars, problems)
             problems.raise_if_any()
-            draft.graph = body.graph.model_dump(mode="json")
-            draft.graph_hash = graph_hash(body.graph)
+            graph = with_prestream(body.graph, workflow.kind, registry=self._registry)
+            draft.graph = graph.model_dump(mode="json")
+            draft.graph_hash = graph_hash(graph)
             draft.env_vars = env_vars
             draft.conversation_vars = [
                 item.model_dump(mode="json") for item in body.conversation_vars
@@ -470,7 +501,7 @@ class WorkflowService:
             draft.settings = body.settings.model_dump(mode="json")
             draft.updated_at = next_stamp(self._clock, draft.updated_at)
             await WfVersionRepository(session, workspace_id).flush()
-            agents = await live_agent_ids(session, workspace_id, body.graph)
+            agents = await live_agent_ids(session, workspace_id, graph)
         return self._version_out(workflow, draft, agent_ids=agents)
 
     async def validate_draft(

@@ -478,6 +478,9 @@ async def test_resume_after_the_draft_changed_fails_the_run(env: Env) -> None:
     assert run.status == "failed" and run.error is not None
     assert run.error["code"] == "graph_changed"
     assert (await env.event_types(run_id))[-2:] == ["workflow.error", "workflow.completed"]
+    waited = next(row for row in await env.node_rows(run_id) if row.node_id == "wait_1")
+    assert waited.status == "failed" and waited.error is not None
+    assert waited.error["code"] == "graph_changed"
 
 
 @pytest.mark.parametrize(("reason", "status"), [("shutdown", "failed"), ("user", "cancelled")])
@@ -505,6 +508,41 @@ async def test_cancel_signal_ends_the_run(env: Env, reason: str, status: str) ->
     held = next(row for row in await env.node_rows(run_id) if row.node_id == "hold_1")
     assert held.status == "cancelled"
     assert (await env.event_types(run_id))[-1] == "workflow.completed"
+
+
+@pytest.mark.parametrize(("reason", "status"), [("user", "cancelled"), ("shutdown", "failed")])
+async def test_a_parallel_wait_is_closed_when_the_run_stops(
+    env: Env, reason: str, status: str
+) -> None:
+    graph = build(
+        [
+            node("start", "start"),
+            node("wait_1", "test_wait"),
+            node("hold_1", "test_hold"),
+            node("end_1", "end"),
+        ],
+        "start>wait_1",
+        "start>hold_1",
+        "wait_1>end_1",
+        "hold_1>end_1",
+    )
+    await env.version(graph)
+    run_id = await env.queued_run()
+    cancel = CancelSignal()
+    task = asyncio.create_task(env.executor()(env.key(run_id), cancel))
+    await asyncio.wait_for(env.hold.started.wait(), 5)
+
+    cancel.set(reason)
+    await asyncio.wait_for(task, 5)
+
+    assert (await env.run_row(run_id)).status == status
+    rows = {row.node_id: row for row in await env.node_rows(run_id)}
+    assert rows["hold_1"].status == "cancelled"
+    # 엔진은 이미 멈춘 대기 노드를 다시 돌리지 않으므로 실행기가 런과 같은 상태로 닫는다.
+    waited = rows["wait_1"]
+    assert waited.status == status and waited.ended_at is not None
+    if status == "failed":
+        assert waited.error is not None and waited.error["code"] == "shutdown"
 
 
 async def test_child_run_is_recorded_at_start_and_cancelled_when_the_run_fails(env: Env) -> None:

@@ -41,8 +41,13 @@ from app.services.child_runs import (
     claim_parent,
     orphan_runs,
 )
+from app.services.workflow_runs import (
+    close_waiting_nodes,
+    pending_of,
+    settle_message,
+    wf_run_ref,
+)
 from app.services.workflow_runs import completed_data as wf_completed_data
-from app.services.workflow_runs import pending_of, wf_run_ref
 from app.streaming.event_bus import EventBus, RunRef
 
 log = structlog.get_logger("app.runner")
@@ -82,6 +87,8 @@ async def recover_workflows(db: Database, supervisor: Supervisor, bus: EventBus)
                 run.resume_payload = None
                 run.ended_at = now
                 await nodes.close_running(run.id, now)
+                await close_waiting_nodes(session, run, now)
+                await settle_message(session, run)
                 failed.append(
                     (wf_run_ref(run), error, wf_completed_data(run, status=RunStatus.FAILED))
                 )

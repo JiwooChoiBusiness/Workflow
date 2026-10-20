@@ -92,7 +92,10 @@ def test_values_are_data_not_templates() -> None:
         ("{{ lipsum() }}", "template_error"),
         ("{{ 1 / 0 }}", "template_error"),
         ("{% for x in %}", "template_syntax"),
-        ("{% include 'other.txt' %}", "template_error"),
+        ("{% include 'other.txt' %}", "template_forbidden"),
+        ("{% import 'os' as os %}", "template_forbidden"),
+        ("{% from 'm.txt' import x %}", "template_forbidden"),
+        ("{% extends 'base.txt' %}", "template_forbidden"),
     ],
 )
 def test_sandbox_and_limits(template: str, code: str) -> None:

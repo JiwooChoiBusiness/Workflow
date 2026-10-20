@@ -2,8 +2,10 @@
 """변수 풀과 타입(설계 3.2).
 
 풀은 런 하나의 노드 출력, sys·env·conv 값을 scope와 이름으로 담는다. 노드 출력은 넣은 뒤 바꾸지
-않고 대화 변수(conv)만 variable_assigner가 바꾼다. iteration 하위 노드는 풀을 복제하지 않고
-"<node_id>@<index>"를 scope로 써서 저장하며, PoolView가 현재 프레임의 index로 이름을 푼다.
+않고 대화 변수(conv)와 돌고 있는 loop의 반복 변수("<loop id>" 자리)만 variable_assigner가 바꾼다.
+loop가 끝나면 반복 변수 자리는 loop 노드의 최종 출력으로 바뀐다. iteration 하위 노드는 풀을
+복제하지 않고 "<node_id>@<index>"를 scope로 써서 저장하며, PoolView가 현재 프레임의 index로 이름을
+푼다.
 크기 상한은 직렬화하지 않고 값을 넣을 때 잰 크기를 누적해 판정한다.
 """
 
@@ -321,10 +323,16 @@ class VariablePool:
         self._reserve(sum(entry.size for entry in entries.values()))
         self._scopes[scope] = entries
 
-    def assign(self, name: str, value: Any) -> None:
-        """대화 변수를 바꾼다. 선언 타입은 처음 넣을 때의 것을 유지한다."""
-        old = self._scopes.get(CONV, {}).get(name)
-        self.put(CONV, name, value, old.type if old else None)
+    def assign(self, name: str, value: Any, scope: str = CONV) -> None:
+        """대화 변수(또는 loop의 반복 변수)를 바꾼다. 선언 타입은 처음 넣을 때의 것을 유지한다."""
+        old = self._scopes.get(scope, {}).get(name)
+        self.put(scope, name, value, old.type if old else None)
+
+    def drop(self, scope: str) -> None:
+        """scope의 값을 모두 뺀다. loop가 끝나 반복 변수 자리를 최종 출력으로 바꿀 때 쓴다."""
+        variables = self._scopes.pop(scope, None)
+        if variables:
+            self._size -= sum(variable.size for variable in variables.values())
 
     def mark_skipped(self, scope: str) -> None:
         self._skipped.add(scope)
@@ -525,6 +533,38 @@ class Masker:
         if isinstance(value, list | tuple):
             return [self.mask(item) for item in cast(list[Any], value)]
         return value
+
+
+class StreamMasker:
+    """델타로 나뉘어 흐르는 글의 비밀값을 가린다(9.4).
+
+    조각마다 Masker를 거치면 조각 경계에 걸친 비밀값이 두 조각으로 나뉘어 그대로 나간다. 끝이
+    비밀값의 앞부분과 겹치는 만큼은 내보내지 않고 다음 조각과 이어서 보며, 스트림이 끝나면 flush로
+    남은 글을 낸다.
+    """
+
+    def __init__(self, masker: Masker) -> None:
+        self._masker = masker
+        self._held = ""
+
+    def feed(self, text: str) -> str:
+        secrets = self._masker.secrets
+        if not secrets:
+            return text
+        joined = self._masker.text(self._held + text)
+        keep = 0
+        for secret in secrets:
+            for size in range(min(len(secret) - 1, len(joined)), keep, -1):
+                if joined.endswith(secret[:size]):
+                    keep = size
+                    break
+        cut = len(joined) - keep
+        self._held = joined[cut:]
+        return joined[:cut]
+
+    def flush(self) -> str:
+        held, self._held = self._held, ""
+        return held
 
 
 def _json_default(value: object) -> str:

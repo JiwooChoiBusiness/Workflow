@@ -23,7 +23,8 @@ class WfFile(Base):
     kind: Mapped[str] = mapped_column(String)
     workflow_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("workflow.id"))
     wf_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("wf_run.id"))
-    # 챗플로우 대화(M17). 그 테이블이 생기기 전이라 외래 키가 없다.
+    # 챗플로우 대화(wf_conversation). 메시지에 붙인 업로드는 그 대화를 가리킨다. 표가 생기기 전에
+    # 만든 열이라 외래 키가 없다.
     conversation_id: Mapped[uuid.UUID | None]
     filename: Mapped[str] = mapped_column(String)
     mime: Mapped[str] = mapped_column(String)

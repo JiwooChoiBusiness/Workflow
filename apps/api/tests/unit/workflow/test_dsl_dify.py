@@ -177,19 +177,18 @@ def test_chatflow_example_keeps_unsupported_nodes_in_place() -> None:
     nodes = nodes_of(prepared)
 
     assert document.kind == "chatflow"
-    assert prepared.unsupported == ["n1730000000003", "n1730000000009"]
-    assert sorted(issues_of(prepared)) == [
-        ("unsupported_node", "n1730000000003"),
-        ("unsupported_node", "n1730000000009"),
-    ]
+    # 도구(time/current_time)는 M19부터 내장 current_time으로 들어온다.
+    assert prepared.unsupported == ["n1730000000003"]
+    assert sorted(issues_of(prepared)) == [("unsupported_node", "n1730000000003")]
     assert set(warnings_of(prepared)) == {
         ("model_replaced", "n1730000000002"),
         ("model_replaced", "n1730000000004"),
         ("model_replaced", "n1730000000006"),
         ("unsupported_node", "n1730000000003"),
-        ("unsupported_node", "n1730000000009"),
         ("features_ignored", None),
     }
+    assert nodes["n1730000000009"].type == "tool"
+    assert nodes["n1730000000009"].config == {"tool": "current_time", "params": {}}
     knowledge = nodes["n1730000000003"]
     assert knowledge.type == "unsupported" and knowledge.title == "환불 규정 검색"
     assert knowledge.config["original_type"] == "knowledge-retrieval"
@@ -258,22 +257,21 @@ def test_batch_example_maps_iteration_items_and_files() -> None:
     nodes = nodes_of(prepared)
 
     assert document.icon is None
-    assert prepared.unsupported == ["n2", "n3", "n5"]
-    assert sorted(issues_of(prepared)) == [
-        ("unsupported_node", "n2"),
-        ("unsupported_node", "n3"),
-        ("unsupported_node", "n5"),
-    ]
+    # list-operator·document-extractor는 M19부터 우리 노드로 들어온다.
+    assert prepared.unsupported == ["n2"]
+    assert sorted(issues_of(prepared)) == [("unsupported_node", "n2")]
     assert set(warnings_of(prepared)) == {
         ("file_upload_field", "n1"),
         ("unsupported_node", "n2"),
-        ("unsupported_node", "n3"),
         ("iteration_parallel", "n4"),
         ("model_replaced", "n4002"),
-        ("unsupported_node", "n5"),
         ("edge_dropped", None),
         ("icon_dropped", None),
     }
+    assert nodes["n3"].config == {"input_var": "n2.list", "slice": {"offset": 0, "limit": 5}}
+    assert nodes["n5"].config == {"file_var": "n1.files"}
+    # 여러 파일을 읽은 Dify text(배열)는 우리 texts다.
+    assert nodes["n6"].config["vars"][1] == {"name": "files_text", "var": "n5.texts"}
     assert nodes["n2"].config["original_type"] == "code"
     assert nodes["n1"].config["fields"][-1] == {
         "name": "files",
@@ -344,6 +342,7 @@ workflow:
     by_id = {node.id: node for node in document.graph.nodes}
     assert by_id["n2_start"].type == "iteration_start"
     assert by_id["n2_start"].parent_id == "n2"
+    assert by_id["n2_start"].title == "반복 시작"
     assert by_id["n3"].config["vars"] == [{"name": "x", "var": "n2_start.item"}]
     assert ("n2_start", "out", "n3") in [
         (edge.source, edge.source_handle, edge.target) for edge in document.graph.edges

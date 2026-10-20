@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# 떠 있는 서버의 서비스 API(/api/v1)를 curl로 훑는다(설계 6.4, 수용 조건 A9·A14).
+# 떠 있는 서버의 서비스 API(/api/v1)를 curl로 훑는다(설계 6.4, 수용 조건 A9·A14, 2단계 A7).
 #   bash scripts/smoke-api.sh <API 키>        (또는 API_KEY 환경변수)
-# 키는 발행한 에이전트의 것이어야 한다. 실제 모델을 부르므로 Gemini 호출이 몇 번 나간다.
-# 에이전트의 승인 모드가 all_shell이면 셸 실행 승인을 이 스크립트가 대신 보낸다.
+# 키는 발행한 에이전트·워크플로우·챗플로우의 것이어야 하고 /info의 종류에 따라 훑는 경로가 다르다.
+# 실제 모델을 부르므로 Gemini 호출이 몇 번 나간다.
+# 에이전트: chat-messages·대화·중지·과업. 승인 모드가 all_shell이면 셸 실행 승인을 대신 보낸다.
+# 워크플로우: workflows/run을 streaming·blocking으로 한 번씩, 런 조회·로그. start 입력은
+#   SMOKE_INPUTS에 JSON으로 준다(기본 {}).
+# 챗플로우: chat-messages 3턴(같은 대화, 가운데 턴은 streaming)과 대화·메시지 목록.
+# 워크플로우·챗플로우는 런마다 토큰과 걸린 시간을 출력한다.
 # SMOKE_RATE_LIMIT=1이면 마지막에 같은 키로 /info를 61번까지 불러 429를 확인한다(1분 동안 키가 막힌다).
 set -uo pipefail
 
@@ -66,6 +71,107 @@ completed_status() {
     sed -n 's/.*"data":{"status":"\([a-z_]*\)".*/\1/p'
 }
 
+workflow_status() {
+  # SSE 본문에서 workflow.completed의 status.
+  grep '^data: ' "$1" | grep '"type":"workflow.completed"' | tail -n 1 |
+    sed -n 's/.*"data":{"status":"\([a-z_]*\)".*/\1/p'
+}
+
+usage_of() {
+  # blocking 응답의 usage(입력·출력 토큰)를 "입력 N, 출력 M"으로.
+  sed -n 's/.*"usage":{"input_tokens":\([0-9]*\),"output_tokens":\([0-9]*\).*/입력 \1, 출력 \2/p' "$1"
+}
+
+smoke_workflow() {
+  local inputs="${SMOKE_INPUTS:-}" payload code run_id status started elapsed
+  [ -n "$inputs" ] || inputs='{}'
+  payload="$(json wf-stream '{"inputs":'"$inputs"',"user":"'"$user"'","response_mode":"streaming"}')"
+  started=$(date +%s%3N)
+  code="$(api POST /workflows/run "$payload")"
+  elapsed=$(($(date +%s%3N) - started))
+  run_id="$(header x-run-id)"
+  status="$(workflow_status "$work/body")"
+  report "workflows/run streaming (run $run_id, ${elapsed}ms)" \
+    "$([ "$code" = 200 ] && [ "$status" = succeeded ] && echo 1 || echo 0)" \
+    "$code status=$status $(tail -c 400 "$work/body")"
+  payload="$(json wf-block '{"inputs":'"$inputs"',"user":"'"$user"'","response_mode":"blocking"}')"
+  code="$(api POST /workflows/run "$payload")"
+  run_id="$(sed -n 's/.*"workflow_run_id":"\([^"]*\)".*/\1/p' "$work/body")"
+  elapsed="$(sed -n 's/.*"elapsed_ms":\([0-9]*\).*/\1/p' "$work/body")"
+  if [ "$code" = 200 ] && grep -q '"status":"succeeded"' "$work/body"; then
+    report "workflows/run blocking (토큰 $(usage_of "$work/body"), ${elapsed:-?}ms)" 1
+  else
+    report "workflows/run blocking" 0 "$code $(cat "$work/body")"
+  fi
+  code="$(api GET "/workflows/run/$run_id?user=$user")"
+  report "workflows/run/{run_id}" "$([ "$code" = 200 ] && grep -q '"status":"succeeded"' "$work/body" && echo 1 || echo 0)" \
+    "$code $(cat "$work/body")"
+  code="$(api GET "/workflows/logs?user=$user")"
+  report "workflows/logs" "$([ "$code" = 200 ] && grep -q "\"workflow_run_id\":\"$run_id\"" "$work/body" && echo 1 || echo 0)" \
+    "$code $(head -c 400 "$work/body")"
+}
+
+smoke_chatflow() {
+  local payload code conversation="" status started elapsed turn mode
+  for turn in 1 2 3; do
+    mode=blocking
+    [ "$turn" = 2 ] && mode=streaming
+    if [ -n "$conversation" ]; then
+      payload="$(json "chat$turn" '{"query":"'"$turn"'번째 질문이다. 앞에서 한 말을 한 문장으로 이어서 답한다.","user":"'"$user"'","conversation_id":"'"$conversation"'","response_mode":"'"$mode"'"}')"
+    else
+      payload="$(json "chat$turn" '{"query":"1번째 질문이다. 좋아하는 색을 하나 골라 한 문장으로 답한다.","user":"'"$user"'","response_mode":"'"$mode"'"}')"
+    fi
+    started=$(date +%s%3N)
+    code="$(api POST /chat-messages "$payload")"
+    elapsed=$(($(date +%s%3N) - started))
+    if [ "$mode" = streaming ]; then
+      status="$(workflow_status "$work/body")"
+      if [ "$code" = 200 ] && [ "$status" = succeeded ] && grep -q '^event: answer.delta' "$work/body"; then
+        report "chat-messages ${turn}턴 streaming(answer.delta, ${elapsed}ms)" 1
+      else
+        report "chat-messages ${turn}턴 streaming" 0 "$code status=$status $(tail -c 400 "$work/body")"
+      fi
+      continue
+    fi
+    [ -n "$conversation" ] || conversation="$(sed -n 's/.*"conversation_id":"\([^"]*\)".*/\1/p' "$work/body")"
+    if [ "$code" = 200 ] && grep -q '"status":"succeeded"' "$work/body" && ! grep -q '"answer":""' "$work/body"; then
+      report "chat-messages ${turn}턴 blocking (토큰 $(usage_of "$work/body"), ${elapsed}ms)" 1
+    else
+      report "chat-messages ${turn}턴 blocking" 0 "$code $(cat "$work/body")"
+    fi
+  done
+  code="$(api GET "/conversations?user=$user")"
+  report "conversations" "$([ "$code" = 200 ] && grep -q "\"id\":\"$conversation\"" "$work/body" && echo 1 || echo 0)" \
+    "$code $(cat "$work/body")"
+  code="$(api GET "/messages?conversation_id=$conversation&user=$user")"
+  report "messages (3턴 = 6개)" \
+    "$([ "$code" = 200 ] && [ "$(grep -o '"role":"assistant"' "$work/body" | wc -l)" = 3 ] && echo 1 || echo 0)" \
+    "$code $(head -c 400 "$work/body")"
+}
+
+check_rate_limit() {
+  # 키당 분당 60번
+  [ "${SMOKE_RATE_LIMIT:-0}" = 1 ] || return 0
+  local limited=0 i code retry
+  for i in $(seq 1 61); do
+    code="$(api GET /info)"
+    if [ "$code" = 429 ]; then
+      limited=$i
+      break
+    fi
+  done
+  retry="$(header retry-after)"
+  report "레이트 리밋 429 (${limited}번째, Retry-After ${retry:-없음})" \
+    "$([ "$limited" -gt 0 ] && [ -n "$retry" ] && echo 1 || echo 0)" "61번 불러도 429가 없다"
+}
+
+finish() {
+  if [ "$failed" = 0 ]; then
+    echo "모두 통과"
+  fi
+  exit "$failed"
+}
+
 approve_stream() {
   # 승인 대기면 승인을 보내고 재개된 런의 SSE를 $work/body로 받는다.
   local run_id="$1" payload
@@ -75,11 +181,18 @@ approve_stream() {
 
 code="$(api GET /info)"
 if [ "$code" = 200 ] && grep -q '"published":true' "$work/body"; then
-  report "/info (발행된 에이전트)" 1
+  report "/info (발행된 대상)" 1
 else
-  report "/info (발행된 에이전트)" 0 "$code $(cat "$work/body")"
-  echo "키가 맞는지, 에이전트를 발행했는지 확인한다."
+  report "/info (발행된 대상)" 0 "$code $(cat "$work/body")"
+  echo "키가 맞는지, 에이전트·워크플로우를 발행했는지 확인한다."
   exit 1
+fi
+kind="$(sed -n 's/.*"kind":"\([a-z]*\)".*/\1/p' "$work/body")"
+if [ "$kind" = workflow ] || [ "$kind" = chatflow ]; then
+  echo "      종류: $kind"
+  "smoke_$kind"
+  check_rate_limit
+  finish
 fi
 approval="$(sed -n 's/.*"approval_mode":"\([a-z_]*\)".*/\1/p' "$work/body")"
 echo "      승인 모드: ${approval:-?}"
@@ -165,22 +278,6 @@ code="$(api GET "/agent-tasks/$task_run?user=$user")"
 report "agent-tasks/{run_id}" "$([ "$code" = 200 ] && grep -q '"result":{"sum":5}' "$work/body" && echo 1 || echo 0)" \
   "$code $(cat "$work/body")"
 
-# 5. (선택) 레이트 리밋: 키당 분당 60번
-if [ "${SMOKE_RATE_LIMIT:-0}" = 1 ]; then
-  limited=0
-  for i in $(seq 1 61); do
-    code="$(api GET /info)"
-    if [ "$code" = 429 ]; then
-      limited=$i
-      break
-    fi
-  done
-  retry="$(header retry-after)"
-  report "레이트 리밋 429 (${limited}번째, Retry-After ${retry:-없음})" \
-    "$([ "$limited" -gt 0 ] && [ -n "$retry" ] && echo 1 || echo 0)" "61번 불러도 429가 없다"
-fi
-
-if [ "$failed" = 0 ]; then
-  echo "모두 통과"
-fi
-exit "$failed"
+# 5. (선택) 레이트 리밋
+check_rate_limit
+finish

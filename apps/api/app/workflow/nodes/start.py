@@ -1,7 +1,9 @@
 # pyright: strict
 """start 노드(설계 2.3). 런 입력을 필드 정의로 검사·변환해 start.<name>으로 내놓는다.
 
-서비스가 런을 만들기 전에 같은 coerce_inputs로 입력을 미리 검사해 422를 낼 수 있다.
+서비스가 런을 만들기 전에 같은 coerce_inputs로 입력을 미리 검사해 422를 낼 수 있다. 챗플로우의
+sys.query·files·conversation_id·message_id·user·turn은 실행기가 RunContext.system으로 넣어 엔진이
+풀에 올린다. 이 노드는 그 값을 노드 런 기록에 함께 남겨 로그에서 그 턴의 질문을 볼 수 있게 한다.
 """
 
 from collections.abc import Mapping, Sequence
@@ -20,9 +22,11 @@ from app.workflow.nodes.base import (
     OutputSpec,
     duplicate_names,
 )
-from app.workflow.variables import FileRef, VariableError, coerce
+from app.workflow.variables import SYS, FileRef, Selector, VariableError, coerce
 
 FieldType = Literal["string", "number", "boolean", "select", "file", "file_list", "paragraph"]
+# 챗플로우 턴마다 실행기가 채우는 sys 값(3.2).
+CHAT_SYS_NAMES = ("query", "files", "conversation_id", "message_id", "user", "turn")
 FIELD_TYPES: dict[FieldType, VarType] = {
     "string": "string",
     "paragraph": "string",
@@ -152,4 +156,9 @@ class StartRunner(NodeRunner[StartConfig]):
             values = coerce_inputs(config.fields, ctx.run_inputs)
         except InputError as exc:
             raise NodeFailure("invalid_inputs", f"런 입력이 올바르지 않다: {exc}") from None
-        return NodeResult(status="succeeded", outputs=values, inputs=dict(ctx.run_inputs))
+        inputs = dict(ctx.run_inputs)
+        if ctx.kind == "chatflow":
+            # 필드 이름에는 점이 없어 "sys.<이름>" 키가 필드 값과 겹치지 않는다.
+            for name in CHAT_SYS_NAMES:
+                inputs[f"{SYS}.{name}"] = ctx.pool.lookup(Selector(SYS, name)).value
+        return NodeResult(status="succeeded", outputs=values, inputs=inputs)

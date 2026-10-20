@@ -1,6 +1,6 @@
 # Dify DSL 구조를 보고 직접 쓴 작은 워크플로우 예제. iteration(+iteration-start) 안에서 llm이 item·index를
-# 읽고, 자바스크립트 code·list-operator·document-extractor는 우리가 옮기지 않는 노드다. 앱 아이콘은
-# 이미지이고, 파일 업로드 기능이 켜져 있어 sys.files를 읽는다.
+# 읽고, 자바스크립트 code는 우리가 옮기지 않는 노드다. list-operator·document-extractor는 M19부터
+# 우리 노드로 들어온다. 앱 아이콘은 이미지이고, 파일 업로드 기능이 켜져 있어 sys.files를 읽는다.
 app:
   description: 주소 목록을 나눠 하나씩 요약하고 첨부 문서를 붙인다
   icon: 3f2a7c10-0000-4000-8000-0000000000aa

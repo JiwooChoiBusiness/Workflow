@@ -20,12 +20,16 @@ from sqlalchemy import select
 
 from app.agent.task_service import AgentTaskSpec
 from app.config import Settings
-from app.db.models import WfRun
-from app.db.types import utcnow
+from app.db.models import WfFile, WfRun
+from app.db.models.enums import WfFileKind
+from app.db.repositories.workflows import WfFileRepository
+from app.db.types import new_id, utcnow
+from app.housekeeping import WorkflowRetention
 from app.llm.fake_adapter import fake_end, fake_text, fake_tool_call
 from app.llm.types import Usage
 from app.schemas.events import NodeError
 from app.services.runs import RunMaintenance
+from app.storage.base import wf_file_key
 from app.workflow import nodes as workflow_nodes
 from app.workflow.nodes.base import (
     ALL_STRATEGIES,
@@ -614,6 +618,196 @@ async def test_uploaded_file_becomes_a_file_input(api: AsyncClient, sse: Events)
         json={"inputs": {"doc": str(uuid.uuid4())}},
     )
     assert unknown.status_code == 422 and unknown.json()["error"]["code"] == "file_not_found"
+
+
+async def test_workspace_run_list_keeps_runs_of_deleted_workflows(api: AsyncClient) -> None:
+    kept = (await create_workflow(api, "남는 흐름"))["id"]
+    gone = (await create_workflow(api, "지울 흐름"))["id"]
+    for workflow_id in (kept, gone):
+        await save_draft(api, workflow_id, GREETING)
+    runs: dict[str, str] = {}
+    for workflow_id, name in ((gone, "가"), (kept, "나"), (kept, "다")):
+        response = await api.post(
+            f"/api/console/workflows/{workflow_id}/draft/runs",
+            json={"inputs": {"name": name}, "response_mode": "blocking"},
+        )
+        runs[name] = response.json()["id"]
+    single = await api.post(
+        f"/api/console/workflows/{kept}/draft/nodes/template_1/runs",
+        json={"inputs": {"start.name": "단일"}, "response_mode": "blocking"},
+    )
+    assert single.status_code == 200, single.text
+    deleted = await api.delete(
+        f"/api/console/workflows/{gone}", headers={"X-Requested-With": "fetch"}
+    )
+    assert deleted.status_code == 204
+
+    listed = (await api.get("/api/console/wf-runs")).json()
+
+    assert [item["id"] for item in listed["items"]] == [runs["다"], runs["나"], runs["가"]]
+    assert [(item["workflow_name"], item["workflow_deleted"]) for item in listed["items"]] == [
+        ("남는 흐름", False),
+        ("남는 흐름", False),
+        ("지울 흐름", True),
+    ]
+    assert listed["items"][0]["kind"] == "workflow" and listed["next_offset"] is None
+    only_gone = (await api.get("/api/console/wf-runs", params={"workflow_id": gone})).json()
+    assert [item["id"] for item in only_gone["items"]] == [runs["가"]]
+    paged = (await api.get("/api/console/wf-runs", params={"limit": 2})).json()
+    assert len(paged["items"]) == 2 and paged["next_offset"] == 2
+    singles = (await api.get("/api/console/wf-runs", params={"trigger": "single_node"})).json()
+    assert [item["id"] for item in singles["items"]] == [single.json()["id"]]
+    failed = (await api.get("/api/console/wf-runs", params={"status": "failed"})).json()
+    assert failed["items"] == []
+
+
+async def one_chunk(data: bytes) -> AsyncIterator[bytes]:
+    yield data
+
+
+async def test_console_downloads_files_only_through_their_run(
+    app: FastAPI, api: AsyncClient
+) -> None:
+    workflow_id = (await create_workflow(api, "파일 받기"))["id"]
+    file_graph = graph(
+        [
+            node("start", "start", {"fields": [{"name": "doc", "type": "file", "label": "문서"}]}),
+            node("end_1", "end", {"outputs": [{"name": "doc", "var": "start.doc"}]}, 300),
+        ],
+        "start>end_1",
+    )
+    await save_draft(api, workflow_id, file_graph)
+    uploaded = await api.post(
+        f"/api/console/workflows/{workflow_id}/files",
+        files={"file": ("보고서.txt", "내용".encode(), "text/plain")},
+        headers={"X-Requested-With": "fetch"},
+    )
+    file_id = uploaded.json()["id"]
+    first = await api.post(
+        f"/api/console/workflows/{workflow_id}/draft/runs",
+        json={"inputs": {"doc": file_id}, "response_mode": "blocking"},
+    )
+    run_id = first.json()["id"]
+    assert first.json()["status"] == "succeeded"
+    second = await api.post(
+        f"/api/console/workflows/{workflow_id}/draft/runs",
+        json={"inputs": {}, "response_mode": "blocking"},
+    )
+    other_id = second.json()["id"]
+
+    download = await api.get(f"/api/console/wf-runs/{run_id}/files/{file_id}/download")
+
+    assert download.status_code == 200, download.text
+    assert download.content.decode("utf-8") == "내용"
+    assert "attachment" in download.headers["content-disposition"]
+    # 노드가 이 런에서 만든 파일은 출력에 없어도 받는다.
+    state = app.state
+    async with state.db.read() as session:
+        found = await session.get(WfRun, uuid.UUID(run_id))
+        assert found is not None
+        workspace_id = found.workspace_id
+    output_id = new_id()
+    key = wf_file_key(workspace_id, output_id)
+    stored = await state.storage.write_stream(key, one_chunk(b"made"), max_bytes=1024)
+    async with state.db.write() as session:
+        WfFileRepository(session, workspace_id).add(
+            WfFile(
+                id=output_id,
+                kind=WfFileKind.OUTPUT,
+                workflow_id=uuid.UUID(workflow_id),
+                wf_run_id=uuid.UUID(run_id),
+                filename="made.bin",
+                mime="application/octet-stream",
+                size_bytes=stored.size_bytes,
+                sha256=stored.sha256,
+                storage_key=key,
+                created_at=utcnow(),
+            )
+        )
+    made = await api.get(f"/api/console/wf-runs/{run_id}/files/{output_id}/download")
+    assert made.status_code == 200 and made.content == b"made"
+    for path in (
+        f"/api/console/wf-runs/{other_id}/files/{file_id}/download",
+        f"/api/console/wf-runs/{other_id}/files/{output_id}/download",
+        f"/api/console/wf-runs/{run_id}/files/{uuid.uuid4()}/download",
+        f"/api/console/wf-runs/{uuid.uuid4()}/files/{file_id}/download",
+    ):
+        assert (await api.get(path)).status_code == 404, path
+    # 행은 있는데 저장소에서 파일이 사라졌으면 file_missing이다.
+    await state.storage.delete(key)
+    missing = await api.get(f"/api/console/wf-runs/{run_id}/files/{output_id}/download")
+    assert missing.status_code == 404 and missing.json()["error"]["code"] == "file_missing"
+
+
+async def test_run_inputs_are_bound_to_the_run_and_outlive_the_loose_upload_cleanup(
+    app: FastAPI, api: AsyncClient
+) -> None:
+    workflow_id = (await create_workflow(api, "입력 파일"))["id"]
+    file_graph = graph(
+        [
+            node("start", "start", {"fields": [{"name": "doc", "type": "file", "label": "문서"}]}),
+            node(
+                "template_1",
+                "template",
+                {"template": "{{ d.filename }}", "vars": [{"name": "d", "var": "start.doc"}]},
+                300,
+            ),
+            node("end_1", "end", {"outputs": [{"name": "name", "var": "template_1.output"}]}, 600),
+        ],
+        "start>template_1",
+        "template_1>end_1",
+    )
+    await save_draft(api, workflow_id, file_graph)
+    ids: dict[str, str] = {}
+    for name in ("used", "single", "unused"):
+        uploaded = await api.post(
+            f"/api/console/workflows/{workflow_id}/files",
+            files={"file": (f"{name}.txt", name.encode(), "text/plain")},
+            headers={"X-Requested-With": "fetch"},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        ids[name] = uploaded.json()["id"]
+
+    runs = [
+        await api.post(
+            f"/api/console/workflows/{workflow_id}/draft/runs",
+            json={"inputs": {"doc": ids["used"]}, "response_mode": "blocking"},
+        )
+        for _ in range(2)
+    ]
+    single = await api.post(
+        f"/api/console/workflows/{workflow_id}/draft/nodes/template_1/runs",
+        json={"inputs": {"start.doc": ids["single"]}, "response_mode": "blocking"},
+    )
+
+    for response in (*runs, single):
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "succeeded", response.json()
+    state = app.state
+    async with state.db.read() as session:
+        rows = {str(row.id): row for row in (await session.scalars(select(WfFile))).all()}
+    # 처음 쓴 런에 묶이고, 다른 런이 다시 써도 옮기지 않는다.
+    assert str(rows[ids["used"]].wf_run_id) == runs[0].json()["id"]
+    assert str(rows[ids["single"]].wf_run_id) == single.json()["id"]
+    assert rows[ids["unused"]].wf_run_id is None
+    later = WorkflowRetention(
+        state.db,
+        storage=state.storage,
+        backend=state.wf_sandbox,
+        retention_days=90,
+        clock=lambda: utcnow() + timedelta(days=8),
+    )
+
+    assert await later.purge_loose_uploads() == 1
+
+    async with state.db.read() as session:
+        left = {str(file_id) for file_id in (await session.scalars(select(WfFile.id))).all()}
+    assert left == {ids["used"], ids["single"]}
+    for run in runs:
+        download = await api.get(
+            f"/api/console/wf-runs/{run.json()['id']}/files/{ids['used']}/download"
+        )
+        assert download.status_code == 200 and download.content == b"used"
 
 
 async def test_llm_node_streams_deltas_and_counts_usage(

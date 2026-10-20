@@ -338,6 +338,9 @@ async def test_stopping_a_waiting_run_cancels_the_child(
 
     assert stopped.status_code == 200 and stopped.json()["status"] == "cancelled"
     assert (await api.get(f"/api/console/runs/{child_id}")).json()["status"] == "cancelled"
+    detail = (await api.get(f"/api/console/wf-runs/{run_id}")).json()
+    agent_run = next(item for item in detail["node_runs"] if item["node_id"] == "agent_1")
+    assert agent_run["status"] == "cancelled" and agent_run["ended_at"] is not None
 
 
 async def test_json_result_files_and_approval_off_setting(

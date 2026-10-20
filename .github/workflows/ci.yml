@@ -67,3 +67,45 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  # Playwright 스모크(설계 7.6, 2단계 M20). 러너에 깔린 Edge를 쓰고 가짜 어댑터 서버를 8502에 띄운다.
+  # 각본 서버가 필요한 orchestration.spec은 스스로 건너뛴다. 실패하면 서버 로그를 남긴다.
+  e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.0"
+          python-version: "3.12"
+      - run: uv sync --locked
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: apps/web
+      - run: pnpm build
+        working-directory: apps/web
+      - name: 시험 서버 띄우기
+        shell: bash
+        run: |
+          export SERVER_PORT=8502 DATA_DIR="$RUNNER_TEMP/e2e-data" LLM_FAKE=true GEMINI_API_KEYS=, PYTHONUTF8=1
+          # dsl.spec이 비밀 환경 변수를 저장하므로 일회용 키를 만든다.
+          export ENCRYPTION_KEY="$(uv run python -c 'import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())')"
+          nohup uv run platform serve > "$RUNNER_TEMP/e2e-server.log" 2>&1 &
+          for _ in $(seq 1 90); do
+            curl -sf http://127.0.0.1:8502/healthz > /dev/null && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/e2e-server.log"
+          exit 1
+      - run: pnpm e2e
+        working-directory: apps/web
+      - if: failure()
+        shell: bash
+        run: tail -n 200 "$RUNNER_TEMP/e2e-server.log"

@@ -95,3 +95,9 @@ class WfNodeRunStatus(StrEnum):
 class WfFileKind(StrEnum):
     UPLOAD = "upload"
     OUTPUT = "output"
+
+
+class WfConversationSource(StrEnum):
+    PREVIEW = "preview"
+    WEBAPP = "webapp"
+    API = "api"

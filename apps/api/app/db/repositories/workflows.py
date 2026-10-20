@@ -3,11 +3,12 @@
 import uuid
 from collections.abc import Collection, Sequence
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func
 
 from app.db.models import Run, WfFile, WfNodeRun, WfRun, WfRunEvent, WfVersion, Workflow
-from app.db.models.enums import WfFileKind, WfNodeRunStatus, WfRunTrigger
+from app.db.models.enums import RunStatus, WfFileKind, WfNodeRunStatus, WfRunTrigger
 from app.db.repositories.base import WorkspaceScopedRepository
 
 
@@ -24,6 +25,12 @@ class WorkflowRepository(WorkspaceScopedRepository[Workflow]):
         return await self._scalar(
             self._select().where(Workflow.slug == slug, Workflow.deleted_at.is_(None))
         )
+
+    async def get_many(self, workflow_ids: Collection[uuid.UUID]) -> list[Workflow]:
+        """지운 워크플로우도 포함한다(런 로그에 이름을 보일 때)."""
+        if not workflow_ids:
+            return []
+        return await self._scalars(self._select().where(Workflow.id.in_(list(workflow_ids))))
 
     async def list_active(self, *, kind: str | None = None) -> list[Workflow]:
         statement = self._select().where(Workflow.deleted_at.is_(None))
@@ -106,6 +113,45 @@ class WfRunRepository(WorkspaceScopedRepository[WfRun]):
         if not run_ids:
             return []
         return await self._scalars(self._select().where(WfRun.id.in_(list(run_ids))))
+
+    async def active_for_conversation(self, conversation_id: uuid.UUID) -> WfRun | None:
+        """대화에서 아직 끝나지 않은 런(큐, 실행 중, 입력 대기)."""
+        return await self._scalar(
+            self._select()
+            .where(
+                WfRun.conversation_id == conversation_id,
+                WfRun.status.in_([RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING_INPUT]),
+            )
+            .order_by(WfRun.queued_at.desc())
+            .limit(1)
+        )
+
+    async def latest_for_conversation(self, conversation_id: uuid.UUID) -> WfRun | None:
+        return await self._scalar(
+            self._select()
+            .where(WfRun.conversation_id == conversation_id)
+            .order_by(WfRun.queued_at.desc(), WfRun.id.desc())
+            .limit(1)
+        )
+
+    async def list_for_key(
+        self,
+        api_key_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        external_user: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[WfRun]:
+        """서비스 API 키 하나로 만든 런(최근 것부터)."""
+        statement = self._select().where(WfRun.api_key_id == api_key_id)
+        if status is not None:
+            statement = statement.where(WfRun.status == status)
+        if external_user is not None:
+            statement = statement.where(WfRun.external_user == external_user)
+        return await self._scalars(
+            statement.order_by(WfRun.queued_at.desc(), WfRun.id.desc()).limit(limit).offset(offset)
+        )
 
     async def list_filtered(
         self,
@@ -269,6 +315,27 @@ class WfNodeRunRepository(WorkspaceScopedRepository[WfNodeRun]):
             row.ended_at = now
         return len(rows)
 
+    async def close_waiting(
+        self,
+        wf_run_id: uuid.UUID,
+        now: datetime,
+        *,
+        status: WfNodeRunStatus,
+        error: dict[str, Any] | None = None,
+    ) -> int:
+        """런이 끝날 때 아직 입력을 기다리던 노드 런을 status로 닫는다."""
+        rows = await self._scalars(
+            self._select().where(
+                WfNodeRun.wf_run_id == wf_run_id,
+                WfNodeRun.status == WfNodeRunStatus.WAITING_INPUT,
+            )
+        )
+        for row in rows:
+            row.status = status
+            row.error = dict(error) if error is not None else None
+            row.ended_at = now
+        return len(rows)
+
     async def clear_iteration_io(self, wf_run_ids: Collection[uuid.UUID]) -> None:
         if wf_run_ids:
             await self._execute(
@@ -365,6 +432,58 @@ class WfFileRepository(WorkspaceScopedRepository[WfFile]):
         if not wf_run_ids:
             return []
         return await self._scalars(self._select().where(WfFile.wf_run_id.in_(list(wf_run_ids))))
+
+    async def uploads_for_conversations(
+        self, conversation_ids: Collection[uuid.UUID]
+    ) -> list[WfFile]:
+        if not conversation_ids:
+            return []
+        return await self._scalars(
+            self._select().where(
+                WfFile.kind == WfFileKind.UPLOAD,
+                WfFile.conversation_id.in_(list(conversation_ids)),
+            )
+        )
+
+    async def bind_to_run(
+        self, wf_run_id: uuid.UUID, workflow_id: uuid.UUID, file_ids: Collection[uuid.UUID]
+    ) -> None:
+        """이 워크플로우의 업로드 중 런·대화에 아직 묶이지 않은 것을 런에 묶는다."""
+        if file_ids:
+            await self._execute(
+                self._update()
+                .where(
+                    WfFile.id.in_(list(file_ids)),
+                    WfFile.workflow_id == workflow_id,
+                    WfFile.kind == WfFileKind.UPLOAD,
+                    WfFile.wf_run_id.is_(None),
+                    WfFile.conversation_id.is_(None),
+                )
+                .values(wf_run_id=wf_run_id)
+            )
+
+    async def loose_uploads_before(
+        self, cutoff: datetime, *, after: uuid.UUID | None, limit: int
+    ) -> list[WfFile]:
+        """런·대화를 가리키지 않는 업로드 중 cutoff 전에 올린 것. id 순으로 after 다음부터."""
+        statement = self._select().where(
+            WfFile.kind == WfFileKind.UPLOAD,
+            WfFile.wf_run_id.is_(None),
+            WfFile.conversation_id.is_(None),
+            WfFile.created_at < cutoff,
+        )
+        if after is not None:
+            statement = statement.where(WfFile.id > after)
+        return await self._scalars(statement.order_by(WfFile.id).limit(limit))
+
+    async def conversation_upload_owners(self) -> set[uuid.UUID]:
+        """메시지에 붙은 업로드가 가리키는 대화 id."""
+        rows = await self._scalars(
+            self._select(WfFile.conversation_id)
+            .where(WfFile.kind == WfFileKind.UPLOAD, WfFile.conversation_id.is_not(None))
+            .distinct()
+        )
+        return set(rows)
 
     async def delete_many(self, file_ids: Collection[uuid.UUID]) -> None:
         if file_ids:

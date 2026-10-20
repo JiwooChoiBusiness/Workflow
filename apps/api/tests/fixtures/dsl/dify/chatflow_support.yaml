@@ -1,6 +1,7 @@
 # Dify DSL 구조를 보고 직접 쓴 작은 챗플로우(advanced-chat) 예제. 질문 분류 뒤 세 갈래로 나뉘고,
-# 지식 검색(knowledge-retrieval)과 도구(tool) 노드는 우리가 옮기지 않는 노드다. 대화 변수, 여는 말,
-# 추천 질문, 파일 업로드, 메모리를 쓰는 llm, 할당 노드(v2)가 들어 있다.
+# 지식 검색(knowledge-retrieval)은 우리가 옮기지 않는 노드이며 도구(tool)는 내장 current_time으로
+# 들어온다(M19). 대화 변수, 여는 말, 추천 질문, 파일 업로드, 메모리를 쓰는 llm, 할당 노드(v2)가
+# 들어 있다.
 app:
   description: 환불·배송·그 밖의 질문을 나눠 답한다
   icon: 🤖

@@ -9,7 +9,8 @@ json_mode는 Gemini response_format이 아니라 시스템 지시 + 응답에서
 어댑터는 바꾸지 않는 대상이라 ChatRequest에 응답 형식 자리가 없다. 추출에 실패하면 1회 다시 묻고,
 그래도 안 되면 invalid_json이다.
 
-메모리(대화 히스토리)는 챗플로우(M17)에서 붙인다. 지금은 설정만 받고 쓰지 않는다.
+챗플로우에서 memory를 켜면 대화의 앞 턴(ctx.history) 중 window_turns개를 시스템 글 다음, 프롬프트의
+user·assistant 블록 앞에 넣는다. 컨텍스트를 넘으면 창을 반으로 줄여 한 번만 다시 본다.
 """
 
 import base64
@@ -39,6 +40,7 @@ from app.llm.types import (
 from app.schemas.agent_version import ModelConfig
 from app.schemas.events import NodeError, UsageTotal
 from app.schemas.workflow import Issue
+from app.workflow.memory import MemoryConfig, Turn, recent, turn_messages
 from app.workflow.nodes.base import (
     ALL_STRATEGIES,
     GraphView,
@@ -79,13 +81,6 @@ class PromptMessage(BaseModel):
     role: Literal["system", "user", "assistant"] = "user"
     # 템플릿(3.3). 렌더한 결과가 비면 그 블록은 보내지 않는다.
     text: str = ""
-
-
-class MemoryConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    window_turns: int = Field(default=10, ge=1, le=50)
 
 
 class VisionConfig(BaseModel):
@@ -349,6 +344,10 @@ class LlmRunner(NodeRunner[LlmConfig]):
             for index, item in enumerate(config.prompt)
         ]
 
+    def stream_output(self, config: LlmConfig) -> str | None:
+        # json_mode는 다시 묻는 두 번째 응답이 출력이 될 수 있어 델타와 text가 어긋난다.
+        return None if config.json_mode else "text"
+
     def validate(self, config: LlmConfig, graph: GraphView) -> list[Issue]:
         # model_id가 실제로 있는지는 서버 설정(폴백 목록)을 알아야 해서 실행 때 어댑터가 알린다.
         issues: list[Issue] = []
@@ -425,14 +424,24 @@ class LlmRunner(NodeRunner[LlmConfig]):
             images = await attach_images(ctx, config.vision.var, messages)
         if config.json_mode:
             system = "\n\n".join(part for part in (system, json_instruction(config)) if part)
+        turns = recent(ctx.history, config.memory.window_turns) if _remembers(ctx, config) else []
         request = ChatRequest(
             model=config.model.model_id,
             system=system,
-            messages=messages,
+            messages=with_memory(turns, messages),
             params=model_params(config.model),
             metadata={"run_id": str(ctx.run_id)},
         )
-        check_context(ctx, request)
+        try:
+            check_context(ctx, request)
+        except NodeFailure as exc:
+            if exc.code != "context_too_long" or not turns:
+                raise
+            # 메모리 창을 반으로 줄여 한 번만 다시 본다(2.3). 가장 최근 턴을 남긴다.
+            turns = turns[(len(turns) + 1) // 2 :]
+            ctx.warn(f"memory_trimmed: 컨텍스트를 넘어 메모리를 {len(turns)}턴으로 줄였다")
+            request = request.model_copy(update={"messages": with_memory(turns, messages)})
+            check_context(ctx, request)
         inputs: dict[str, Any] = {
             "model": config.model.model_id,
             "params": config.model.params.model_dump(exclude_none=True),
@@ -441,6 +450,12 @@ class LlmRunner(NodeRunner[LlmConfig]):
         }
         if images:
             inputs["images"] = images
+        if _remembers(ctx, config):
+            inputs["memory"] = [
+                {"role": role, "text": text}
+                for turn in turns
+                for role, text in (("user", turn.query), ("assistant", turn.answer))
+            ]
         reply = await meter.call(request, stream=True)
         warnings = stop_warnings(reply)
         text = reply.text
@@ -451,7 +466,7 @@ class LlmRunner(NodeRunner[LlmConfig]):
                 retry = request.model_copy(
                     update={
                         "messages": [
-                            *messages,
+                            *request.messages,
                             assistant_message(text),
                             user_message(
                                 f"앞 응답을 JSON으로 읽지 못했다({problem}). "
@@ -479,6 +494,22 @@ class LlmRunner(NodeRunner[LlmConfig]):
             process=meter.process(config.model.model_id),
             warnings=warnings,
         )
+
+
+def _remembers(ctx: NodeContext, config: LlmConfig) -> bool:
+    return config.memory.enabled and ctx.kind == "chatflow"
+
+
+def with_memory(turns: list[Turn], messages: list[CanonicalMessage]) -> list[CanonicalMessage]:
+    """앞 턴 메시지 뒤에 프롬프트 메시지를 잇는다. 이웃한 같은 역할은 합친다."""
+    joined = turn_messages(turns)
+    for message in messages:
+        if joined and joined[-1].role == message.role:
+            last = joined[-1]
+            joined[-1] = last.model_copy(update={"blocks": [*last.blocks, *message.blocks]})
+        else:
+            joined.append(message)
+    return joined
 
 
 def json_instruction(config: LlmConfig) -> str:

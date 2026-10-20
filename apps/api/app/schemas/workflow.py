@@ -136,6 +136,35 @@ class NodeType(BaseModel):
     dynamic_outputs: bool
     # 출발 핸들이 config에서 나오는 분기 노드(if_else의 case_<id>/else).
     branching: bool
+    # kinds 밖이어도 loop 하위 그래프 안에서는 둘 수 있는 앱 종류. variable_assigner는 워크플로우의
+    # loop 안에서 반복 변수(<loop id>.<이름>)를 바꾼다.
+    loop_kinds: list[WorkflowKind] = Field(default_factory=list[WorkflowKind])
+
+
+class ToolParamOut(BaseModel):
+    name: str
+    # string·number·boolean. tool 노드 params의 값이 이 타입으로 맞춰진다.
+    type: VarType
+    label: str
+    description: str
+    required: bool
+    default: Any = None
+    # 고를 수 있는 값. null이면 자유 입력이다.
+    options: list[str] | None = None
+    max_length: int | None = None
+
+
+class ToolSpecOut(BaseModel):
+    """tool 노드가 부를 수 있는 내장 도구. config.tool에 name을 쓴다."""
+
+    name: str
+    label: str
+    description: str
+    params: list[ToolParamOut]
+    # params를 JSON Schema로 옮긴 것(title·description·type·default·enum·maxLength·required).
+    params_schema: dict[str, Any]
+    # 이 도구를 고른 tool 노드의 출력.
+    outputs: list[OutputSpecOut]
 
 
 WorkflowName = Annotated[
@@ -355,6 +384,8 @@ class WorkflowPublishOut(BaseModel):
 
 class NodeTypeList(BaseModel):
     items: list[NodeType]
+    # tool 노드의 내장 도구.
+    tools: list[ToolSpecOut] = Field(default_factory=list[ToolSpecOut])
 
 
 class WorkflowImportRequest(BaseModel):

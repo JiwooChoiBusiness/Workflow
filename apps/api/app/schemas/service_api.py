@@ -1,7 +1,10 @@
-"""서비스 API(/api/v1) 요청·응답(설계 6.4).
+"""서비스 API(/api/v1) 요청·응답(설계 6.4, 2단계 설계 6.3).
 
-대화(conversation)는 source=api 세션이고, 과업은 source=task 세션의 런이다. user는 모든 요청에서
-선택이며 주면 session.external_user에 남고 그 사용자의 대화만 보인다.
+에이전트 키에서 대화(conversation)는 source=api 세션이고, 과업은 source=task 세션의 런이다. user는
+모든 요청에서 선택이며 주면 session.external_user에 남고 그 사용자의 대화만 보인다.
+
+워크플로우 키는 같은 경로를 쓰되 대상에 맞는 모양(Flow*)으로 답한다. 챗플로우 대화는
+wf_conversation, 메시지는 wf_message이고 블록 대신 text다.
 """
 
 import uuid
@@ -11,7 +14,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.schemas.common import ApprovalMode, RunLimits
-from app.schemas.events import UsageTotal
+from app.schemas.events import UsageTotal, WorkflowKind
 from app.schemas.run import PendingInteractionOut, RunErrorOut, RunOut, RunStatus
 from app.schemas.session import (
     MAX_MESSAGE_CHARS,
@@ -21,6 +24,10 @@ from app.schemas.session import (
     SessionTitle,
 )
 from app.schemas.task import SessionMode
+from app.schemas.webapp import FlowField
+from app.schemas.wf_conversation import WfMessageOut
+from app.schemas.wf_run import WfPendingOut, WfRunErrorOut, WfRunOut
+from app.schemas.workflow import WorkflowLimits
 
 ExternalUser = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
@@ -83,6 +90,18 @@ class ApiRunInput(BaseModel):
     session_auto_approve: bool = False
     # none: 바로 RunOut(202). streaming: 재개된 런의 SSE, blocking: 끝날 때까지 기다린 결과.
     response_mode: Literal["none", "streaming", "blocking"] = "none"
+
+
+class ApiFlowRunInput(ApiRunInput):
+    """워크플로우·챗플로우 런의 /input. 승인·질문 응답에 더해 human_input 폼 응답(kind=form,
+    values)을 받는다. 파일 칸 값은 /files/upload로 올린 id다. 에이전트 키로 form을 보내면 422다."""
+
+    kind: Literal["approval", "question", "form"] | None = None
+    values: dict[str, Any] | None = Field(default=None, max_length=MAX_INPUTS)
+
+    @property
+    def is_form(self) -> bool:
+        return self.kind == "form" or self.values is not None
 
 
 class ConversationOut(BaseModel):
@@ -179,3 +198,118 @@ class AgentTaskCreate(BaseModel):
     # reuse일 때 이어 쓸 과업 세션(앞 과업 응답의 session_id). 비우면 새 세션.
     session_id: uuid.UUID | None = None
     response_mode: Literal["streaming", "blocking"] = "blocking"
+
+
+class WorkflowRunRequest(BaseModel):
+    """POST /workflows/run. 파일 입력은 start의 file 필드에 /files/upload로 올린 id를 준다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    inputs: dict[str, Any] = Field(default_factory=dict[str, Any], max_length=MAX_INPUTS)
+    user: ExternalUser | None = None
+    response_mode: Literal["streaming", "blocking"] = "streaming"
+
+
+class WorkflowRunResult(BaseModel):
+    """워크플로우 런의 blocking 응답이자 폴링 결과. 입력을 기다리면 pending_interaction이 있다."""
+
+    workflow_run_id: uuid.UUID
+    status: RunStatus
+    # end 출력을 합친 전문. succeeded가 아니면 null.
+    outputs: dict[str, Any] | None
+    usage: UsageTotal
+    # 시작부터 끝(아직이면 지금)까지의 벽시계 시간. 입력 대기 시간도 들어간다.
+    elapsed_ms: int
+    error: WfRunErrorOut | None = None
+    pending_interaction: WfPendingOut | None = None
+    # 챗플로우 런이면 대화와 그 턴의 assistant 메시지.
+    conversation_id: uuid.UUID | None = None
+    message_id: uuid.UUID | None = None
+    created_at: datetime
+    ended_at: datetime | None = None
+
+
+class WorkflowRunList(BaseModel):
+    # 최근 것부터. 다음 쪽이 있으면 cursor로 다시 부른다.
+    items: list[WorkflowRunResult]
+    next_cursor: str | None = None
+
+
+class FlowChatMessageResult(BaseModel):
+    """챗플로우 키의 chat-messages blocking 응답. 1단계 ChatMessageResult와 같은 이름을 쓴다."""
+
+    conversation_id: uuid.UUID
+    # 이 턴의 assistant 메시지.
+    message_id: uuid.UUID | None
+    # 워크플로우 런. 중지·응답·이벤트는 /chat-messages/{run_id}/...로 부른다.
+    run_id: uuid.UUID
+    answer: str
+    usage: UsageTotal
+    status: RunStatus
+    pending_interaction: WfPendingOut | None = None
+    error: WfRunErrorOut | None = None
+
+
+class FlowConversationOut(BaseModel):
+    id: uuid.UUID
+    name: str | None
+    external_user: str | None
+    wf_version_id: uuid.UUID
+    message_count: int
+    last_message_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FlowConversationDetail(FlowConversationOut):
+    # 있으면 GET /chat-messages/{active_run.id}/events로 다시 붙는다.
+    active_run: WfRunOut | None
+    last_run: WfRunOut | None
+
+
+class FlowConversationList(BaseModel):
+    items: list[FlowConversationOut]
+    next_cursor: str | None = None
+
+
+class FlowApiMessageList(BaseModel):
+    # seq 오름차순. 더 앞의 메시지는 cursor=next_cursor로 다시 부른다.
+    items: list[WfMessageOut]
+    has_more: bool
+    next_cursor: str | None = None
+
+
+class FlowFileUploadOut(BaseModel):
+    file_id: uuid.UUID
+    filename: str
+    size: int
+    mime: str
+    # conversation_id를 주고 올린 챗플로우 파일만 그 대화를 가리킨다.
+    conversation_id: uuid.UUID | None
+
+
+class FlowInfoOut(BaseModel):
+    workflow_id: uuid.UUID
+    slug: str
+    name: str
+    icon: str | None
+    description: str
+    kind: WorkflowKind
+    published: bool
+    version_id: uuid.UUID | None
+    version_number: int | None
+    published_at: datetime | None
+    webapp_enabled: bool
+
+
+class FlowParametersOut(BaseModel):
+    kind: WorkflowKind
+    # 발행 버전 start 노드의 입력 필드. inputs에 이 이름으로 준다. 발행 전이면 빈 목록이다.
+    user_input_form: list[FlowField]
+    limits: WorkflowLimits | None
+    file_upload: FileUploadLimits
+    response_modes: list[str]
+    scopes: list[str]
+    # 챗플로우 웹앱 설정(settings.webapp)의 시작 문구와 추천 질문.
+    opening_statement: str | None = None
+    suggested_questions: list[str] = Field(default_factory=list[str])

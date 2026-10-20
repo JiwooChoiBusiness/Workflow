@@ -109,6 +109,8 @@ async def test_create_uses_template_graphs_and_free_slugs(
     chat_draft = await service.get_draft(workspace_id, chat.id)
     assert [n.type for n in workflow_draft.graph.nodes] == ["start", "end"]
     assert [n.type for n in chat_draft.graph.nodes] == ["start", "llm", "answer"]
+    # 저장한 적 없는 템플릿 초안도 캔버스가 쓰는 미리 흘리기 표시를 가진다.
+    assert chat_draft.graph.nodes[2].ui == {"prestream_sources": ["llm_1"]}
     assert workflow_draft.issues == [] and chat_draft.issues == []
     assert workflow_draft.graph_hash == graph_hash(workflow_draft.graph)
     with pytest.raises(ServiceError) as wrong:

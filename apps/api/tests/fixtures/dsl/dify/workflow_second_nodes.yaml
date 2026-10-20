@@ -1,0 +1,190 @@
+# Dify DSL 구조와 공개 문서(Loop, List Operator, Document Extractor, Tool, Human Input)를 보고 직접 쓴
+# 2차 노드 예제(M19). 반복 끝내기(loop-end)만 우리가 옮기지 않는 노드다. 도구는 내장 도구 넷에 맞는
+# Dify 도구(json_process/parse, regex/regex_extraction, time/current_time, webscraper/webscraper)다.
+app:
+  description: 문서를 읽고 반복·도구·사람 확인을 거친다
+  icon: "🧩"
+  icon_type: emoji
+  mode: workflow
+  name: 2차 노드 묶음
+kind: app
+version: 0.3.0
+workflow:
+  environment_variables: []
+  features: {}
+  graph:
+    edges:
+    - {source: '1', sourceHandle: source, target: '2', targetHandle: target}
+    - {source: '2', sourceHandle: source, target: '3', targetHandle: target}
+    - {source: '3', sourceHandle: source, target: '4', targetHandle: target}
+    - {source: '4', sourceHandle: source, target: '5', targetHandle: target}
+    - {source: '5', sourceHandle: source, target: '6', targetHandle: target}
+    - data: {isInLoop: true, loop_id: '6'}
+      source: 6start
+      sourceHandle: source
+      target: '601'
+      targetHandle: target
+    - data: {isInLoop: true, loop_id: '6'}
+      source: '601'
+      sourceHandle: source
+      target: '602'
+      targetHandle: target
+    - data: {isInLoop: true, loop_id: '6'}
+      source: '602'
+      sourceHandle: source
+      target: '603'
+      targetHandle: target
+    - {source: '6', sourceHandle: source, target: '7', targetHandle: target}
+    - {source: '7', sourceHandle: source, target: '8', targetHandle: target}
+    - {source: '8', sourceHandle: source, target: '9', targetHandle: target}
+    - {source: '9', sourceHandle: approve, target: '10', targetHandle: target}
+    nodes:
+    - id: '1'
+      position: {x: 0, y: 0}
+      data:
+        type: start
+        title: 시작
+        variables:
+        - {variable: q, label: 질문, type: text-input, required: true}
+        - {variable: docs, label: 문서, type: file-list, required: false}
+    - id: '2'
+      position: {x: 300, y: 0}
+      data:
+        type: document-extractor
+        title: 문서 읽기
+        is_array_file: true
+        variable_selector: ['1', docs]
+    - id: '3'
+      position: {x: 600, y: 0}
+      data:
+        type: tool
+        title: JSON 읽기
+        provider_id: langgenius/json_process/json_process
+        provider_type: builtin
+        tool_name: parse
+        tool_parameters:
+          content: {type: mixed, value: '{{#2.text#}}'}
+          json_filter: {type: constant, value: '$.items[0]'}
+          ensure_ascii: {type: constant, value: true}
+    - id: '4'
+      position: {x: 900, y: 0}
+      data:
+        type: tool
+        title: 번호 찾기
+        provider_id: regex
+        provider_name: regex
+        tool_name: regex_extraction
+        tool_parameters:
+          content: {type: variable, value: ['1', q]}
+          expression: {type: constant, value: '\d+'}
+    - id: '5'
+      position: {x: 1200, y: 0}
+      data:
+        type: list-operator
+        title: PDF만
+        variable: ['1', docs]
+        var_type: array[file]
+        item_var_type: file
+        filter_by:
+          enabled: true
+          conditions:
+          - {key: extension, comparison_operator: is, value: .pdf}
+          - {key: size, comparison_operator: '>', value: 10}
+        order_by: {enabled: true, key: size, value: desc}
+        limit: {enabled: true, size: 2}
+        extract_by: {enabled: false, serial: '1'}
+    - id: '6'
+      position: {x: 1500, y: 0}
+      height: 200
+      width: 600
+      data:
+        type: loop
+        title: 세 번 돌기
+        loop_count: 150
+        logical_operator: and
+        break_conditions:
+        - {variable_selector: ['6', num], comparison_operator: '≥', value: '3'}
+        loop_variables:
+        - {label: num, var_type: number, value_type: constant, value: 0}
+        - {label: topic, var_type: string, value_type: variable, value: ['1', q]}
+        start_node_id: 6start
+    - id: 6start
+      parentId: '6'
+      type: custom-loop-start
+      position: {x: 24, y: 68}
+      data: {type: loop-start, title: '', isInLoop: true}
+    - id: '601'
+      parentId: '6'
+      position: {x: 128, y: 68}
+      data:
+        type: assigner
+        title: 하나 더
+        version: '2'
+        isInLoop: true
+        loop_id: '6'
+        items:
+        - {variable_selector: ['6', num], operation: +=, input_type: constant, value: 1}
+    - id: '602'
+      parentId: '6'
+      position: {x: 300, y: 68}
+      data:
+        type: template-transform
+        title: 진행
+        isInLoop: true
+        loop_id: '6'
+        template: '{{ n }}회: {{ t }}'
+        variables:
+        - {variable: n, value_selector: ['6', num]}
+        - {variable: t, value_selector: ['6', topic]}
+    - id: '603'
+      parentId: '6'
+      position: {x: 460, y: 68}
+      data: {type: loop-end, title: 그만, isInLoop: true, loop_id: '6'}
+    - id: '7'
+      position: {x: 2200, y: 0}
+      data:
+        type: tool
+        title: 지금
+        provider_id: time
+        provider_name: time
+        provider_type: builtin
+        tool_name: current_time
+        tool_configurations: {timezone: Asia/Seoul, format: '%Y-%m-%d %H:%M'}
+        tool_parameters: {}
+    - id: '8'
+      position: {x: 2500, y: 0}
+      data:
+        type: tool
+        title: 페이지
+        provider_id: webscraper
+        tool_name: webscraper
+        tool_parameters:
+          url: {type: mixed, value: 'https://example.com/{{#4.text#}}'}
+          user_agent: {type: constant, value: Mozilla}
+    - id: '9'
+      position: {x: 2800, y: 0}
+      data:
+        type: human-input
+        title: 사람 확인
+        form_content: '{{#1.q#}}에 대한 결과: {{#6.topic#}}'
+        inputs:
+        - type: paragraph
+          output_variable_name: note
+          default: {type: constant, selector: [], value: 없음}
+        - {type: select, output_variable_name: verdict, options: [좋음, 나쁨]}
+        - {type: file, output_variable_name: proof}
+        user_actions:
+        - {id: approve, title: 승인, button_style: primary}
+        delivery_methods: [{type: webapp, enabled: true}]
+        timeout: 3
+        timeout_unit: day
+    - id: '10'
+      position: {x: 3100, y: 0}
+      data:
+        type: end
+        title: 끝
+        outputs:
+        - {variable: count, value_selector: ['6', num]}
+        - {variable: verdict, value_selector: ['9', verdict]}
+        - {variable: texts, value_selector: ['2', text]}
+        - {variable: first, value_selector: ['5', first_record]}

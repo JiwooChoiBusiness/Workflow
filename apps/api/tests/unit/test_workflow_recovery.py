@@ -292,6 +292,32 @@ async def test_queued_runs_are_requeued_and_waiting_runs_are_kept(
     assert types == ["workflow.queued"]
 
 
+async def test_node_runs_left_waiting_in_a_crashed_run_fail_with_it(
+    setup: tuple[Database, EventBus, Seed],
+) -> None:
+    db, bus, seed = setup
+    # 병렬 가지 하나가 승인을 기다리는 동안 다른 가지가 돌다가 프로세스가 죽었다.
+    crashed = await seed.wf_run("running", node_status="waiting_input")
+    child = await seed.child("waiting_input")
+    waiting = await seed.wf_run(
+        "waiting_input", child=child, node_status="waiting_input", pending=True
+    )
+
+    await recovery.recover_workflows(db, Supervisor(never, name="workflow"), bus)
+
+    async with db.read() as session:
+        rows = {row.wf_run_id: row for row in (await session.scalars(select(WfNodeRun))).all()}
+    closed = rows[crashed]
+    assert closed.status == "failed" and closed.ended_at is not None
+    assert closed.error == {
+        "code": "shutdown",
+        "message": recovery.WF_SHUTDOWN_MESSAGE,
+        "retryable": True,
+    }
+    # 답을 기다리는 런은 복구가 그대로 두므로 그 노드 런도 그대로다.
+    assert rows[waiting].status == "waiting_input"
+
+
 async def test_waiting_run_whose_child_already_moved_on_is_resumed(
     setup: tuple[Database, EventBus, Seed],
 ) -> None:

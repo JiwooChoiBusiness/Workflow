@@ -215,18 +215,26 @@ DIFY_CASES = [
         {"model_replaced", "dependencies_ignored", "imported_code", "env_value_missing"},
         {"imported_code_unreviewed"},
     ),
+    # tool·list-operator·document-extractor는 M19부터 우리 노드로 들어온다.
     (
         "dify/chatflow_support.yaml",
         "chatflow",
-        ["n1730000000003", "n1730000000009"],
+        ["n1730000000003"],
         {"model_replaced", "unsupported_node", "features_ignored"},
         {"unsupported_node"},
     ),
     (
         "dify/workflow_batch.yaml",
         "workflow",
-        ["n2", "n3", "n5"],
+        ["n2"],
         {"model_replaced", "unsupported_node", "iteration_parallel", "edge_dropped"},
+        {"unsupported_node"},
+    ),
+    (
+        "dify/workflow_second_nodes.yaml",
+        "workflow",
+        ["n603"],
+        {"loop_count", "tool_param_dropped", "human_input_settings", "unsupported_node"},
         {"unsupported_node"},
     ),
 ]

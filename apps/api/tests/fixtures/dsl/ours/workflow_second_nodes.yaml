@@ -1,0 +1,109 @@
+# 2차 노드(M19) 다섯을 모두 쓴 워크플로우. 올린 문서를 읽어(document_extractor) 줄마다 나누고(tool의
+# json_parse), 앞의 셋만 남겨(list_operator) loop가 반복 변수에 이어 붙인 뒤 사람이 확인한다(human_input).
+dsl_version: 1
+kind: workflow
+name: 문서 확인 흐름
+icon: "📄"
+description: "올린 문서를 읽고 앞부분을 사람에게 확인받는다"
+env_vars: []
+conversation_vars: []
+settings:
+  approval_mode: inherit
+graph:
+  nodes:
+    - id: start
+      type: start
+      version: 1
+      title: 시작
+      position: { x: 0, y: 0 }
+      config:
+        fields:
+          - { name: docs, type: file_list, label: 문서, required: true }
+    - id: read
+      type: document_extractor
+      version: 1
+      title: 문서 읽기
+      position: { x: 300, y: 0 }
+      config:
+        file_var: start.docs
+    - id: parse
+      type: tool
+      version: 1
+      title: 줄 목록
+      position: { x: 600, y: 0 }
+      config:
+        tool: json_parse
+        params:
+          text: { mode: template, value: "{{ read.texts | tojson }}" }
+          path: { mode: const, value: "" }
+      error:
+        strategy: default
+        default_outputs: { value: [] }
+    - id: head
+      type: list_operator
+      version: 1
+      title: 앞의 셋
+      position: { x: 900, y: 0 }
+      config:
+        input_var: parse.value
+        filter:
+          logical: and
+          conditions:
+            - { key: "", op: is_not_empty }
+        slice: { offset: 0, limit: 3 }
+        extract_index: 0
+    - id: join
+      type: loop
+      version: 1
+      title: 이어 붙이기
+      position: { x: 1200, y: 0 }
+      config:
+        loop_vars:
+          - { name: text, type: string, value: "" }
+        break_conditions:
+          - { var: join_start.index, op: "≥", value: 2 }
+        logical: and
+        max_iterations: 3
+    - id: join_start
+      type: loop_start
+      version: 1
+      title: 루프 시작
+      parent_id: join
+      position: { x: 24, y: 68 }
+      config: {}
+    - id: append
+      type: variable_assigner
+      version: 1
+      title: 붙이기
+      parent_id: join
+      position: { x: 240, y: 68 }
+      config:
+        items:
+          - { target: join.text, op: overwrite, var: head.first_record }
+    - id: check
+      type: human_input
+      version: 1
+      title: 확인
+      position: { x: 1500, y: 0 }
+      config:
+        description: "앞부분: {{ join.text }}"
+        fields:
+          - { name: ok, type: boolean, label: 괜찮은가, required: true }
+          - { name: note, type: paragraph, label: 메모 }
+    - id: done
+      type: end
+      version: 1
+      title: 끝
+      position: { x: 1800, y: 0 }
+      config:
+        outputs:
+          - { name: ok, var: check.ok }
+          - { name: rounds, var: join.loop_count }
+  edges:
+    - { id: e1, source: start, target: read }
+    - { id: e2, source: read, target: parse }
+    - { id: e3, source: parse, target: head }
+    - { id: e4, source: head, target: join }
+    - { id: e5, source: join, target: check }
+    - { id: e6, source: check, target: done }
+    - { id: e7, source: join_start, target: append }

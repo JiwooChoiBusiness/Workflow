@@ -129,10 +129,36 @@ def test_doctor_ends_with_the_encryption_key(monkeypatch: pytest.MonkeyPatch) ->
         sysinfo, "check_execution_policy", lambda _settings: sysinfo.Check("실행 정책", True, "-")
     )
     monkeypatch.setattr(sysinfo, "check_subprocess", subprocess_ok)
+    monkeypatch.setattr(sysinfo, "check_disk", lambda _settings: sysinfo.Check("디스크", True, "-"))
 
     checks = sysinfo.doctor_checks(Settings.model_validate({}))
 
-    assert [check.name for check in checks] == ["실행 정책", "포트", "서브프로세스", "암호화 키"]
+    assert [check.name for check in checks] == [
+        "실행 정책",
+        "포트",
+        "서브프로세스",
+        "디스크",
+        "암호화 키",
+    ]
+
+
+def test_disk_check_reports_the_folders_that_grow(tmp_path: Path) -> None:
+    for parts, size in (
+        (("workspaces", "s1", "a.bin"), 3 * 2**20),
+        (("wf-workspaces", "r1", "b.bin"), 1024),
+        (("storage", "wf-files", "w1", "c.bin"), 2 * 2**20),
+        (("cache", "wf-extract", "parsers-1", "d.bin"), 10),
+    ):
+        path = tmp_path.joinpath(*parts)
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"x" * size)
+
+    check = sysinfo.check_disk(Settings.model_validate({"data_dir": tmp_path}))
+
+    assert check.ok and check.name == "디스크"
+    assert check.detail == (
+        "작업공간 3MB, pip 캐시 0B, 워크플로우 런 폴더 1KB, 워크플로우 파일 2MB, 문서 추출 파서 10B"
+    )
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="확장 길이 접두는 Windows 경로에만 붙는다")

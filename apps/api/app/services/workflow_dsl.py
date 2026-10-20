@@ -49,6 +49,7 @@ from app.services.workflows import (
     parse_graph,
     parse_settings,
     stored_env,
+    with_prestream,
 )
 from app.workflow.dsl.export import build_document, dump_yaml
 from app.workflow.dsl.import_ import AgentRef, PreparedImport, read_dsl
@@ -189,6 +190,7 @@ class WorkflowDslService:
                 graph, linked = await self._link_agents(
                     AgentRepository(session, workspace_id), document.graph, prepared.agents
                 )
+                graph = with_prestream(graph, document.kind, registry=self._registry)
                 if into is None:
                     workflow = await self._create(session, workspace_id, prepared, graph)
                 else:

@@ -11,6 +11,7 @@ from app.workflow.variables import (
     PoolView,
     Selector,
     SelectorError,
+    StreamMasker,
     VariableError,
     VariablePool,
     assignable,
@@ -259,6 +260,23 @@ def test_masker_hides_long_secrets_everywhere_and_reports_short_ones() -> None:
     assert masker.short == ("short",)
     assert masker.text("short") == "short"
     assert Masker().mask({"a": "password-1234"}) == {"a": "password-1234"}
+
+
+def test_stream_masker_hides_secrets_split_across_deltas() -> None:
+    hidden = "tok-1234567890"
+    stream = StreamMasker(Masker([hidden, "other-secret-9"]))
+    text = f"키는 {hidden} 이고 끝은 tok-12"
+
+    sent = [stream.feed(text[start : start + 4]) for start in range(0, len(text), 4)]
+    rest = stream.flush()
+
+    assert "".join(sent) + rest == f"키는 {MASK} 이고 끝은 tok-12"
+    assert all(hidden[:5] not in piece for piece in sent)
+    # 비밀값의 앞부분으로 끝난 글은 스트림이 끝날 때 그대로 나간다.
+    assert rest == "tok-12"
+    assert stream.flush() == ""
+    plain = StreamMasker(Masker())
+    assert [plain.feed("tok-1"), plain.feed("234567890")] == ["tok-1", "234567890"]
 
 
 def test_preview_keeps_small_values_and_cuts_large_ones() -> None:

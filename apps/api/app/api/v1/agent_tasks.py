@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 
 from app.agent.task_service import AgentTaskSpec
 from app.api.console.runs import SSE_CONTENT, RunServiceDep, run_headers
-from app.api.v1.common import TaskServiceDep, file_scope, key_scope
+from app.api.v1.common import TaskServiceDep, agent_of, file_scope, key_scope
 from app.auth.dependencies import ApiKeyAuth, require_scope
 from app.schemas.service_api import AgentTaskCreate, ExternalUser
 from app.schemas.task import AgentTaskOut
@@ -34,10 +34,11 @@ router = APIRouter(prefix="/agent-tasks", tags=["service-api"])
 )
 async def create_task(body: AgentTaskCreate, key: ApiKeyAuth, tasks: TaskServiceDep) -> Response:
     """입력·지시·출력 스키마로 과업을 실행한다. run.completed의 data.output에 결과가 있다."""
+    agent_id = agent_of(key)
     require_scope(key, "tasks")
     spec = AgentTaskSpec(
         workspace_id=key.workspace_id,
-        agent_id=key.agent_id,
+        agent_id=agent_id,
         inputs=body.inputs,
         instruction=body.instruction,
         output_schema=body.output_schema,
@@ -70,6 +71,7 @@ async def get_task(
     대화(api 세션)에서 부른 하위 에이전트의 과업 런도 키의 범위로 연다. 범위는 부모 사슬의 뿌리
     세션으로 보므로 세션 소스를 task로 좁히지 않고, 과업 런인지는 view가 본다(오케스트레이션 6.3).
     """
+    agent_of(key)
     require_scope(key, "tasks")
     await runs.check_run(key.workspace_id, run_id, key_scope(key, user=user))
     return await tasks.view(key.workspace_id, run_id)

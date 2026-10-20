@@ -8,7 +8,7 @@ import unicodedata
 from collections.abc import AsyncIterator
 from urllib.parse import quote
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.storage.base import StorageBackend
 
@@ -51,6 +51,18 @@ def stored_file_response(
         media_type=safe_media_type(mime),
         headers=download_headers(filename),
     )
+
+
+async def stored_download(
+    storage: StorageBackend, key: str, *, filename: str, mime: str
+) -> Response:
+    """저장소의 파일을 내려보낸다. 행은 있는데 파일이 없으면 404 file_missing."""
+    if await storage.size(key) is None:
+        return JSONResponse(
+            {"error": {"code": "file_missing", "message": "저장소에 파일이 없다"}},
+            status_code=404,
+        )
+    return stored_file_response(storage, key, filename=filename, mime=mime)
 
 
 async def _text_chunks(text: str) -> AsyncIterator[bytes]:

@@ -279,12 +279,19 @@ def lenient_environment() -> ImmutableSandboxedEnvironment:
     return _get().lenient
 
 
+# 다른 템플릿을 읽는 태그. 로더가 없어 지금도 실패하지만 로더가 생겨도 열리지 않게 먼저
+# 거부한다(9.3).
+_LOADING_NODES = (nodes.Include, nodes.Import, nodes.FromImport, nodes.Extends)
+
+
 @lru_cache(maxsize=256)
 def _compiled(source: str) -> Template:
     # iteration 1,000회처럼 같은 템플릿을 거듭 렌더하므로 컴파일 결과를 원문 기준으로 둔다.
     env = _get().lenient
     try:
         tree = env.parse(source)
+        if any(True for _ in tree.find_all(_LOADING_NODES)):
+            raise TemplateError("template_forbidden", "include·import·extends는 쓸 수 없다")
         _guard_loops(tree)
         tree.set_environment(env)
         return env.from_string(tree)
@@ -353,3 +360,78 @@ def template_names(source: str) -> TemplateNames:
                 accessed.add((item.node.name, item.arg.value))
     names = frozenset(loaded - declared)
     return TemplateNames(names, frozenset(pair for pair in accessed if pair[0] in names))
+
+
+@dataclass(frozen=True, slots=True)
+class Segment:
+    """answer 템플릿의 조각(3.8). 글자 조각은 text만, 변수 조각은 expr·scope가 있다."""
+
+    text: str = ""
+    # 변수 조각만 렌더하는 템플릿("{{ llm_1.text }}"). render()에 그대로 넘긴다.
+    expr: str | None = None
+    scope: str | None = None
+    # scope 바로 아래 이름. {{ llm_1 }}처럼 없으면 None이다.
+    attr: str | None = None
+    # attr 아래로 더 내려가는지({{ http_1.json.items }}).
+    deep: bool = False
+
+
+def _selector(node: nodes.Node) -> tuple[list[str], str] | None:
+    """이름·속성·상수 첨자만으로 된 식이면 (경로, 같은 뜻의 식). 아니면 None.
+
+    a.b와 a["b"]는 dict 값에서 결과가 다를 수 있어(a.items는 메서드) 원래 꼴을 그대로 살린다.
+    """
+    if isinstance(node, nodes.Name):
+        return ([node.name], node.name) if node.ctx == "load" else None
+    if isinstance(node, nodes.Getattr):
+        found = _selector(node.node)
+        return None if found is None else ([*found[0], node.attr], f"{found[1]}.{node.attr}")
+    if isinstance(node, nodes.Getitem) and isinstance(node.arg, nodes.Const):
+        value: object = node.arg.value
+        if isinstance(value, str):
+            item = json.dumps(value)
+        elif isinstance(value, int) and not isinstance(value, bool):
+            item = str(value)
+        else:
+            return None
+        found = _selector(node.node)
+        return None if found is None else ([*found[0], str(value)], f"{found[1]}[{item}]")
+    return None
+
+
+@lru_cache(maxsize=256)
+def stream_segments(source: str) -> tuple[Segment, ...] | None:
+    """answer 템플릿을 글자 조각과 변수 조각으로 나눈다.
+
+    글자와 {{ a.b }} 꼴의 식만 있을 때만 나눈다. 블록 문법·필터·연산이 있거나 문법 오류면 None이고,
+    그 answer는 미리 흘리지 않는다. 조각을 차례로 렌더해 이으면 템플릿 전체를 렌더한 것과 같다.
+    """
+    if not source:
+        return ()
+    env = _get().lenient
+    try:
+        tree = env.parse(source)
+    except TemplateSyntaxError:
+        return None
+    segments: list[Segment] = []
+    for item in tree.body:
+        if not isinstance(item, nodes.Output):
+            return None
+        for child in item.nodes:
+            if isinstance(child, nodes.TemplateData):
+                if child.data:
+                    segments.append(Segment(text=child.data))
+                continue
+            found = _selector(child)
+            if found is None:
+                return None
+            path, expr = found
+            segments.append(
+                Segment(
+                    expr="{{ " + expr + " }}",
+                    scope=path[0],
+                    attr=path[1] if len(path) > 1 else None,
+                    deep=len(path) > 2,
+                )
+            )
+    return tuple(segments)

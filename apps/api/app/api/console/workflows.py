@@ -1,6 +1,7 @@
 """워크플로우 콘솔 API(2단계 설계 6.1).
 
-목록·생성·초안·검증·미리보기 런·단일 노드 실행·발행·버전·파일·노드 타입.
+목록·생성·초안·검증·미리보기 런·단일 노드 실행·발행·버전·파일·노드 타입·API 키·챗플로우 미리보기
+대화.
 """
 
 import uuid
@@ -10,11 +11,15 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
+from app.api.console.agents import ApiKeyServiceDep
 from app.api.console.runs import SSE_CONTENT
+from app.api.console.wf_conversations import ConversationServiceDep
 from app.api.console.wf_runs import WfRunServiceDep, wf_run_headers
 from app.api.uploads import multipart_openapi, single_upload, upload_chunks
 from app.auth.dependencies import CurrentAuth, DbDep, SettingsDep
+from app.schemas.api_key import ApiKeyCreate, ApiKeyCreated, ApiKeyList
 from app.schemas.run import RunStatus
+from app.schemas.wf_conversation import WfConversationCreate, WfConversationList, WfConversationOut
 from app.schemas.wf_run import WfNodeRunCreate, WfRunCreate, WfRunList, WfRunOut, WfRunTrigger
 from app.schemas.workflow import (
     NodeTypeList,
@@ -31,6 +36,7 @@ from app.schemas.workflow import (
     WorkflowVersionList,
     WorkflowVersionOut,
 )
+from app.services.api_key_target import KeyTarget
 from app.services.logs import assume_local
 from app.services.workflow_files import MAX_WF_FILE_BYTES, WorkflowFileService
 from app.services.workflow_single_run import WorkflowSingleRunService
@@ -288,3 +294,64 @@ async def upload_workflow_file(
             content_type=upload.content_type,
             chunks=upload_chunks(upload),
         )
+
+
+@router.get("/workflows/{workflow_id}/api-keys", response_model=ApiKeyList)
+async def list_workflow_api_keys(
+    workflow_id: uuid.UUID, auth: CurrentAuth, service: ApiKeyServiceDep
+) -> ApiKeyList:
+    return await service.list_for(auth.workspace_id, KeyTarget.workflow(workflow_id))
+
+
+@router.post("/workflows/{workflow_id}/api-keys", status_code=201, response_model=ApiKeyCreated)
+async def create_workflow_api_key(
+    workflow_id: uuid.UUID,
+    body: ApiKeyCreate,
+    auth: CurrentAuth,
+    service: ApiKeyServiceDep,
+    response: Response,
+) -> ApiKeyCreated:
+    """서비스 API 키. scopes를 비우면 워크플로우는 workflow, 챗플로우는 chat이다(2단계 4.1)."""
+    # 원문 키가 든 응답이 브라우저·프록시 캐시에 남지 않게 한다.
+    response.headers["Cache-Control"] = "no-store"
+    return await service.create_for(auth.workspace_id, KeyTarget.workflow(workflow_id), body)
+
+
+@router.delete("/workflows/{workflow_id}/api-keys/{key_id}", status_code=204)
+async def revoke_workflow_api_key(
+    workflow_id: uuid.UUID, key_id: uuid.UUID, auth: CurrentAuth, service: ApiKeyServiceDep
+) -> None:
+    await service.revoke_for(auth.workspace_id, KeyTarget.workflow(workflow_id), key_id)
+
+
+@router.post(
+    "/workflows/{workflow_id}/preview/conversations",
+    status_code=201,
+    response_model=WfConversationOut,
+)
+async def create_preview_conversation(
+    workflow_id: uuid.UUID,
+    auth: CurrentAuth,
+    service: ConversationServiceDep,
+    body: WfConversationCreate | None = None,
+) -> WfConversationOut:
+    """챗플로우 미리보기 대화. 초안으로 돈다. 워크플로우(kind=workflow)는 409 wrong_kind."""
+    return await service.create_preview(
+        auth.workspace_id, workflow_id, body or WfConversationCreate()
+    )
+
+
+@router.get("/workflows/{workflow_id}/preview/conversations", response_model=WfConversationList)
+async def list_preview_conversations(
+    workflow_id: uuid.UUID,
+    auth: CurrentAuth,
+    service: ConversationServiceDep,
+    workflows: WorkflowServiceDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> WfConversationList:
+    """이 챗플로우의 미리보기 대화(최근 대화 순)."""
+    await workflows.get_workflow(auth.workspace_id, workflow_id)
+    return await service.list_conversations(
+        auth.workspace_id, workflow_id=workflow_id, source="preview", limit=limit, offset=offset
+    )

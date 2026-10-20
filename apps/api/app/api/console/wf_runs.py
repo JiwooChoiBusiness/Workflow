@@ -1,6 +1,7 @@
-"""워크플로우 런 콘솔 API(2단계 설계 6.1): 조회, 노드 런, 이벤트, 중지, 승인·질문 응답."""
+"""워크플로우 런 콘솔 API(2단계 설계 6.1): 조회, 노드 런, 이벤트, 중지, 승인·질문·폼 응답."""
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -8,12 +9,24 @@ from fastapi.responses import JSONResponse, Response
 
 from app.agent.interactions import InteractionReply
 from app.api.console.runs import SSE_CONTENT
+from app.api.downloads import stored_download
 from app.auth.dependencies import CurrentAuth, DbDep, SettingsDep
-from app.schemas.run import RunEventList, RunInput
-from app.schemas.wf_run import WfNodeRunDetail, WfNodeRunList, WfRunDetail, WfRunOut
+from app.schemas.run import RunEventList, RunStatus
+from app.schemas.wf_run import (
+    WfNodeRunDetail,
+    WfNodeRunList,
+    WfRunDetail,
+    WfRunInput,
+    WfRunLogList,
+    WfRunOut,
+    WfRunTrigger,
+)
+from app.services.errors import ServiceError
+from app.services.logs import assume_local
 from app.services.runs import RunService
 from app.services.tasks import TaskService
-from app.services.workflow_runs import WorkflowRunService
+from app.services.workflow_files import WorkflowFileService
+from app.services.workflow_runs import StartedWfRun, WorkflowRunService
 from app.streaming.sse import sse_response
 
 router = APIRouter(prefix="/wf-runs", tags=["workflow-runs"])
@@ -44,9 +57,75 @@ def get_wf_run_service(request: Request, db: DbDep, settings: SettingsDep) -> Wo
 WfRunServiceDep = Annotated[WorkflowRunService, Depends(get_wf_run_service)]
 
 
+def form_values(
+    kind: str | None, values: dict[str, Any] | None, *, answer: str | None, decision: str | None
+) -> dict[str, Any] | None:
+    """/input 본문이 폼 응답이면 그 값, 승인·질문 응답이면 None. 둘을 섞으면 422 invalid_input."""
+    if kind != "form" and values is None:
+        return None
+    if kind not in (None, "form") or answer is not None or decision is not None:
+        raise ServiceError(
+            422,
+            "invalid_input",
+            "폼 응답(kind=form, values)과 승인·질문 응답(answer, decision)은 함께 보낼 수 없다",
+        )
+    return dict(values or {})
+
+
+async def resume_with(
+    service: WorkflowRunService,
+    workspace_id: uuid.UUID,
+    run_id: uuid.UUID,
+    body: WfRunInput,
+    *,
+    subscribe: bool,
+) -> StartedWfRun:
+    values = form_values(body.kind, body.values, answer=body.answer, decision=body.decision)
+    if values is not None:
+        return await service.provide_form(workspace_id, run_id, values, subscribe=subscribe)
+    reply = InteractionReply(
+        answer=body.answer,
+        decision=body.decision,
+        note=body.note,
+        session_auto_approve=body.session_auto_approve,
+    )
+    return await service.provide_input(workspace_id, run_id, reply, subscribe=subscribe)
+
+
 def wf_run_headers(run_id: uuid.UUID) -> dict[str, str]:
     # 워크플로우 런에는 세션이 없다. 첫 이벤트를 읽기 전에도 중지·응답에 쓸 수 있게 헤더로 준다.
     return {"X-Run-Id": str(run_id)}
+
+
+@router.get("", response_model=WfRunLogList)
+async def list_wf_runs(
+    auth: CurrentAuth,
+    service: WfRunServiceDep,
+    workflow_id: uuid.UUID | None = None,
+    status: RunStatus | None = None,
+    trigger: WfRunTrigger | None = None,
+    conversation_id: uuid.UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> WfRunLogList:
+    """워크스페이스 전체 워크플로우 런(최근 것부터, 로그 화면의 워크플로우 런 탭).
+
+    지운 워크플로우의 런도 이름과 함께 나온다. 필터는 /workflows/{id}/runs와 같고 단일 노드 실행
+    런은 trigger=single_node로 고를 때만 나온다. 기간은 queued_at 기준 [since, until)이다.
+    """
+    return await service.list_workspace_runs(
+        auth.workspace_id,
+        workflow_id=workflow_id,
+        status=status,
+        trigger=trigger,
+        conversation_id=conversation_id,
+        since=assume_local(since),
+        until=assume_local(until),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{run_id}", response_model=WfRunDetail)
@@ -136,21 +215,17 @@ async def stop_wf_run(run_id: uuid.UUID, auth: CurrentAuth, service: WfRunServic
     },
 )
 async def provide_wf_input(
-    run_id: uuid.UUID, body: RunInput, auth: CurrentAuth, service: WfRunServiceDep
+    run_id: uuid.UUID, body: WfRunInput, auth: CurrentAuth, service: WfRunServiceDep
 ) -> Response:
-    """질문(answer)·승인(decision) 응답. 1단계 /runs/{rid}/input과 같은 본문이다(3.7의 3번).
+    """질문(answer)·승인(decision)·폼(kind=form, values) 응답(3.7의 3번).
 
-    기다리는 자식 런에 응답을 넘긴 뒤 같은 워크플로우 런을 다시 큐에 넣는다. streaming이면 첫
+    승인·질문은 1단계 /runs/{rid}/input과 같은 본문이고 기다리는 자식 런에 응답을 넘긴 뒤 같은
+    워크플로우 런을 다시 큐에 넣는다. 폼은 필드 정의로 검사(422 invalid_inputs)한 값을 담아 같은
+    런을 다시 넣는다. 기다리는 것과 다른 종류의 응답은 409 wrong_input_kind다. streaming이면 첫
     이벤트가 workflow.queued다.
     """
-    reply = InteractionReply(
-        answer=body.answer,
-        decision=body.decision,
-        note=body.note,
-        session_auto_approve=body.session_auto_approve,
-    )
-    started = await service.provide_input(
-        auth.workspace_id, run_id, reply, subscribe=body.response_mode != "none"
+    started = await resume_with(
+        service, auth.workspace_id, run_id, body, subscribe=body.response_mode != "none"
     )
     headers = wf_run_headers(run_id)
     if body.response_mode == "streaming" and started.subscription is not None:
@@ -162,3 +237,18 @@ async def provide_wf_input(
         mode="json", exclude={"node_runs"}
     )
     return JSONResponse(run, status_code=202, headers=headers)
+
+
+@router.get("/{run_id}/files/{file_id}/download", response_class=Response)
+async def download_wf_run_file(
+    run_id: uuid.UUID, file_id: uuid.UUID, request: Request, auth: CurrentAuth, db: DbDep
+) -> Response:
+    """런의 입력·출력에 든 파일, 그 런이 만든 파일, 챗플로우 런이면 그 대화에 붙은 업로드.
+
+    실행 패널과 런 상세의 결과 링크가 쓴다. 웹앱 런도 여기서 받을 수 있다.
+    """
+    storage = request.app.state.storage
+    target = await WorkflowFileService(db, storage).run_file(auth.workspace_id, run_id, file_id)
+    return await stored_download(
+        storage, target.storage_key, filename=target.filename, mime=target.mime
+    )

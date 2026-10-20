@@ -3,8 +3,9 @@
 
 검증은 저장·실행·발행 때 모두 돈다. 오류가 하나라도 있으면 실행·발행을 거부하고 저장은 허용한다.
 구조(노드 id, 엣지, 프레임, 도달성, 사이클)를 먼저 보고, 그다음 노드마다 config·변수 참조·템플릿을
-본다. 변수 참조는 같은 프레임의 상류(경로가 있는 앞 노드)이거나, iteration 하위 그래프에서 그
-iteration의 상류를 가리켜야 한다. 아니면 unreachable_reference다.
+본다. 변수 참조는 같은 프레임의 상류(경로가 있는 앞 노드)이거나, iteration·loop 하위 그래프에서 그
+container의 상류를 가리켜야 한다. 아니면 unreachable_reference다. loop 하위 그래프는 자기 loop의
+반복 변수("<loop id>.<이름>")도 읽는다.
 """
 
 import re
@@ -28,8 +29,9 @@ from app.schemas.workflow import (
     WorkflowKind,
 )
 from app.workflow.frames import (
-    ITERATION_START_TYPE,
-    ITERATION_TYPE,
+    CONTAINER_ENTRIES,
+    ENTRY_TYPES,
+    LOOP_TYPE,
     START_TYPE,
     FrameGraph,
     build_frames,
@@ -62,7 +64,8 @@ AGENT_TYPE = "agent"
 # DSL 가져오기가 옮기지 못한 노드(Dify의 2차·미지원 노드)의 자리. 레지스트리에 없어 팔레트에 나오지
 # 않고, 엣지와 원래 설정을 남겨 둔 채 검증 오류로 실행·발행을 막는다.
 UNSUPPORTED_TYPE = "unsupported"
-_ENTRY_TYPES = (START_TYPE, ITERATION_START_TYPE)
+_ENTRY_TYPES = ENTRY_TYPES
+_ENTRY_OWNERS = {entry: owner for owner, entry in CONTAINER_ENTRIES.items()}
 
 
 @dataclass
@@ -78,6 +81,10 @@ class Analysis:
     # 노드 출력 이름 → 선언 타입. None이면 출력을 모른다(타입 미등록, config 오류).
     outputs: dict[str, dict[str, VarType] | None]
     frames: dict[str | None, FrameGraph] = field(default_factory=dict[str | None, FrameGraph])
+    # container 노드가 도는 동안 하위 그래프에 보이는 값(loop의 반복 변수).
+    inner_outputs: dict[str, dict[str, VarType]] = field(
+        default_factory=dict[str, dict[str, VarType]]
+    )
 
     @property
     def errors(self) -> list[Issue]:
@@ -193,6 +200,7 @@ class _Checker:
         self.runners: dict[str, AnyRunner] = {}
         self.configs: dict[str, BaseModel] = {}
         self.outputs: dict[str, dict[str, VarType] | None] = {}
+        self.inner_outputs: dict[str, dict[str, VarType]] = {}
         self.frames: dict[str | None, FrameGraph] = {}
         self._bit: dict[str, int] = {}
         self._ancestors: dict[str, int] = {}
@@ -234,6 +242,7 @@ class _Checker:
             configs=self.configs,
             outputs=self.outputs,
             frames=self.frames,
+            inner_outputs=self.inner_outputs,
         )
 
     def _limits(self) -> None:
@@ -248,6 +257,10 @@ class _Checker:
             self.add("error", "graph_too_large", f"그래프 JSON이 2MB를 넘는다({size}바이트)")
 
     def _nodes(self) -> None:
+        # loop 안에서만 허용되는 노드(variable_assigner)를 보려고 부모의 타입을 먼저 안다.
+        parent_types: dict[str, str] = {}
+        for node in self.graph.nodes:
+            parent_types.setdefault(node.id, node.type)
         for node in self.graph.nodes:
             if node.id in self.nodes:
                 message = f"노드 id {node.id}이(가) 겹친다"
@@ -273,7 +286,8 @@ class _Checker:
                     self.add("error", "unknown_node_type", message, node_id=node.id, field="type")
                 continue
             self.runners[node.id] = runner
-            if self.kind not in runner.kinds:
+            in_loop = node.parent_id is not None and parent_types.get(node.parent_id) == LOOP_TYPE
+            if self.kind not in runner.kinds and not (in_loop and self.kind in runner.loop_kinds):
                 message = f"{self.kind}에는 {node.type} 노드를 둘 수 없다"
                 self.add("error", "node_not_allowed", message, node_id=node.id)
             if node.error.strategy not in runner.error_strategies:
@@ -298,6 +312,9 @@ class _Checker:
                 continue
             self.configs[node.id] = config
             self.outputs[node.id] = {spec.name: spec.type for spec in runner.outputs(config)}
+            inner = runner.inner_outputs(config)
+            if inner is not None:
+                self.inner_outputs[node.id] = {spec.name: spec.type for spec in inner}
 
     def _kind_rules(self) -> None:
         starts = [node for node in self.nodes.values() if node.type == START_TYPE]
@@ -315,32 +332,38 @@ class _Checker:
 
     def _frame_rules(self) -> None:
         for node in self.nodes.values():
+            owner_type = _ENTRY_OWNERS.get(node.type)
             if node.parent_id is None:
-                if node.type == ITERATION_START_TYPE:
-                    message = "iteration_start는 iteration 하위 그래프에만 둔다"
+                if owner_type is not None:
+                    message = f"{node.type}는 {owner_type} 하위 그래프에만 둔다"
                     self.add("error", "invalid_parent", message, node_id=node.id, field="parent_id")
                 continue
             parent = self.nodes.get(node.parent_id)
-            if parent is None or parent.type != ITERATION_TYPE:
-                message = f"parent_id {node.parent_id}은(는) iteration 노드가 아니다"
+            if parent is None or parent.type not in CONTAINER_ENTRIES:
+                message = f"parent_id {node.parent_id}은(는) iteration·loop 노드가 아니다"
                 self.add("error", "invalid_parent", message, node_id=node.id, field="parent_id")
-            if node.type == ITERATION_TYPE:
-                message = "iteration 안에 iteration을 둘 수 없다"
+            elif owner_type is not None and owner_type != parent.type:
+                message = f"{node.type}는 {owner_type} 하위 그래프에만 둔다"
+                self.add("error", "invalid_parent", message, node_id=node.id, field="parent_id")
+            where = parent.type if parent is not None else "iteration"
+            if node.type in CONTAINER_ENTRIES:
+                message = f"{where} 안에 {node.type}을(를) 둘 수 없다"
                 self.add("error", "nested_iteration", message, node_id=node.id)
             elif node.type in (START_TYPE, END_TYPE):
-                message = f"iteration 안에는 {node.type} 노드를 둘 수 없다"
+                message = f"{where} 안에는 {node.type} 노드를 둘 수 없다"
                 self.add("error", "node_not_allowed", message, node_id=node.id)
         for node in self.nodes.values():
-            if node.type != ITERATION_TYPE or node.parent_id is not None:
+            entry = CONTAINER_ENTRIES.get(node.type)
+            if entry is None or node.parent_id is not None:
                 continue
             count = sum(
                 1
                 for child in self.nodes.values()
-                if child.parent_id == node.id and child.type == ITERATION_START_TYPE
+                if child.parent_id == node.id and child.type == entry
             )
             if count != 1:
-                message = f"iteration_start가 {count}개다. 하위 그래프마다 하나여야 한다"
-                self.add("error", "iteration_start_count", message, node_id=node.id)
+                message = f"{entry}가 {count}개다. 하위 그래프마다 하나여야 한다"
+                self.add("error", f"{entry}_count", message, node_id=node.id)
 
     def _handles(self, node: Node) -> list[str] | None:
         runner, config = self.runners.get(node.id), self.configs.get(node.id)
@@ -353,7 +376,7 @@ class _Checker:
         """엣지 규칙을 보고 구조 분석(도달성·사이클·상류)에 쓸 엣지를 돌려준다.
 
         핸들이 틀린 엣지도 사용자가 그린 연결이므로 구조 분석에는 넣는다. 없는 노드, 다른 프레임,
-        start·iteration_start로 들어오는 엣지만 뺀다.
+        start·iteration_start·loop_start로 들어오는 엣지만 뺀다.
         """
         structural: list[Edge] = []
         ids: set[str] = set()
@@ -411,10 +434,12 @@ class _Checker:
         self._bit = {node.id: index for index, node in enumerate(nodes)}
         self.frames = build_frames(Graph(nodes=nodes, edges=edges))
         for frame_id, frame in self.frames.items():
+            entry_type = START_TYPE
             if frame_id is not None:
                 owner = self.nodes.get(frame_id)
-                if owner is None or owner.type != ITERATION_TYPE:
+                if owner is None or owner.type not in CONTAINER_ENTRIES:
                     continue
+                entry_type = CONTAINER_ENTRIES[owner.type]
             if frame.entry is not None:
                 reached = {frame.entry}
                 queue = deque([frame.entry])
@@ -425,8 +450,7 @@ class _Checker:
                             queue.append(edge.target)
                 for node_id in frame.nodes:
                     if node_id not in reached and self.nodes[node_id].type not in _ENTRY_TYPES:
-                        where = "start" if frame_id is None else "iteration_start"
-                        message = f"{where}에서 닿지 않는 노드다"
+                        message = f"{entry_type}에서 닿지 않는 노드다"
                         self.add("error", "unreachable_node", message, node_id=node_id)
             cyclic = _cyclic(frame.nodes, frame.outgoing)
             for node_id in frame.nodes:
@@ -468,9 +492,13 @@ class _Checker:
         return False
 
     def reference(
-        self, node: Node, selector: Selector, field: str | None
+        self, node: Node, selector: Selector, field: str | None, *, inner: bool = False
     ) -> tuple[bool, VarType | None]:
-        """참조가 맞으면 (True, 선언 타입 또는 모름=None). 틀리면 이슈를 남기고 (False, None)."""
+        """참조가 맞으면 (True, 선언 타입 또는 모름=None). 틀리면 이슈를 남기고 (False, None).
+
+        inner면 node의 하위 그래프 안에서 읽는 참조다(loop 종료 조건). 하위 노드 출력과 node 자신의
+        반복 변수도 읽을 수 있다.
+        """
 
         def fail(code: str, message: str) -> tuple[bool, VarType | None]:
             self.add("error", code, message, node_id=node.id, field=field)
@@ -502,16 +530,29 @@ class _Checker:
             target = self.nodes.get(scope)
             if target is None:
                 return fail("unknown_variable", f"노드 {scope}이(가) 없다")
-            if not self.upstream(node, target):
-                return fail(
-                    "unreachable_reference", f"{scope}은(는) {node.id}의 상류 노드가 아니다"
-                )
-            outputs = self.outputs.get(scope)
-            if outputs is None:
+            # 하위 그래프 안에서 자기 container를 읽으면 그 container가 도는 동안의 값(반복
+            # 변수)이다.
+            own = scope == node.parent_id or (inner and scope == node.id)
+            variables = self.inner_outputs.get(scope) if own else None
+            if own and target.type == LOOP_TYPE and self.outputs.get(scope) is None:
+                # loop config를 읽지 못해 반복 변수를 모른다. 그 오류는 loop 노드에 이미 있다.
                 return True, None
-            if name not in outputs:
-                return fail("unknown_variable", f"{scope}에 {name} 출력이 없다")
-            base = outputs[name]
+            if variables is not None:
+                if name not in variables:
+                    return fail("unknown_variable", f"{scope}에 반복 변수 {name}이(가) 없다")
+                base = variables[name]
+            else:
+                below = inner and target.parent_id == node.id
+                if not below and not self.upstream(node, target):
+                    return fail(
+                        "unreachable_reference", f"{scope}은(는) {node.id}의 상류 노드가 아니다"
+                    )
+                outputs = self.outputs.get(scope)
+                if outputs is None:
+                    return True, None
+                if name not in outputs:
+                    return fail("unknown_variable", f"{scope}에 {name} 출력이 없다")
+                base = outputs[name]
         if selector.path:
             if base in SCALAR_TYPES:
                 return fail("invalid_selector", f"{base} 값에는 하위 경로를 쓸 수 없다")
@@ -524,7 +565,7 @@ class _Checker:
         except SelectorError as exc:
             self.add("error", "invalid_selector", str(exc), node_id=node.id, field=ref.field)
             return
-        ok, source = self.reference(node, selector, ref.field)
+        ok, source = self.reference(node, selector, ref.field, inner=ref.inner)
         if ok and assignable(source, ref.expect) == "no":
             message = f"{ref.expect}이(가) 필요한데 {selector}는 {source}다"
             self.add("warning", "type_mismatch", message, node_id=node.id, field=ref.field)
@@ -552,7 +593,11 @@ class _Checker:
             elif attrs:
                 for attr in attrs:
                     self.reference(node, Selector(name, attr), template.field)
-            elif name not in RESERVED_SCOPES and not self.upstream(node, self.nodes[name]):
+            elif (
+                name not in RESERVED_SCOPES
+                and not (name == node.parent_id and name in self.inner_outputs)
+                and not self.upstream(node, self.nodes[name])
+            ):
                 message = f"{name}은(는) {node.id}의 상류 노드가 아니다"
                 self.add(
                     "error", "unreachable_reference", message, node_id=node.id, field=template.field
@@ -624,6 +669,9 @@ class _View:
         outputs = self._checker.outputs.get(parsed.scope)
         return outputs.get(parsed.name) if outputs else None
 
+    def inner_outputs(self, node_id: str) -> Mapping[str, VarType] | None:
+        return self._checker.inner_outputs.get(node_id)
+
     def conversation_vars(self) -> Mapping[str, VarType] | None:
         return self._checker.conversation_vars
 
@@ -693,7 +741,7 @@ def topological_order(graph: Graph, iteration_id: str | None = None) -> list[str
 
 
 def subgraph(graph: Graph, iteration_id: str) -> Graph:
-    """iteration 하위 그래프(그 안의 노드와 엣지)만 뽑는다."""
+    """iteration·loop 하위 그래프(그 안의 노드와 엣지)만 뽑는다."""
     inner = {node.id for node in graph.nodes if node.parent_id == iteration_id}
     return Graph(
         nodes=[node for node in graph.nodes if node.id in inner],
