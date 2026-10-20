@@ -82,14 +82,30 @@ export type WfNodeRunCreate = Schemas["WfNodeRunCreate"];
 export type WfRunOut = Schemas["WfRunOut"];
 export type WfRunDetail = Schemas["WfRunDetail"];
 export type WfRunList = Schemas["WfRunList"];
+// 워크스페이스 전체 런 목록(GET /wf-runs)의 항목. 지운 워크플로우의 런도 이름과 함께 온다.
+export type WfRunLogItem = Schemas["WfRunLogItem"];
+export type WfRunLogList = Schemas["WfRunLogList"];
 export type WfNodeRunOut = Schemas["WfNodeRunOut"];
 export type WfNodeRunDetail = Schemas["WfNodeRunDetail"];
 export type WfPendingOut = Schemas["WfPendingOut"];
 export type RunInput = Schemas["RunInput"];
+export type WfRunInput = Schemas["WfRunInput"];
+// tool 노드의 내장 도구(GET /node-types의 tools, M19)
+export type ToolSpec = Schemas["ToolSpecOut"];
+export type ToolParam = ToolSpec["params"][number];
 // 웹앱의 워크플로우(설계 6.2)
 export type FlowAppOut = Schemas["FlowAppOut"];
 export type FlowField = Schemas["FlowField"];
 export type FlowRunResult = Schemas["FlowRunResult"];
+// 챗플로우 대화(설계 6.1, 6.2). 미리보기·웹앱·API 대화가 같은 모양이다.
+export type WfConversationOut = Schemas["WfConversationOut"];
+export type WfConversationDetail = Schemas["WfConversationDetail"];
+export type WfConversationList = Schemas["WfConversationList"];
+export type WfConversationSource = WfConversationOut["source"];
+export type WfMessageOut = Schemas["WfMessageOut"];
+export type WfMessageList = Schemas["WfMessageList"];
+export type WfMessageCreate = Schemas["WfMessageCreate"];
+export type ConversationVariableOut = Schemas["ConversationVariableOut"];
 
 export const VAR_TYPES: readonly VarType[] = [
   "string",

@@ -171,10 +171,15 @@ export const routes: RouteObject[] = [
             ],
           },
           {
-            // 워크플로우 웹앱(2단계 7.4). 고른 런은 주소의 ?run=이다.
+            // 워크플로우·챗플로우 웹앱(2단계 7.2, 7.4). 워크플로우의 고른 런은 주소의 ?run=이고, 챗플로우는
+            // 대화를 바꿔도 화면을 그대로 두도록 대화 경로를 자식으로 둔다.
             path: "flows/:slug",
             lazy: page(() => import("./pages/FlowAppPage")),
             errorElement: <RouteError />,
+            children: [
+              { index: true, element: null },
+              { path: "c/:cid", element: null },
+            ],
           },
           {
             // 웹앱(설계 7.2)은 콘솔의 내비게이션 레일 없이 따로 그린다. 대화를 바꿔도 화면은 그대로

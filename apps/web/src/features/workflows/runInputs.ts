@@ -1,7 +1,9 @@
 /*
- * 런 입력 폼(start 필드, 설계 2.3)의 값과 서버로 보낼 inputs. 편집기 실행 패널과 웹앱이 같이 쓴다. 최종
- * 검사·형 변환은 서버(start.coerce_inputs)가 하고 여기서는 빈 필수 칸과 숫자 모양만 먼저 본다.
+ * 런 입력 폼(start 필드, 설계 2.3)의 값과 서버로 보낼 inputs. 편집기 실행 패널과 웹앱이 같이 쓰고, human_input
+ * 노드의 폼 응답(M19)도 같은 필드 모양이라 함께 쓴다. 최종 검사·형 변환은 서버(start.coerce_inputs)가 하고
+ * 여기서는 빈 필수 칸과 숫자 모양만 먼저 본다.
  */
+import type { WorkflowFormField } from "@/api/run-events";
 import type { FlowField, WfFileOut } from "@/api/types";
 import { START_TYPE, type FlowGraph } from "./graph";
 
@@ -53,6 +55,19 @@ export function startFieldsOf(graph: FlowGraph): FlowField[] {
       },
     ];
   });
+}
+
+// human_input 폼 필드(이벤트에서는 기본값이 있는 칸이 빠져 올 수 있다)를 입력 폼 필드로.
+export function formFieldsOf(fields: readonly WorkflowFormField[]): FlowField[] {
+  return fields.map((field) => ({
+    name: field.name,
+    type: field.type,
+    label: field.label ?? "",
+    required: field.required ?? false,
+    default: field.default ?? null,
+    options: field.options ?? null,
+    max_length: field.max_length ?? null,
+  }));
 }
 
 export function uploadedOf(file: WfFileOut): UploadedFile {

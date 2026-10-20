@@ -380,6 +380,26 @@ export interface WorkflowErrorData {
   retryable?: boolean;
 }
 
+/** human_input 노드가 기다리는 폼. 답은 /input에 kind=form과 values({필드 이름: 값})로
+보낸다. */
+export interface WorkflowFormData {
+  form_id: string;
+  description?: string;
+  fields: WorkflowFormField[];
+  created_at: string;
+}
+
+/** human_input 폼의 입력 칸. start 필드와 같은 모양이고 값도 같은 규칙으로 검사·변환한다. */
+export interface WorkflowFormField {
+  name: string;
+  type: "string" | "paragraph" | "number" | "boolean" | "select" | "file" | "file_list";
+  label?: string;
+  required?: boolean;
+  default?: unknown;
+  options?: string[] | null;
+  max_length?: number | null;
+}
+
 export interface WorkflowQueuedData {
   position: number;
 }
@@ -402,7 +422,9 @@ export interface WorkflowWaitingInputData {
   node_id: string;
   iteration_index?: number | null;
   child_run_id?: string | null;
-  interaction: RunWaitingInputData;
+  interaction?: RunWaitingInputData | null;
+  kind?: "approval" | "question" | "form" | null;
+  form?: WorkflowFormData | null;
 }
 
 export interface WorkspaceEventData {

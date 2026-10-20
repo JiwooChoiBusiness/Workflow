@@ -13,11 +13,10 @@ import { api, unwrap } from "@/api/client";
 import { requestJson, uploadFile, withQuery } from "@/api/http";
 import type {
   ApiKeyCreate,
-  ApiKeyCreated,
-  ApiKeyOut,
   WfFileOut,
   WfNodeRunCreate,
   WfRunCreate,
+  WfRunInput,
   WfRunOut,
   WorkflowCreate,
   WorkflowDraftCheck,
@@ -27,8 +26,13 @@ import type {
   WorkflowPatch,
   WorkflowVersionOut,
 } from "@/api/types";
-import type { RunInputBody } from "@/features/sessions/types";
 import { wfRunListQuery, type WfRunFilters } from "./runLogFilters";
+
+// POST /wf-runs/{rid}/input 본문. 승인·질문은 1단계와 같고 human_input 폼은 kind=form과 values다(M19).
+// 화면은 response_mode=none(202)으로 보내고 이어지는 이벤트는 따로 다시 받는다.
+export type WfInputBody = Pick<WfRunInput, "kind" | "answer" | "decision" | "note" | "values"> & {
+  session_auto_approve?: boolean;
+};
 
 export const workflowKeys = {
   all: ["workflows"] as const,
@@ -128,11 +132,25 @@ export function validateDraft(id: string, body: WorkflowDraftCheck) {
   );
 }
 
+function fetchNodeTypes() {
+  return unwrap(api.GET("/api/console/node-types"));
+}
+
+// 노드 타입과 tool 노드의 내장 도구는 한 응답이다. 서버를 다시 띄우기 전에는 바뀌지 않는다.
 export function useNodeTypes() {
   return useQuery({
     queryKey: workflowKeys.nodeTypes,
-    queryFn: async () => (await unwrap(api.GET("/api/console/node-types"))).items,
-    // 서버를 다시 띄우기 전에는 바뀌지 않는다.
+    queryFn: fetchNodeTypes,
+    select: (data) => data.items,
+    staleTime: Infinity,
+  });
+}
+
+export function useToolSpecs() {
+  return useQuery({
+    queryKey: workflowKeys.nodeTypes,
+    queryFn: fetchNodeTypes,
+    select: (data) => data.tools ?? [],
     staleTime: Infinity,
   });
 }
@@ -195,14 +213,14 @@ export function useRestoreWorkflowVersion(id: string) {
   });
 }
 
-// 워크플로우용 API 키는 1단계 ApiKeyService를 대상만 바꿔 쓰는 경로다(설계 6.1). 서버 쪽 키 대상
-// 변경(api_key.workflow_id)이 들어오기 전에는 404이고 화면은 "서버 API가 아직 없다"로 보인다.
-const apiKeysPath = (id: string) => `/api/console/workflows/${encodeURIComponent(id)}/api-keys`;
-
+// 워크플로우·챗플로우의 서비스 API 키(설계 6.1). 1단계 ApiKeyService를 대상만 바꿔 쓴다. 권한을 비워
+// 보내면 서버가 대상의 기본값(워크플로우 workflow, 챗플로우 chat)을 넣는다.
 export function useWorkflowApiKeys(id: string) {
   return useQuery({
     queryKey: workflowKeys.apiKeys(id),
-    queryFn: async () => (await requestJson<{ items: ApiKeyOut[] }>("GET", apiKeysPath(id))).items,
+    queryFn: async () =>
+      (await unwrap(api.GET("/api/console/workflows/{workflow_id}/api-keys", workflowPath(id))))
+        .items,
   });
 }
 
@@ -210,7 +228,9 @@ export function useCreateWorkflowApiKey(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: ApiKeyCreate) =>
-      requestJson<ApiKeyCreated>("POST", apiKeysPath(id), { json: body }),
+      unwrap(
+        api.POST("/api/console/workflows/{workflow_id}/api-keys", { ...workflowPath(id), body }),
+      ),
     onSuccess: () => client.invalidateQueries({ queryKey: workflowKeys.apiKeys(id) }),
   });
 }
@@ -219,7 +239,11 @@ export function useRevokeWorkflowApiKey(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (keyId: string) =>
-      requestJson<void>("DELETE", `${apiKeysPath(id)}/${encodeURIComponent(keyId)}`),
+      unwrap(
+        api.DELETE("/api/console/workflows/{workflow_id}/api-keys/{key_id}", {
+          params: { path: { workflow_id: id, key_id: keyId } },
+        }),
+      ),
     onSuccess: () => client.invalidateQueries({ queryKey: workflowKeys.apiKeys(id) }),
   });
 }
@@ -250,6 +274,11 @@ export function nodeRunRequest(id: string, nodeId: string, body: WfNodeRunCreate
   );
 }
 
+// 런의 입력·출력·그 런이 만든 파일과, 챗플로우 런이면 그 대화에 붙은 첨부(설계 6.1).
+export function wfRunFileUrl(runId: string, fileId: string): string {
+  return `/api/console/wf-runs/${encodeURIComponent(runId)}/files/${encodeURIComponent(fileId)}/download`;
+}
+
 export function wfRunEventsRequest(runId: string, after: number): Request {
   return new Request(
     withQuery(`/api/console/wf-runs/${encodeURIComponent(runId)}/events`, { after }),
@@ -259,6 +288,7 @@ export function wfRunEventsRequest(runId: string, after: number): Request {
 export interface RunListQuery {
   status?: WfRunOut["status"];
   trigger?: WfRunOut["trigger"];
+  conversation_id?: string;
   since?: string;
   limit?: number;
   offset?: number;
@@ -297,36 +327,28 @@ export function useWorkflowRunPages(id: string, filters: WfRunFilters) {
   });
 }
 
-/*
- * 여러 워크플로우의 실행 기록을 시작 시각 순으로 합친다(/logs의 워크플로우 런 탭). 서버에 워크스페이스 전체
- * 런 목록 경로가 없어 워크플로우마다 앞에서 limit개를 받아 섞는다. 지운 워크플로우의 런은 받지 못한다.
- */
-export function useMergedWorkflowRuns(
-  workflowIds: readonly string[],
-  filters: WfRunFilters,
-  limit: number,
-) {
-  return useQuery({
-    queryKey: ["wf-run-log", [...workflowIds].sort(), filters, limit] as const,
-    enabled: workflowIds.length > 0,
-    queryFn: async () => {
-      const query = wfRunListQuery(filters, Date.now());
-      const lists = await Promise.all(
-        workflowIds.map((id) => fetchWorkflowRuns(id, { ...query, limit, offset: 0 })),
-      );
-      const items = lists
-        .flatMap((list) => list.items)
-        .sort((a, b) => b.queued_at.localeCompare(a.queued_at));
-      return {
-        items: items.slice(0, limit),
-        more:
-          items.length > limit ||
-          lists.some((list) => list.next_offset !== null && list.next_offset !== undefined),
-      };
-    },
+// 워크스페이스 전체의 실행 기록(/logs의 워크플로우 런 탭). 지운 워크플로우의 런도 이름과 함께 온다.
+export function useWorkspaceWfRuns(filters: WfRunFilters) {
+  return useInfiniteQuery({
+    queryKey: ["wf-run-log", filters] as const,
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET("/api/console/wf-runs", {
+          params: {
+            query: {
+              ...wfRunListQuery(filters, Date.now()),
+              workflow_id: filters.workflow ?? undefined,
+              limit: RUNS_PAGE,
+              offset: pageParam,
+            },
+          },
+        }),
+      ),
+    getNextPageParam: (last) => last.next_offset ?? undefined,
     placeholderData: keepPreviousData,
     refetchInterval: (state) =>
-      state.state.data && hasActive(state.state.data.items) ? ACTIVE_REFRESH_MS : false,
+      state.state.data?.pages.some((page) => hasActive(page.items)) ? ACTIVE_REFRESH_MS : false,
   });
 }
 
@@ -410,8 +432,8 @@ export function stopWfRun(runId: string): Promise<WfRunOut> {
   return unwrap(api.POST("/api/console/wf-runs/{run_id}/stop", runPath(runId)));
 }
 
-// 승인·질문 응답. 202와 런 요약이 오고, 이어지는 이벤트는 events?after=로 받는다.
-export function provideWfInput(runId: string, body: RunInputBody): Promise<WfRunOut> {
+// 승인·질문·폼 응답. 202와 런 요약이 오고, 이어지는 이벤트는 events?after=로 받는다.
+export function provideWfInput(runId: string, body: WfInputBody): Promise<WfRunOut> {
   return requestJson<WfRunOut>("POST", `/api/console/wf-runs/${encodeURIComponent(runId)}/input`, {
     json: { ...body, response_mode: "none" },
   });

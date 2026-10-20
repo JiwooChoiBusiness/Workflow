@@ -16,7 +16,13 @@ describe("워크플로우 런 목록 필터", () => {
       parseWfRunFilters(
         new URLSearchParams("workflow=w1&trigger=webapp&status=failed&period=7d&tab=workflows"),
       ),
-    ).toEqual({ workflow: "w1", trigger: "webapp", status: "failed", period: "7d" });
+    ).toEqual({
+      workflow: "w1",
+      trigger: "webapp",
+      status: "failed",
+      period: "7d",
+      conversation: null,
+    });
     expect(
       parseWfRunFilters(new URLSearchParams("trigger=resume&status=done&period=1y&workflow=%20")),
     ).toEqual(DEFAULT_WF_RUN_FILTERS);
@@ -33,11 +39,30 @@ describe("워크플로우 런 목록 필터", () => {
   it("서버 목록 질의로 바꾼다. 기간은 지금 기준 시작 시각이다", () => {
     expect(
       wfRunListQuery(
-        { workflow: "w1", trigger: "single_node", status: "succeeded", period: "1d" },
+        {
+          workflow: "w1",
+          trigger: "single_node",
+          status: "succeeded",
+          period: "1d",
+          conversation: null,
+        },
         NOW,
       ),
     ).toEqual({ trigger: "single_node", status: "succeeded", since: "2026-10-13T12:00:00.000Z" });
     expect(wfRunListQuery(DEFAULT_WF_RUN_FILTERS, NOW)).toEqual({});
+  });
+
+  it("챗플로우 대화 하나의 런만 고르는 필터도 주소와 질의로 오간다", () => {
+    const filters = parseWfRunFilters(new URLSearchParams("tab=runs&conversation=c1"));
+    expect(filters.conversation).toBe("c1");
+    expect(hasWfRunFilters(filters, { ignoreWorkflow: true })).toBe(true);
+    expect(wfRunListQuery(filters, NOW)).toEqual({ conversation_id: "c1" });
+    expect(
+      wfRunFiltersToParams(
+        { ...filters, conversation: null },
+        new URLSearchParams("tab=runs&conversation=c1"),
+      ).toString(),
+    ).toBe("tab=runs");
   });
 
   it("짧은 런 id는 시각이 아닌 끝부분이다", () => {

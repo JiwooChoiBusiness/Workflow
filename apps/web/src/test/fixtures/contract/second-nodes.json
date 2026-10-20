@@ -1,0 +1,1917 @@
+{
+  "workflowId": "01a13d17-2d31-7cfe-bfbc-022275d40321",
+  "runId": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+  "graph": {
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "title": "start",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "config": {
+          "fields": [
+            {
+              "name": "items",
+              "type": "paragraph",
+              "label": "목록 JSON",
+              "required": true
+            }
+          ]
+        }
+      },
+      {
+        "id": "parse",
+        "type": "tool",
+        "title": "parse",
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "config": {
+          "tool": "json_parse",
+          "params": {
+            "text": {
+              "mode": "var",
+              "value": "start.items"
+            }
+          }
+        }
+      },
+      {
+        "id": "pick",
+        "type": "list_operator",
+        "title": "pick",
+        "position": {
+          "x": 600,
+          "y": 0
+        },
+        "config": {
+          "input_var": "parse.value",
+          "filter": {
+            "logical": "and",
+            "conditions": [
+              {
+                "key": "",
+                "op": ">",
+                "value": "1"
+              }
+            ]
+          },
+          "sort": {
+            "key": "",
+            "order": "desc"
+          },
+          "slice": {
+            "offset": 0,
+            "limit": 3
+          },
+          "extract_index": 0
+        }
+      },
+      {
+        "id": "now",
+        "type": "tool",
+        "title": "now",
+        "position": {
+          "x": 900,
+          "y": 0
+        },
+        "config": {
+          "tool": "current_time",
+          "params": {
+            "format": {
+              "mode": "const",
+              "value": "%Y"
+            }
+          }
+        }
+      },
+      {
+        "id": "loop_1",
+        "type": "loop",
+        "title": "loop_1",
+        "position": {
+          "x": 1200,
+          "y": 0
+        },
+        "config": {
+          "loop_vars": [
+            {
+              "name": "n",
+              "type": "number",
+              "value": 0
+            },
+            {
+              "name": "log",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "break_conditions": [
+            {
+              "var": "loop_1.n",
+              "op": "≥",
+              "value": "3"
+            }
+          ],
+          "logical": "and",
+          "max_iterations": 5
+        },
+        "ui": {
+          "width": 980,
+          "height": 240
+        }
+      },
+      {
+        "id": "loop_start_1",
+        "type": "loop_start",
+        "title": "loop_start_1",
+        "position": {
+          "x": 24,
+          "y": 72
+        },
+        "config": {},
+        "parent_id": "loop_1"
+      },
+      {
+        "id": "add",
+        "type": "variable_assigner",
+        "title": "add",
+        "position": {
+          "x": 240,
+          "y": 72
+        },
+        "config": {
+          "items": [
+            {
+              "target": "loop_1.n",
+              "op": "+=",
+              "value": 1
+            }
+          ]
+        },
+        "parent_id": "loop_1"
+      },
+      {
+        "id": "tpl",
+        "type": "template",
+        "title": "tpl",
+        "position": {
+          "x": 480,
+          "y": 72
+        },
+        "config": {
+          "template": "{{ log }}{{ i }};",
+          "vars": [
+            {
+              "name": "log",
+              "var": "loop_1.log"
+            },
+            {
+              "name": "i",
+              "var": "loop_start_1.index"
+            }
+          ]
+        },
+        "parent_id": "loop_1"
+      },
+      {
+        "id": "set",
+        "type": "variable_assigner",
+        "title": "set",
+        "position": {
+          "x": 720,
+          "y": 72
+        },
+        "config": {
+          "items": [
+            {
+              "target": "loop_1.log",
+              "op": "overwrite",
+              "var": "tpl.output"
+            }
+          ]
+        },
+        "parent_id": "loop_1"
+      },
+      {
+        "id": "ask",
+        "type": "human_input",
+        "title": "ask",
+        "position": {
+          "x": 1800,
+          "y": 0
+        },
+        "config": {
+          "description": "가장 큰 값: {{ pick.first_record }}, 루프 {{ loop_1.loop_count }}회",
+          "fields": [
+            {
+              "name": "ok",
+              "type": "boolean",
+              "label": "계속할까요",
+              "required": true
+            },
+            {
+              "name": "note",
+              "type": "paragraph",
+              "label": "메모"
+            }
+          ]
+        }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "title": "end",
+        "position": {
+          "x": 2100,
+          "y": 0
+        },
+        "config": {
+          "outputs": [
+            {
+              "name": "first",
+              "var": "pick.first_record"
+            },
+            {
+              "name": "count",
+              "var": "pick.count"
+            },
+            {
+              "name": "rounds",
+              "var": "loop_1.loop_count"
+            },
+            {
+              "name": "log",
+              "var": "loop_1.log"
+            },
+            {
+              "name": "year",
+              "var": "now.text"
+            },
+            {
+              "name": "ok",
+              "var": "ask.ok"
+            },
+            {
+              "name": "note",
+              "var": "ask.note"
+            }
+          ]
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "start",
+        "target": "parse"
+      },
+      {
+        "id": "e2",
+        "source": "parse",
+        "target": "pick"
+      },
+      {
+        "id": "e3",
+        "source": "pick",
+        "target": "now"
+      },
+      {
+        "id": "e4",
+        "source": "now",
+        "target": "loop_1"
+      },
+      {
+        "id": "e5",
+        "source": "loop_1",
+        "target": "ask"
+      },
+      {
+        "id": "e6",
+        "source": "ask",
+        "target": "end"
+      },
+      {
+        "id": "e7",
+        "source": "loop_start_1",
+        "target": "add"
+      },
+      {
+        "id": "e8",
+        "source": "add",
+        "target": "tpl"
+      },
+      {
+        "id": "e9",
+        "source": "tpl",
+        "target": "set"
+      }
+    ]
+  },
+  "events": [
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 1,
+      "ts": "2026-10-15T01:04:51.735Z",
+      "type": "workflow.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 2,
+      "ts": "2026-10-15T01:04:51.789Z",
+      "type": "workflow.started",
+      "data": {
+        "workflow_id": "01a13d17-2d31-7cfe-bfbc-022275d40321",
+        "version_id": "01a13d17-2d3e-75f7-aead-79b08433d6e5",
+        "kind": "workflow",
+        "inputs_preview": {
+          "items": "[5, 1, 4, 2, 3]"
+        },
+        "truncated": false,
+        "resumed": false,
+        "node_count": 11
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 3,
+      "ts": "2026-10-15T01:04:51.801Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e4f-71b6-9af2-2898559929d2",
+        "node_id": "start",
+        "node_type": "start",
+        "title": "start",
+        "index": 0,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 4,
+      "ts": "2026-10-15T01:04:51.809Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e4f-71b6-9af2-2898559929d2",
+        "node_id": "start",
+        "status": "succeeded",
+        "outputs_preview": {
+          "items": "[5, 1, 4, 2, 3]"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 3,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 5,
+      "ts": "2026-10-15T01:04:51.814Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e61-7d69-915d-bd5b4ba95f3e",
+        "node_id": "parse",
+        "node_type": "tool",
+        "title": "parse",
+        "index": 1,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 6,
+      "ts": "2026-10-15T01:04:51.819Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e61-7d69-915d-bd5b4ba95f3e",
+        "node_id": "parse",
+        "status": "succeeded",
+        "outputs_preview": {
+          "value": [5, 1, 4, 2, 3],
+          "text": "[5, 1, 4, 2, 3]",
+          "type": "array",
+          "found": true
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 1,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 7,
+      "ts": "2026-10-15T01:04:51.821Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e6b-76da-a66d-9e007b734747",
+        "node_id": "pick",
+        "node_type": "list_operator",
+        "title": "pick",
+        "index": 2,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 8,
+      "ts": "2026-10-15T01:04:51.825Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e6b-76da-a66d-9e007b734747",
+        "node_id": "pick",
+        "status": "succeeded",
+        "outputs_preview": {
+          "result": [5, 4, 3],
+          "count": 3,
+          "first_record": 5,
+          "last_record": 3,
+          "item": 5
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 9,
+      "ts": "2026-10-15T01:04:51.828Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e71-7185-a06c-4a67ec5c7cbb",
+        "node_id": "now",
+        "node_type": "tool",
+        "title": "now",
+        "index": 3,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 10,
+      "ts": "2026-10-15T01:04:51.833Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e71-7185-a06c-4a67ec5c7cbb",
+        "node_id": "now",
+        "status": "succeeded",
+        "outputs_preview": {
+          "text": "2026",
+          "iso": "2026-10-15T10:04:51+09:00",
+          "date": "2026-10-15",
+          "timestamp": 1792026291,
+          "timezone": "+09:00"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 1,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 11,
+      "ts": "2026-10-15T01:04:51.836Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e79-7e9f-94a3-07713b5aad8f",
+        "node_id": "loop_1",
+        "node_type": "loop",
+        "title": "loop_1",
+        "index": 4,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 12,
+      "ts": "2026-10-15T01:04:51.837Z",
+      "type": "iteration.started",
+      "data": {
+        "node_id": "loop_1",
+        "total": 5
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 13,
+      "ts": "2026-10-15T01:04:51.837Z",
+      "type": "iteration.next",
+      "data": {
+        "node_id": "loop_1",
+        "index": 0
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 14,
+      "ts": "2026-10-15T01:04:51.840Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e7d-7a14-a79d-86d9990fd2a3",
+        "node_id": "add",
+        "node_type": "variable_assigner",
+        "title": "add",
+        "index": 5,
+        "iteration_id": "loop_1",
+        "iteration_index": 0,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 15,
+      "ts": "2026-10-15T01:04:51.845Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e7d-7a14-a79d-86d9990fd2a3",
+        "node_id": "add",
+        "status": "succeeded",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 16,
+      "ts": "2026-10-15T01:04:51.847Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e85-7e56-97b8-ca75cb76e171",
+        "node_id": "tpl",
+        "node_type": "template",
+        "title": "tpl",
+        "index": 6,
+        "iteration_id": "loop_1",
+        "iteration_index": 0,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 17,
+      "ts": "2026-10-15T01:04:51.864Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e85-7e56-97b8-ca75cb76e171",
+        "node_id": "tpl",
+        "status": "succeeded",
+        "outputs_preview": {
+          "output": "0;"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 12,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 18,
+      "ts": "2026-10-15T01:04:51.867Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e98-7b73-9485-237b18ce8a6d",
+        "node_id": "set",
+        "node_type": "variable_assigner",
+        "title": "set",
+        "index": 7,
+        "iteration_id": "loop_1",
+        "iteration_index": 0,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 19,
+      "ts": "2026-10-15T01:04:51.870Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e98-7b73-9485-237b18ce8a6d",
+        "node_id": "set",
+        "status": "succeeded",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 20,
+      "ts": "2026-10-15T01:04:51.870Z",
+      "type": "iteration.next",
+      "data": {
+        "node_id": "loop_1",
+        "index": 1
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 21,
+      "ts": "2026-10-15T01:04:51.873Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2e9e-7cb5-90cc-31571d0ba823",
+        "node_id": "add",
+        "node_type": "variable_assigner",
+        "title": "add",
+        "index": 8,
+        "iteration_id": "loop_1",
+        "iteration_index": 1,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 22,
+      "ts": "2026-10-15T01:04:51.877Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e9e-7cb5-90cc-31571d0ba823",
+        "node_id": "add",
+        "status": "succeeded",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 23,
+      "ts": "2026-10-15T01:04:51.880Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2ea5-7e40-8763-556d1ad0a699",
+        "node_id": "tpl",
+        "node_type": "template",
+        "title": "tpl",
+        "index": 9,
+        "iteration_id": "loop_1",
+        "iteration_index": 1,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 24,
+      "ts": "2026-10-15T01:04:51.882Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2ea5-7e40-8763-556d1ad0a699",
+        "node_id": "tpl",
+        "status": "succeeded",
+        "outputs_preview": {
+          "output": "0;1;"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 25,
+      "ts": "2026-10-15T01:04:51.886Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2eaa-7b1f-8718-79ea6eca4f6c",
+        "node_id": "set",
+        "node_type": "variable_assigner",
+        "title": "set",
+        "index": 10,
+        "iteration_id": "loop_1",
+        "iteration_index": 1,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 26,
+      "ts": "2026-10-15T01:04:51.888Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2eaa-7b1f-8718-79ea6eca4f6c",
+        "node_id": "set",
+        "status": "succeeded",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 27,
+      "ts": "2026-10-15T01:04:51.889Z",
+      "type": "iteration.next",
+      "data": {
+        "node_id": "loop_1",
+        "index": 2
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 28,
+      "ts": "2026-10-15T01:04:51.892Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2eb1-7ced-ad7f-654d8780ee9c",
+        "node_id": "add",
+        "node_type": "variable_assigner",
+        "title": "add",
+        "index": 11,
+        "iteration_id": "loop_1",
+        "iteration_index": 2,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 29,
+      "ts": "2026-10-15T01:04:51.894Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2eb1-7ced-ad7f-654d8780ee9c",
+        "node_id": "add",
+        "status": "succeeded",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 30,
+      "ts": "2026-10-15T01:04:51.897Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2eb6-7345-acb0-fcc3d100a84f",
+        "node_id": "tpl",
+        "node_type": "template",
+        "title": "tpl",
+        "index": 12,
+        "iteration_id": "loop_1",
+        "iteration_index": 2,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 31,
+      "ts": "2026-10-15T01:04:51.901Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2eb6-7345-acb0-fcc3d100a84f",
+        "node_id": "tpl",
+        "status": "succeeded",
+        "outputs_preview": {
+          "output": "0;1;2;"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 32,
+      "ts": "2026-10-15T01:04:51.903Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2ebd-71d4-8724-983f25908fcb",
+        "node_id": "set",
+        "node_type": "variable_assigner",
+        "title": "set",
+        "index": 13,
+        "iteration_id": "loop_1",
+        "iteration_index": 2,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 33,
+      "ts": "2026-10-15T01:04:51.906Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2ebd-71d4-8724-983f25908fcb",
+        "node_id": "set",
+        "status": "succeeded",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 34,
+      "ts": "2026-10-15T01:04:51.906Z",
+      "type": "iteration.completed",
+      "data": {
+        "node_id": "loop_1",
+        "count": 3,
+        "failed_count": 0,
+        "duration_ms": 70
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 35,
+      "ts": "2026-10-15T01:04:51.911Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2e79-7e9f-94a3-07713b5aad8f",
+        "node_id": "loop_1",
+        "status": "succeeded",
+        "outputs_preview": {
+          "n": 3,
+          "log": "0;1;2;",
+          "loop_count": 3
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 72,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 36,
+      "ts": "2026-10-15T01:04:51.913Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2ec7-7a94-ade4-6ba8e71736a8",
+        "node_id": "ask",
+        "node_type": "human_input",
+        "title": "ask",
+        "index": 14,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 37,
+      "ts": "2026-10-15T01:04:51.924Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2ec7-7a94-ade4-6ba8e71736a8",
+        "node_id": "ask",
+        "status": "waiting_input",
+        "outputs_preview": {},
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 6,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 38,
+      "ts": "2026-10-15T01:04:51.935Z",
+      "type": "workflow.waiting_input",
+      "data": {
+        "node_id": "ask",
+        "iteration_index": null,
+        "child_run_id": null,
+        "interaction": null,
+        "kind": "form",
+        "form": {
+          "form_id": "form_6271ee81e06342aa93d85a8d2c822c72",
+          "description": "가장 큰 값: 5, 루프 3회",
+          "fields": [
+            {
+              "name": "ok",
+              "type": "boolean",
+              "label": "계속할까요",
+              "required": true,
+              "default": null,
+              "options": null,
+              "max_length": null
+            },
+            {
+              "name": "note",
+              "type": "paragraph",
+              "label": "메모",
+              "required": false,
+              "default": null,
+              "options": null,
+              "max_length": null
+            }
+          ],
+          "created_at": "2026-10-15T01:04:51.916432Z"
+        }
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 39,
+      "ts": "2026-10-15T01:04:51.936Z",
+      "type": "workflow.completed",
+      "data": {
+        "status": "waiting_input",
+        "outputs": null,
+        "usage_total": {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": false
+        },
+        "node_runs": 15,
+        "duration_ms": 144,
+        "error": null
+      }
+    }
+  ],
+  "waiting": {
+    "id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+    "workflow_id": "01a13d17-2d31-7cfe-bfbc-022275d40321",
+    "wf_version_id": "01a13d17-2d3e-75f7-aead-79b08433d6e5",
+    "kind": "workflow",
+    "trigger": "preview",
+    "status": "waiting_input",
+    "inputs": {
+      "items": "[5, 1, 4, 2, 3]"
+    },
+    "outputs": null,
+    "error": null,
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "cost_usd": null,
+      "estimated": false
+    },
+    "node_run_count": 15,
+    "pending_interaction": {
+      "node_id": "ask",
+      "iteration_index": null,
+      "child_run_id": null,
+      "interaction": null,
+      "kind": "form",
+      "form": {
+        "form_id": "form_6271ee81e06342aa93d85a8d2c822c72",
+        "description": "가장 큰 값: 5, 루프 3회",
+        "fields": [
+          {
+            "name": "ok",
+            "type": "boolean",
+            "label": "계속할까요",
+            "required": true,
+            "default": null,
+            "options": null,
+            "max_length": null
+          },
+          {
+            "name": "note",
+            "type": "paragraph",
+            "label": "메모",
+            "required": false,
+            "default": null,
+            "options": null,
+            "max_length": null
+          }
+        ],
+        "created_at": "2026-10-15T01:04:51.916432Z"
+      }
+    },
+    "limits": {
+      "max_run_seconds": 1800,
+      "max_total_tokens": 2000000,
+      "max_cost_usd": null,
+      "max_parallel_nodes": 4,
+      "pool_max_bytes": 16777216,
+      "checkpoint_interval_sec": 0.0
+    },
+    "conversation_id": null,
+    "message_id": null,
+    "external_user": null,
+    "cancel_requested_at": null,
+    "queued_at": "2026-10-15T01:04:51.708350Z",
+    "started_at": "2026-10-15T01:04:51.749440Z",
+    "ended_at": null,
+    "created_at": "2026-10-15T01:04:51.716845Z",
+    "updated_at": "2026-10-15T01:04:51.934470Z",
+    "node_runs": [
+      {
+        "id": "01a13d17-2e4f-71b6-9af2-2898559929d2",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "start",
+        "node_type": "start",
+        "title": "start",
+        "index": 0,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.791423Z",
+        "ended_at": "2026-10-15T01:04:51.805720Z",
+        "duration_ms": 3
+      },
+      {
+        "id": "01a13d17-2e61-7d69-915d-bd5b4ba95f3e",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "parse",
+        "node_type": "tool",
+        "title": "parse",
+        "index": 1,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.809726Z",
+        "ended_at": "2026-10-15T01:04:51.816726Z",
+        "duration_ms": 1
+      },
+      {
+        "id": "01a13d17-2e6b-76da-a66d-9e007b734747",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "pick",
+        "node_type": "list_operator",
+        "title": "pick",
+        "index": 2,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.819725Z",
+        "ended_at": "2026-10-15T01:04:51.822703Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2e71-7185-a06c-4a67ec5c7cbb",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "now",
+        "node_type": "tool",
+        "title": "now",
+        "index": 3,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.825716Z",
+        "ended_at": "2026-10-15T01:04:51.831084Z",
+        "duration_ms": 1
+      },
+      {
+        "id": "01a13d17-2e79-7e9f-94a3-07713b5aad8f",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "loop_1",
+        "node_type": "loop",
+        "title": "loop_1",
+        "index": 4,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.833083Z",
+        "ended_at": "2026-10-15T01:04:51.908357Z",
+        "duration_ms": 72
+      },
+      {
+        "id": "01a13d17-2ec7-7a94-ade4-6ba8e71736a8",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "ask",
+        "node_type": "human_input",
+        "title": "ask",
+        "index": 14,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "waiting_input",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.911360Z",
+        "ended_at": "2026-10-15T01:04:51.919438Z",
+        "duration_ms": 6
+      }
+    ]
+  },
+  "loopChildren": {
+    "items": [
+      {
+        "id": "01a13d17-2e7d-7a14-a79d-86d9990fd2a3",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "add",
+        "node_type": "variable_assigner",
+        "title": "add",
+        "index": 5,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 0,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.837081Z",
+        "ended_at": "2026-10-15T01:04:51.841081Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2e85-7e56-97b8-ca75cb76e171",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "tpl",
+        "node_type": "template",
+        "title": "tpl",
+        "index": 6,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 0,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.845083Z",
+        "ended_at": "2026-10-15T01:04:51.860225Z",
+        "duration_ms": 12
+      },
+      {
+        "id": "01a13d17-2e98-7b73-9485-237b18ce8a6d",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "set",
+        "node_type": "variable_assigner",
+        "title": "set",
+        "index": 7,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 0,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.864236Z",
+        "ended_at": "2026-10-15T01:04:51.867668Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2e9e-7cb5-90cc-31571d0ba823",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "add",
+        "node_type": "variable_assigner",
+        "title": "add",
+        "index": 8,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 1,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.870667Z",
+        "ended_at": "2026-10-15T01:04:51.873052Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2ea5-7e40-8763-556d1ad0a699",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "tpl",
+        "node_type": "template",
+        "title": "tpl",
+        "index": 9,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 1,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.877160Z",
+        "ended_at": "2026-10-15T01:04:51.880158Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2eaa-7b1f-8718-79ea6eca4f6c",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "set",
+        "node_type": "variable_assigner",
+        "title": "set",
+        "index": 10,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 1,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.882670Z",
+        "ended_at": "2026-10-15T01:04:51.886670Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2eb1-7ced-ad7f-654d8780ee9c",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "add",
+        "node_type": "variable_assigner",
+        "title": "add",
+        "index": 11,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 2,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.889676Z",
+        "ended_at": "2026-10-15T01:04:51.892677Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2eb6-7345-acb0-fcc3d100a84f",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "tpl",
+        "node_type": "template",
+        "title": "tpl",
+        "index": 12,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 2,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.894677Z",
+        "ended_at": "2026-10-15T01:04:51.897680Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2ebd-71d4-8724-983f25908fcb",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "set",
+        "node_type": "variable_assigner",
+        "title": "set",
+        "index": 13,
+        "iteration_node_id": "loop_1",
+        "iteration_index": 2,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.901170Z",
+        "ended_at": "2026-10-15T01:04:51.903166Z",
+        "duration_ms": 0
+      }
+    ]
+  },
+  "invalid": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "invalid_inputs",
+        "message": "폼 응답이 올바르지 않다",
+        "details": {
+          "ok": "필수 입력이다"
+        }
+      }
+    }
+  },
+  "wrongKind": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "wrong_input_kind",
+        "message": "이 런은 폼 응답을 기다린다. kind=form과 values로 보낸다",
+        "details": {
+          "kind": "form",
+          "node_id": "ask"
+        }
+      }
+    }
+  },
+  "input": {
+    "id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+    "workflow_id": "01a13d17-2d31-7cfe-bfbc-022275d40321",
+    "wf_version_id": "01a13d17-2d3e-75f7-aead-79b08433d6e5",
+    "kind": "workflow",
+    "trigger": "preview",
+    "status": "queued",
+    "inputs": {
+      "items": "[5, 1, 4, 2, 3]"
+    },
+    "outputs": null,
+    "error": null,
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "cost_usd": null,
+      "estimated": false
+    },
+    "node_run_count": 15,
+    "pending_interaction": {
+      "node_id": "ask",
+      "iteration_index": null,
+      "child_run_id": null,
+      "interaction": null,
+      "kind": "form",
+      "form": {
+        "form_id": "form_6271ee81e06342aa93d85a8d2c822c72",
+        "description": "가장 큰 값: 5, 루프 3회",
+        "fields": [
+          {
+            "name": "ok",
+            "type": "boolean",
+            "label": "계속할까요",
+            "required": true,
+            "default": null,
+            "options": null,
+            "max_length": null
+          },
+          {
+            "name": "note",
+            "type": "paragraph",
+            "label": "메모",
+            "required": false,
+            "default": null,
+            "options": null,
+            "max_length": null
+          }
+        ],
+        "created_at": "2026-10-15T01:04:51.916432Z"
+      }
+    },
+    "limits": {
+      "max_run_seconds": 1800,
+      "max_total_tokens": 2000000,
+      "max_cost_usd": null,
+      "max_parallel_nodes": 4,
+      "pool_max_bytes": 16777216,
+      "checkpoint_interval_sec": 0.0
+    },
+    "conversation_id": null,
+    "message_id": null,
+    "external_user": null,
+    "cancel_requested_at": null,
+    "queued_at": "2026-10-15T01:04:51.708350Z",
+    "started_at": "2026-10-15T01:04:51.749440Z",
+    "ended_at": null,
+    "created_at": "2026-10-15T01:04:51.716845Z",
+    "updated_at": "2026-10-15T01:04:52.069786Z"
+  },
+  "resume": [
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 40,
+      "ts": "2026-10-15T01:04:52.070Z",
+      "type": "workflow.queued",
+      "data": {
+        "position": 1
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 41,
+      "ts": "2026-10-15T01:04:52.098Z",
+      "type": "workflow.started",
+      "data": {
+        "workflow_id": "01a13d17-2d31-7cfe-bfbc-022275d40321",
+        "version_id": "01a13d17-2d3e-75f7-aead-79b08433d6e5",
+        "kind": "workflow",
+        "inputs_preview": {
+          "items": "[5, 1, 4, 2, 3]"
+        },
+        "truncated": false,
+        "resumed": true,
+        "node_count": 11
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 42,
+      "ts": "2026-10-15T01:04:52.099Z",
+      "type": "workflow.resumed",
+      "data": {
+        "node_id": "ask"
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 43,
+      "ts": "2026-10-15T01:04:52.106Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2ec7-7a94-ade4-6ba8e71736a8",
+        "node_id": "ask",
+        "node_type": "human_input",
+        "title": "ask",
+        "index": 14,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 44,
+      "ts": "2026-10-15T01:04:52.109Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2ec7-7a94-ade4-6ba8e71736a8",
+        "node_id": "ask",
+        "status": "succeeded",
+        "outputs_preview": {
+          "ok": true,
+          "note": "좋음"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 45,
+      "ts": "2026-10-15T01:04:52.112Z",
+      "type": "node.started",
+      "data": {
+        "node_run_id": "01a13d17-2f8d-745a-871b-4627b14005c4",
+        "node_id": "end",
+        "node_type": "end",
+        "title": "end",
+        "index": 15,
+        "iteration_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "child_run_id": null,
+        "child_session_id": null
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 46,
+      "ts": "2026-10-15T01:04:52.115Z",
+      "type": "node.completed",
+      "data": {
+        "node_run_id": "01a13d17-2f8d-745a-871b-4627b14005c4",
+        "node_id": "end",
+        "status": "succeeded",
+        "outputs_preview": {
+          "first": 5,
+          "count": 3,
+          "rounds": 3,
+          "log": "0;1;2;",
+          "year": "2026",
+          "ok": true,
+          "note": "좋음"
+        },
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "duration_ms": 0,
+        "branch": null,
+        "warnings": []
+      }
+    },
+    {
+      "run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+      "session_id": null,
+      "seq": 47,
+      "ts": "2026-10-15T01:04:52.124Z",
+      "type": "workflow.completed",
+      "data": {
+        "status": "succeeded",
+        "outputs": {
+          "first": 5,
+          "count": 3,
+          "rounds": 3,
+          "log": "0;1;2;",
+          "year": "2026",
+          "ok": true,
+          "note": "좋음"
+        },
+        "usage_total": {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": false
+        },
+        "node_runs": 16,
+        "duration_ms": 155,
+        "error": null,
+        "truncated": false
+      }
+    }
+  ],
+  "done": {
+    "id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+    "workflow_id": "01a13d17-2d31-7cfe-bfbc-022275d40321",
+    "wf_version_id": "01a13d17-2d3e-75f7-aead-79b08433d6e5",
+    "kind": "workflow",
+    "trigger": "preview",
+    "status": "succeeded",
+    "inputs": {
+      "items": "[5, 1, 4, 2, 3]"
+    },
+    "outputs": {
+      "first": 5,
+      "count": 3,
+      "rounds": 3,
+      "log": "0;1;2;",
+      "year": "2026",
+      "ok": true,
+      "note": "좋음"
+    },
+    "error": null,
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "cost_usd": null,
+      "estimated": false
+    },
+    "node_run_count": 16,
+    "pending_interaction": null,
+    "limits": {
+      "max_run_seconds": 1800,
+      "max_total_tokens": 2000000,
+      "max_cost_usd": null,
+      "max_parallel_nodes": 4,
+      "pool_max_bytes": 16777216,
+      "checkpoint_interval_sec": 0.0
+    },
+    "conversation_id": null,
+    "message_id": null,
+    "external_user": null,
+    "cancel_requested_at": null,
+    "queued_at": "2026-10-15T01:04:51.708350Z",
+    "started_at": "2026-10-15T01:04:51.749440Z",
+    "ended_at": "2026-10-15T01:04:52.115247Z",
+    "created_at": "2026-10-15T01:04:51.716845Z",
+    "updated_at": "2026-10-15T01:04:52.117983Z",
+    "node_runs": [
+      {
+        "id": "01a13d17-2e4f-71b6-9af2-2898559929d2",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "start",
+        "node_type": "start",
+        "title": "start",
+        "index": 0,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.791423Z",
+        "ended_at": "2026-10-15T01:04:51.805720Z",
+        "duration_ms": 3
+      },
+      {
+        "id": "01a13d17-2e61-7d69-915d-bd5b4ba95f3e",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "parse",
+        "node_type": "tool",
+        "title": "parse",
+        "index": 1,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.809726Z",
+        "ended_at": "2026-10-15T01:04:51.816726Z",
+        "duration_ms": 1
+      },
+      {
+        "id": "01a13d17-2e6b-76da-a66d-9e007b734747",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "pick",
+        "node_type": "list_operator",
+        "title": "pick",
+        "index": 2,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.819725Z",
+        "ended_at": "2026-10-15T01:04:51.822703Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2e71-7185-a06c-4a67ec5c7cbb",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "now",
+        "node_type": "tool",
+        "title": "now",
+        "index": 3,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.825716Z",
+        "ended_at": "2026-10-15T01:04:51.831084Z",
+        "duration_ms": 1
+      },
+      {
+        "id": "01a13d17-2e79-7e9f-94a3-07713b5aad8f",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "loop_1",
+        "node_type": "loop",
+        "title": "loop_1",
+        "index": 4,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:51.833083Z",
+        "ended_at": "2026-10-15T01:04:51.908357Z",
+        "duration_ms": 72
+      },
+      {
+        "id": "01a13d17-2ec7-7a94-ade4-6ba8e71736a8",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "ask",
+        "node_type": "human_input",
+        "title": "ask",
+        "index": 14,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:52.099938Z",
+        "ended_at": "2026-10-15T01:04:52.106247Z",
+        "duration_ms": 0
+      },
+      {
+        "id": "01a13d17-2f8d-745a-871b-4627b14005c4",
+        "wf_run_id": "01a13d17-2dfc-7092-b6e6-ebbb235d1c6c",
+        "node_id": "end",
+        "node_type": "end",
+        "title": "end",
+        "index": 15,
+        "iteration_node_id": null,
+        "iteration_index": null,
+        "attempt": 1,
+        "status": "succeeded",
+        "truncated": false,
+        "error": null,
+        "usage": null,
+        "warnings": [],
+        "child_run_id": null,
+        "branch": null,
+        "started_at": "2026-10-15T01:04:52.109247Z",
+        "ended_at": "2026-10-15T01:04:52.112250Z",
+        "duration_ms": 0
+      }
+    ]
+  },
+  "again": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "run_not_waiting",
+        "message": "답이나 승인을 기다리는 런이 아니다",
+        "details": {
+          "status": "succeeded"
+        }
+      }
+    }
+  }
+}

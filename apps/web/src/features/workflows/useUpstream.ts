@@ -1,14 +1,18 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { NodeTypeInfo, VarType } from "@/api/types";
-import { useNodeTypes } from "./api";
+import type { NodeTypeInfo, ToolSpec, VarType } from "@/api/types";
+import { useNodeTypes, useToolSpecs } from "./api";
 import { useFlow } from "./flowStoreContext";
 import {
+  enclosingLoop,
+  loopVariables,
+  LOOP_TYPE,
   nodeById,
   nodeOutputs,
   sysVariables,
   upstreamIds,
   type FlowGraph,
+  type FlowNode,
   type VarOption,
 } from "./graph";
 import { typeInfoMap } from "./nodeTypes";
@@ -22,21 +26,34 @@ export interface VarGroup {
   vars: VarOption[];
 }
 
-export type PickerScope = "upstream" | "children";
+// children: iteration의 output_var처럼 하위 그래프 노드의 출력만. loop: loop 종료 조건처럼 하위 그래프 안에서
+// 읽는 값(반복 변수, 하위 노드 출력)과 loop의 상류.
+export type PickerScope = "upstream" | "children" | "loop";
 
-function nodeGroups(graph: FlowGraph, ids: string[], infos: Map<string, NodeTypeInfo>): VarGroup[] {
+function nodeGroups(
+  graph: FlowGraph,
+  ids: string[],
+  infos: Map<string, NodeTypeInfo>,
+  tools: readonly ToolSpec[] | undefined,
+): VarGroup[] {
   return ids.flatMap((id) => {
     const node = nodeById(graph, id);
     if (!node) return [];
-    const vars = nodeOutputs(node, infos.get(node.type));
+    const vars = nodeOutputs(node, infos.get(node.type), tools);
     if (vars.length === 0) return [];
     return [{ key: id, scope: id, nodeType: node.type, title: node.title || id, vars }];
   });
 }
 
+function loopGroup(loop: FlowNode, title: string): VarGroup[] {
+  const vars = loopVariables(loop);
+  if (vars.length === 0) return [];
+  return [{ key: `loop:${loop.id}`, scope: loop.id, nodeType: LOOP_TYPE, title, vars }];
+}
+
 /*
- * 변수 선택기의 목록. upstream은 이 노드가 참조할 수 있는 상류 노드 출력과 sys·env·conv, children은
- * iteration의 output_var처럼 하위 그래프 노드의 출력만이다.
+ * 변수 선택기의 목록. upstream은 이 노드가 참조할 수 있는 상류 노드 출력과 sys·env·conv이고, loop 안의
+ * 노드면 그 loop의 반복 변수(<loop id>.<이름>)를 맨 앞에 둔다.
  */
 export function useVariableGroups(nodeId: string, scope: PickerScope = "upstream"): VarGroup[] {
   const { t } = useTranslation("workflows");
@@ -45,15 +62,19 @@ export function useVariableGroups(nodeId: string, scope: PickerScope = "upstream
   const envVars = useFlow((state) => state.envVars);
   const conversationVars = useFlow((state) => state.conversationVars);
   const nodeTypes = useNodeTypes();
+  const tools = useToolSpecs();
   return useMemo(() => {
     const infos = typeInfoMap(nodeTypes.data);
-    if (scope === "children") {
-      const children = graph.nodes
-        .filter((node) => node.parent_id === nodeId)
-        .map((node) => node.id);
-      return nodeGroups(graph, children, infos);
+    const children = graph.nodes.filter((node) => node.parent_id === nodeId).map((node) => node.id);
+    if (scope === "children") return nodeGroups(graph, children, infos, tools.data);
+    const groups: VarGroup[] = [];
+    const self = nodeById(graph, nodeId);
+    const loop = scope === "loop" && self?.type === LOOP_TYPE ? self : enclosingLoop(graph, nodeId);
+    if (loop) {
+      groups.push(...loopGroup(loop, t("picker.loopVars", { name: loop.title || loop.id })));
     }
-    const groups = nodeGroups(graph, upstreamIds(graph, nodeId), infos);
+    if (scope === "loop") groups.push(...nodeGroups(graph, children, infos, tools.data));
+    groups.push(...nodeGroups(graph, upstreamIds(graph, nodeId), infos, tools.data));
     groups.push({
       key: "sys",
       scope: "sys",
@@ -85,7 +106,7 @@ export function useVariableGroups(nodeId: string, scope: PickerScope = "upstream
       });
     }
     return groups;
-  }, [graph, kind, envVars, conversationVars, nodeTypes.data, nodeId, scope, t]);
+  }, [graph, kind, envVars, conversationVars, nodeTypes.data, tools.data, nodeId, scope, t]);
 }
 
 // 선택자가 가리키는 변수의 선언 타입. 하위 경로가 있거나 모르는 변수면 null이다.

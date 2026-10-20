@@ -8,11 +8,17 @@ import type { WfIssue, WorkflowOut, WorkflowVersionOut } from "@/api/types";
 import { ContextBarActions } from "@/app/layout/contextBar";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { ConversationVarPanel } from "@/components/flow/ConversationVarPanel";
+import { DslMenu } from "@/components/flow/DslMenu";
 import { IssuesPopover, SaveStatus } from "@/components/flow/EditorStatus";
 import { EnvVarPanel } from "@/components/flow/EnvVarPanel";
 import { FlowCanvas, FlowCanvasProvider } from "@/components/flow/FlowCanvas";
 import { NodeInspector } from "@/components/flow/NodeInspector";
 import { NodePalette } from "@/components/flow/NodePalette";
+import {
+  ChatflowPreview,
+  useChatflowPreview,
+  type ChatTab,
+} from "@/components/flow/run/ChatflowPreview";
 import { RunPanel, type CurrentRun } from "@/components/flow/run/RunPanel";
 import { SingleRunDialog } from "@/components/flow/run/SingleRunDialog";
 import { WebappSettingsForm } from "@/components/flow/WebappSettingsForm";
@@ -33,6 +39,7 @@ import {
   validateDraft,
   workflowKeys,
 } from "@/features/workflows/api";
+import type { ChatflowSession } from "@/features/workflows/chatflowSession";
 import { createFlowStore, isDirty, type FlowStore } from "@/features/workflows/flowStore";
 import {
   FlowStoreProvider,
@@ -72,9 +79,12 @@ function isEditable(target: EventTarget | null): boolean {
 function EditorBody({
   workflow,
   controller,
+  chat,
 }: {
   workflow: WorkflowOut;
   controller: WfRunController;
+  // 챗플로우의 미리보기 대화. 워크플로우면 null이다.
+  chat: ChatflowSession | null;
 }) {
   const { t } = useTranslation("workflows");
   const { t: tc } = useTranslation();
@@ -102,10 +112,12 @@ function EditorBody({
   const [currentRun, setCurrentRun] = useState<CurrentRun>({ kind: "draft" });
   const [singleNode, setSingleNode] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [chatTab, setChatTab] = useState<ChatTab>("chat");
 
-  function showRunPanel() {
+  function showRunPanel(sub?: ChatTab) {
     setPanelOpen(true);
     setTab("run");
+    if (sub) setChatTab(sub);
   }
 
   // 실행 전에 항상 저장한다(설계 7.3). 저장하지 못하면 실행하지 않는다.
@@ -149,23 +161,51 @@ function EditorBody({
     setStartError(result);
   }
 
-  // 상단 실행 단추: 실행 탭을 열고, 입력 칸이 없으면 바로 돌린다.
+  // 상단 실행 단추: 실행 탭을 열고, 입력 칸이 없으면 바로 돌린다. 챗플로우는 미리보기 대화를 연다.
   function onTopRun() {
+    if (chat) {
+      showRunPanel("chat");
+      return;
+    }
     showRunPanel();
     const busy = isWfRunOpen(controller.store.getState().status);
-    if (kind === "workflow" && fields.length === 0 && !busy) void runDraft();
+    if (fields.length === 0 && !busy) void runDraft();
+  }
+
+  // 미리보기 메시지도 실행처럼 먼저 저장한다. 저장하지 못하면 보내지 않는다.
+  async function beforeChatSend(): Promise<true | unknown> {
+    setStartError(null);
+    setFocusId(null);
+    setCurrentRun({ kind: "draft" });
+    return (await flush()) ? true : new Error(t("chat.saveFailed"));
+  }
+
+  function onChatSendError(error: unknown): boolean {
+    if (isApiError(error, 422) && error.code === "draft_invalid" && Array.isArray(error.details)) {
+      actions.setIssues(error.details as WfIssue[]);
+    }
+    return false;
   }
 
   const runUi = useMemo<FlowRunUi>(
     () => ({
-      requestSingleRun: (nodeId) => setSingleNode(nodeId),
+      requestSingleRun: (nodeId) => {
+        // 노드 하나 실행은 같은 컨트롤러를 쓴다. 대화 턴이 도는 중에 시작하면 그 턴을 놓친다.
+        const turn = chat?.chat.getState().openRunId ?? null;
+        if (turn !== null && controller.runId === turn) {
+          toast.warning(t("chat.singleBusy"));
+          return;
+        }
+        setSingleNode(nodeId);
+      },
       focusNodeRun: (nodeRunId) => {
         setFocusId(nodeRunId);
         setPanelOpen(true);
         setTab("run");
+        setChatTab("nodes");
       },
     }),
-    [],
+    [chat, controller, t],
   );
 
   // 노드를 고르면 노드 탭을 열고, 주소의 ?node=에 남긴다(설계 7.2).
@@ -284,9 +324,10 @@ function EditorBody({
             {t("editor.logs")}
           </Link>
         </Button>
-        <Button size="sm" variant="secondary" disabled={kind === "chatflow"} onClick={onTopRun}>
+        <DslMenu workflow={workflow} autosave={autosave} />
+        <Button size="sm" variant="secondary" onClick={onTopRun}>
           <Play className="size-3.5" aria-hidden />
-          {t("editor.run")}
+          {chat ? t("editor.preview") : t("editor.run")}
         </Button>
         <Button
           size="sm"
@@ -356,25 +397,40 @@ function EditorBody({
             <TabsList aria-label={t("panel.label")} className="shrink-0 px-2">
               {PANEL_TABS.map((key) => (
                 <TabsTrigger key={key} value={key}>
-                  {t(`panel.tabs.${key}`)}
+                  {chat && key === "run" ? t("panel.tabs.preview") : t(`panel.tabs.${key}`)}
                 </TabsTrigger>
               ))}
             </TabsList>
             <TabsContent value="node" className="min-h-0 flex-1 overflow-y-auto">
               <NodeInspector />
             </TabsContent>
-            <TabsContent value="run" className="min-h-0 flex-1 overflow-y-auto">
-              <RunPanel
-                workflow={workflow}
-                values={runValues}
-                onValuesChange={setRunValues}
-                fieldErrors={fieldErrors}
-                startError={startError}
-                onRun={() => void runDraft()}
-                current={currentRun}
-                focusId={focusId}
-              />
-            </TabsContent>
+            {chat ? (
+              <TabsContent value="run" className="flex min-h-0 flex-1 flex-col">
+                <ChatflowPreview
+                  workflow={workflow}
+                  session={chat}
+                  tab={chatTab}
+                  onTabChange={setChatTab}
+                  current={currentRun}
+                  focusId={focusId}
+                  beforeSend={beforeChatSend}
+                  onSendError={onChatSendError}
+                />
+              </TabsContent>
+            ) : (
+              <TabsContent value="run" className="min-h-0 flex-1 overflow-y-auto">
+                <RunPanel
+                  workflow={workflow}
+                  values={runValues}
+                  onValuesChange={setRunValues}
+                  fieldErrors={fieldErrors}
+                  startError={startError}
+                  onRun={() => void runDraft()}
+                  current={currentRun}
+                  focusId={focusId}
+                />
+              </TabsContent>
+            )}
             <TabsContent value="variables" className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="flex flex-col gap-4">
                 <EnvVarPanel key={`env:${loadCount}`} initial={envVars} />
@@ -414,7 +470,7 @@ function EditorBody({
           setStartError(null);
           setFocusId(null);
           setCurrentRun({ kind: "single", nodeId });
-          showRunPanel();
+          showRunPanel("nodes");
         }}
       />
       <ConfirmDialog
@@ -450,6 +506,7 @@ function Editor({ workflow, draft }: { workflow: WorkflowOut; draft: WorkflowVer
     return created;
   });
   const [controller] = useState(() => new WfRunController(consoleWfRunApi));
+  const chat = useChatflowPreview(workflow, controller);
   useEffect(() => {
     controller.configure({
       onError: (error) => toast.error(errorMessage(error, tc)),
@@ -465,7 +522,7 @@ function Editor({ workflow, draft }: { workflow: WorkflowOut; draft: WorkflowVer
     <FlowStoreProvider store={store}>
       <WfRunProvider controller={controller}>
         <FlowCanvasProvider>
-          <EditorBody workflow={workflow} controller={controller} />
+          <EditorBody workflow={workflow} controller={controller} chat={chat} />
         </FlowCanvasProvider>
       </WfRunProvider>
     </FlowStoreProvider>

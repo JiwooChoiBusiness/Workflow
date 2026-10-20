@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Ellipsis, Plus, ScrollText, Search, Trash2, Workflow } from "lucide-react";
+import { Ellipsis, FileUp, Plus, ScrollText, Search, Trash2, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import * as z from "zod";
 import type { WorkflowKind, WorkflowOut } from "@/api/types";
 import { AgentIcon } from "@/components/builder/AgentIcon";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
+import { ImportDialog } from "@/components/flow/ImportDialog";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -245,7 +246,7 @@ function WorkflowCard({
 
 type KindFilter = "all" | WorkflowKind;
 
-// 워크플로우 목록(설계 7.2 /workflows). 가져오기는 M18이다.
+// 워크플로우 목록(설계 7.2 /workflows). 가져오기는 DSL YAML로 새 워크플로우를 만든다(설계 5장).
 export default function WorkflowsPage() {
   const { t } = useTranslation("workflows");
   const { t: tc } = useTranslation();
@@ -254,6 +255,7 @@ export default function WorkflowsPage() {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState<WorkflowOut | null>(null);
 
   const filtered = useMemo(() => {
@@ -339,12 +341,17 @@ export default function WorkflowsPage() {
                 className="w-64 pl-8"
               />
             </div>
+            <Button onClick={() => setImporting(true)}>
+              <FileUp className="size-4" aria-hidden />
+              {t("dsl.import.button")}
+            </Button>
             {newButton}
           </>
         }
       />
       {body}
       <CreateWorkflowDialog open={creating} onOpenChange={setCreating} />
+      <ImportDialog open={importing} onOpenChange={setImporting} />
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => {

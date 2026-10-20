@@ -12,7 +12,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/layout";
 import { useRun } from "@/features/logs/api";
-import { uploadWorkflowFile, useWfRun } from "@/features/workflows/api";
+import { uploadWorkflowFile, useWfRun, wfRunFileUrl } from "@/features/workflows/api";
 import { useFlow } from "@/features/workflows/flowStoreContext";
 import { nodeById } from "@/features/workflows/graph";
 import "@/features/workflows/i18n";
@@ -28,6 +28,7 @@ import {
   isWfRunOpen,
   runningNode,
   type NodeRunView,
+  type WfRunViewState,
 } from "@/features/workflows/wfRunStore";
 import { nodeLabel } from "../labels";
 import { ChildRunInspector } from "./ChildRunInspector";
@@ -52,8 +53,58 @@ export function ChildByRun({
 }
 
 /*
+ * 노드 타임라인이 쓰는 노드 정보(그래프에서 찾은 타입·이름)와 agent 노드 카드 안의 자식 런 인스펙터. 실행
+ * 탭과 챗플로우 미리보기의 실행 과정 탭이 같이 쓴다. 자식 런에 답하면 같은 워크플로우 런을 이어 받는다.
+ */
+export function useTimelineParts() {
+  const { t } = useTranslation("workflows");
+  const controller = useWfRunController();
+  const graph = useFlow((state) => state.graph);
+  const nodeInfo = useCallback(
+    (nodeId: string): NodeInfo | undefined => {
+      const node = nodeById(graph, nodeId);
+      return node
+        ? {
+            type: node.type,
+            title: node.title || nodeLabel(t, node.type),
+            parentId: node.parent_id,
+          }
+        : undefined;
+    },
+    [graph, t],
+  );
+  const titleOf = (nodeId: string) => nodeInfo(nodeId)?.title ?? nodeId;
+  const renderChild = (item: NodeRunView) => {
+    const live = !isNodeRunFinished(item.status);
+    const label = item.title ?? titleOf(item.nodeId);
+    const inspector = (sessionId: string) => (
+      <ChildRunInspector
+        sessionId={sessionId}
+        live={live}
+        agentLabel={label}
+        onResponded={() => controller.resume()}
+      />
+    );
+    if (item.childSessionId) return inspector(item.childSessionId);
+    return item.childRunId ? <ChildByRun childRunId={item.childRunId} render={inspector} /> : null;
+  };
+  return { nodeInfo, titleOf, renderChild };
+}
+
+// 기다리는 승인을 자식 세션을 열어 노드 카드 안의 인스펙터가 띄우는지(그러면 따로 카드를 두지 않는다).
+export function pendingInCard(state: WfRunViewState): boolean {
+  const pending = state.pendingInteraction;
+  if (!pending) return false;
+  const run = Object.values(state.nodeRuns).find(
+    (item) => item.nodeId === pending.nodeId && item.status === "waiting_input",
+  );
+  return Boolean(run?.childSessionId ?? run?.childRunId);
+}
+
+/*
  * 편집기 오른쪽의 실행 탭(설계 7.3 RunPanel): start 필드로 만든 입력 폼, 실행·중지, 상태 한 줄, 결과, 노드
  * 타임라인. 실행 시작(저장 먼저)은 편집기가 하고, 런은 편집기가 가진 컨트롤러에 있어 탭을 옮겨도 이어진다.
+ * 챗플로우는 이 탭 대신 ChatflowPreview를 쓴다.
  */
 export function RunPanel({
   workflow,
@@ -84,50 +135,11 @@ export function RunPanel({
   const finished = state.runId !== null && !open && state.status !== "idle";
   const detail = useWfRun(finished && state.outputsTruncated ? state.runId : null);
   const outputs = detail.data?.outputs ?? state.outputs;
-  const chatflow = workflow.kind === "chatflow";
-
-  const nodeInfo = useCallback(
-    (nodeId: string): NodeInfo | undefined => {
-      const node = nodeById(graph, nodeId);
-      return node
-        ? {
-            type: node.type,
-            title: node.title || nodeLabel(t, node.type),
-            parentId: node.parent_id,
-          }
-        : undefined;
-    },
-    [graph, t],
-  );
-  const titleOf = (nodeId: string) => nodeInfo(nodeId)?.title ?? nodeId;
-
-  const pendingRun = state.pendingInteraction
-    ? (Object.values(state.nodeRuns).find(
-        (item) =>
-          item.nodeId === state.pendingInteraction?.nodeId && item.status === "waiting_input",
-      ) ?? null)
-    : null;
-  // 자식 세션을 열 수 있으면 노드 카드 안의 인스펙터가 승인 카드를 띄운다.
-  const pendingInCard = Boolean(pendingRun?.childSessionId ?? pendingRun?.childRunId);
-
-  const renderChild = (item: NodeRunView) => {
-    const live = !isNodeRunFinished(item.status);
-    const label = item.title ?? titleOf(item.nodeId);
-    const inspector = (sessionId: string) => (
-      <ChildRunInspector
-        sessionId={sessionId}
-        live={live}
-        agentLabel={label}
-        onResponded={() => controller.resume()}
-      />
-    );
-    if (item.childSessionId) return inspector(item.childSessionId);
-    return item.childRunId ? <ChildByRun childRunId={item.childRunId} render={inspector} /> : null;
-  };
+  const { nodeInfo, titleOf, renderChild } = useTimelineParts();
+  const inCard = pendingInCard(state);
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {chatflow ? <Alert tone="info" title={t("run.chatflowNotice")} /> : null}
       <section aria-label={t("run.inputs")} className="flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-ink">{t("run.inputs")}</h3>
         <RunInputsForm
@@ -139,12 +151,7 @@ export function RunPanel({
           disabled={open || meta.starting}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            loading={meta.starting}
-            disabled={open || chatflow}
-            onClick={onRun}
-          >
+          <Button variant="primary" loading={meta.starting} disabled={open} onClick={onRun}>
             <Play className="size-3.5" aria-hidden />
             {t("run.start")}
           </Button>
@@ -211,7 +218,7 @@ export function RunPanel({
             </Alert>
           ) : null}
           {state.pendingInteraction && state.status === "waiting_input" ? (
-            pendingInCard ? (
+            inCard ? (
               <Alert
                 tone="warn"
                 title={t("run.pendingInCard", { node: titleOf(state.pendingInteraction.nodeId) })}
@@ -222,13 +229,19 @@ export function RunPanel({
                 nodeTitle={titleOf(state.pendingInteraction.nodeId)}
                 busy={meta.responding}
                 onRespond={(input) => void controller.respond(input)}
+                upload={(file) => uploadWorkflowFile(workflow.id, file)}
+                onSubmitForm={(answers) => controller.submitForm(answers)}
               />
             )
           ) : null}
           {state.status === "succeeded" ? (
             <div className="rounded-md border border-line p-3">
               <h3 className="mb-2 text-sm font-semibold text-ink">{t("run.outputs")}</h3>
-              <OutputsView outputs={outputs} truncated={state.outputsTruncated && !detail.data} />
+              <OutputsView
+                outputs={outputs}
+                truncated={state.outputsTruncated && !detail.data}
+                fileUrl={(fileId) => (state.runId ? wfRunFileUrl(state.runId, fileId) : null)}
+              />
             </div>
           ) : null}
           <div className="flex flex-col gap-2">

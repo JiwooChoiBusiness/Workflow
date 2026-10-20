@@ -13,6 +13,8 @@ export interface WfRunFilters {
   trigger: WfTrigger | null;
   status: RunStatus | null;
   period: LogPeriod;
+  // 챗플로우 대화 하나의 턴만(실행 기록 화면의 대화 탭에서 넘어온다)
+  conversation: string | null;
 }
 
 export const DEFAULT_WF_RUN_FILTERS: WfRunFilters = {
@@ -20,9 +22,10 @@ export const DEFAULT_WF_RUN_FILTERS: WfRunFilters = {
   trigger: null,
   status: null,
   period: "all",
+  conversation: null,
 };
 
-const KEYS = ["workflow", "trigger", "status", "period"] as const;
+const KEYS = ["workflow", "trigger", "status", "period", "conversation"] as const;
 
 function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | null {
   return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : null;
@@ -30,11 +33,13 @@ function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T
 
 export function parseWfRunFilters(params: URLSearchParams): WfRunFilters {
   const workflow = params.get("workflow")?.trim();
+  const conversation = params.get("conversation")?.trim();
   return {
     workflow: workflow ? workflow : null,
     trigger: oneOf(params.get("trigger"), WF_TRIGGERS),
     status: oneOf(params.get("status"), RUN_STATUSES),
     period: oneOf(params.get("period"), LOG_PERIODS) ?? DEFAULT_WF_RUN_FILTERS.period,
+    conversation: conversation ? conversation : null,
   };
 }
 
@@ -49,6 +54,7 @@ export function wfRunFiltersToParams(
   if (filters.trigger) params.set("trigger", filters.trigger);
   if (filters.status) params.set("status", filters.status);
   if (filters.period !== DEFAULT_WF_RUN_FILTERS.period) params.set("period", filters.period);
+  if (filters.conversation) params.set("conversation", filters.conversation);
   return params;
 }
 
@@ -57,7 +63,8 @@ export function hasWfRunFilters(filters: WfRunFilters, { ignoreWorkflow = false 
     (!ignoreWorkflow && filters.workflow !== null) ||
     filters.trigger !== null ||
     filters.status !== null ||
-    filters.period !== DEFAULT_WF_RUN_FILTERS.period
+    filters.period !== DEFAULT_WF_RUN_FILTERS.period ||
+    filters.conversation !== null
   );
 }
 
@@ -68,6 +75,7 @@ export function wfRunListQuery(
   const query: Omit<RunListQuery, "limit" | "offset"> = {};
   if (filters.trigger) query.trigger = filters.trigger;
   if (filters.status) query.status = filters.status;
+  if (filters.conversation) query.conversation_id = filters.conversation;
   const since = periodSince(filters.period, now);
   if (since) query.since = since;
   return query;

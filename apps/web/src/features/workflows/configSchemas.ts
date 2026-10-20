@@ -11,8 +11,14 @@ import type { TFunction } from "i18next";
 import * as z from "zod";
 import type { VarType } from "@/api/types";
 import { decimal, integer, type T } from "@/lib/formSchemas";
-import { parseSelector } from "./graph";
-import { defaultModel, DEFAULT_MAX_OUTPUT_TOKENS, HTTP_MAX_BODY_BYTES } from "./nodeTypes";
+import { LOOP_COUNT_OUTPUT, parseSelector } from "./graph";
+import {
+  defaultModel,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  HTTP_MAX_BODY_BYTES,
+  LOOP_DEFAULT_ITERATIONS,
+  LOOP_MAX_ITERATIONS,
+} from "./nodeTypes";
 
 export type TW = TFunction<"workflows">;
 
@@ -359,47 +365,51 @@ function modelFromForm(model: ModelForm) {
 
 // start
 
+// start 필드 목록. human_input 폼 필드도 같은 모양이라 함께 쓴다(서버 StartField).
+function startFieldsSchema(t: T, tw: TW, min = 0) {
+  return z
+    .array(
+      z
+        .object({
+          name: nameSchema(t, tw),
+          type: z.enum(START_FIELD_TYPES),
+          label: z.string(),
+          required: z.boolean(),
+          default_text: z.string(),
+          options_text: z.string(),
+          max_length: integer(t, 1).nullable(),
+        })
+        .superRefine((field, ctx) => {
+          if (field.type === "select" && splitLines(field.options_text).length === 0) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["options_text"],
+              message: tw("validation.options"),
+            });
+          }
+          if (
+            field.type === "number" &&
+            field.default_text.trim() &&
+            !isNumeric(field.default_text)
+          ) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["default_text"],
+              message: tw("validation.number"),
+            });
+          }
+        }),
+    )
+    .min(min, { error: tw("validation.list") })
+    .superRefine(uniqueBy("name", t("validation.duplicate")));
+}
+
 export function startSchema(t: T, tw: TW) {
-  return z.object({
-    fields: z
-      .array(
-        z
-          .object({
-            name: nameSchema(t, tw),
-            type: z.enum(START_FIELD_TYPES),
-            label: z.string(),
-            required: z.boolean(),
-            default_text: z.string(),
-            options_text: z.string(),
-            max_length: integer(t, 1).nullable(),
-          })
-          .superRefine((field, ctx) => {
-            if (field.type === "select" && splitLines(field.options_text).length === 0) {
-              ctx.addIssue({
-                code: "custom",
-                path: ["options_text"],
-                message: tw("validation.options"),
-              });
-            }
-            if (
-              field.type === "number" &&
-              field.default_text.trim() &&
-              !isNumeric(field.default_text)
-            ) {
-              ctx.addIssue({
-                code: "custom",
-                path: ["default_text"],
-                message: tw("validation.number"),
-              });
-            }
-          }),
-      )
-      .superRefine(uniqueBy("name", t("validation.duplicate"))),
-  });
+  return z.object({ fields: startFieldsSchema(t, tw) });
 }
 
 export type StartForm = z.infer<ReturnType<typeof startSchema>>;
-type StartFieldForm = StartForm["fields"][number];
+export type StartFieldForm = StartForm["fields"][number];
 
 export function startToForm(config: Record<string, unknown>): StartForm {
   return {
@@ -488,25 +498,37 @@ export const templateFromForm = (values: TemplateForm) => ({
 
 // if_else
 
-export function ifElseSchema(t: T, tw: TW) {
-  const condition = z
-    .object({ var: selectorSchema(tw), op: z.enum(IF_ELSE_OPS), value_text: z.string() })
-    .superRefine((item, ctx) => {
-      const needsValue = ORDER_OPS.has(item.op) || TEXT_OPS.has(item.op) || item.op === "regex";
-      if (needsValue && !item.value_text.trim()) {
-        ctx.addIssue({ code: "custom", path: ["value_text"], message: t("validation.required") });
-      }
-      if (ORDER_OPS.has(item.op) && item.value_text.trim() && !isNumeric(item.value_text)) {
-        ctx.addIssue({ code: "custom", path: ["value_text"], message: tw("validation.number") });
-      }
-      if (item.op === "regex" && item.value_text.length > 512) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["value_text"],
-          message: t("validation.maxLength", { max: 512 }),
-        });
-      }
+// 연산자에 맞는 비교 값인지(if_else 조건, loop 종료 조건, list_operator 필터가 같이 쓴다).
+function checkConditionValue(
+  t: T,
+  tw: TW,
+  item: { op: IfElseOp; value_text: string },
+  ctx: z.RefinementCtx,
+) {
+  const needsValue = ORDER_OPS.has(item.op) || TEXT_OPS.has(item.op) || item.op === "regex";
+  if (needsValue && !item.value_text.trim()) {
+    ctx.addIssue({ code: "custom", path: ["value_text"], message: t("validation.required") });
+  }
+  if (ORDER_OPS.has(item.op) && item.value_text.trim() && !isNumeric(item.value_text)) {
+    ctx.addIssue({ code: "custom", path: ["value_text"], message: tw("validation.number") });
+  }
+  if (item.op === "regex" && item.value_text.length > 512) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["value_text"],
+      message: t("validation.maxLength", { max: 512 }),
     });
+  }
+}
+
+function conditionSchema(t: T, tw: TW) {
+  return z
+    .object({ var: selectorSchema(tw), op: z.enum(IF_ELSE_OPS), value_text: z.string() })
+    .superRefine((item, ctx) => checkConditionValue(t, tw, item, ctx));
+}
+
+export function ifElseSchema(t: T, tw: TW) {
+  const condition = conditionSchema(t, tw);
   return z.object({
     cases: z
       .array(
@@ -534,16 +556,28 @@ export function conditionValue(op: string, text: string): unknown {
   return text;
 }
 
+function conditionToForm(condition: Record<string, unknown>): ConditionForm {
+  return {
+    var: str(condition.var),
+    op: oneOf(IF_ELSE_OPS, condition.op, "="),
+    value_text: conditionValueText(condition.value),
+  };
+}
+
+function conditionFromForm(condition: ConditionForm) {
+  return {
+    var: condition.var.trim(),
+    op: condition.op,
+    value: conditionValue(condition.op, condition.value_text),
+  };
+}
+
 export function ifElseToForm(config: Record<string, unknown>): IfElseForm {
   return {
     cases: records(config.cases).map((item, index) => ({
       id: str(item.id, String(index + 1)) || String(index + 1),
       logical: item.logical === "or" ? "or" : "and",
-      conditions: records(item.conditions).map((condition) => ({
-        var: str(condition.var),
-        op: oneOf(IF_ELSE_OPS, condition.op, "="),
-        value_text: conditionValueText(condition.value),
-      })),
+      conditions: records(item.conditions).map(conditionToForm),
     })),
   };
 }
@@ -553,11 +587,7 @@ export function ifElseFromForm(values: IfElseForm) {
     cases: values.cases.map((item) => ({
       id: item.id,
       logical: item.logical,
-      conditions: item.conditions.map((condition) => ({
-        var: condition.var.trim(),
-        op: condition.op,
-        value: conditionValue(condition.op, condition.value_text),
-      })),
+      conditions: item.conditions.map(conditionFromForm),
     })),
   };
 }
@@ -586,7 +616,20 @@ export const aggregatorFromForm = (values: AggregatorForm) => ({
 
 // variable_assigner
 
-export function assignerSchema(tw: TW) {
+// 대입 대상으로 고를 수 있는 것. loop 안이면 그 loop의 반복 변수(<loop id>.<이름>)도, 대화 변수는 챗플로우만.
+export interface AssignTargets {
+  loopId: string | null;
+  conv: boolean;
+}
+
+function assignTargetOk(target: string, targets: AssignTargets): boolean {
+  const selector = parseSelector(target);
+  if (!selector || selector.path) return false;
+  if (selector.scope === "conv") return targets.conv;
+  return targets.loopId !== null && selector.scope === targets.loopId;
+}
+
+export function assignerSchema(tw: TW, targets: AssignTargets = { loopId: null, conv: true }) {
   return z.object({
     items: z
       .array(
@@ -599,12 +642,14 @@ export function assignerSchema(tw: TW) {
             value_text: z.string(),
           })
           .superRefine((item, ctx) => {
-            const target = parseSelector(item.target);
-            if (!target || target.scope !== "conv" || target.path) {
+            if (!assignTargetOk(item.target, targets)) {
               ctx.addIssue({
                 code: "custom",
                 path: ["target"],
-                message: tw("validation.convTarget"),
+                message:
+                  targets.loopId === null
+                    ? tw("validation.convTarget")
+                    : tw("validation.assignTarget"),
               });
             }
             if (item.op === "clear") return;
@@ -657,14 +702,23 @@ const ARRAY_ITEM: Record<string, VarType> = {
   "array[any]": "any",
 };
 
-// 서버는 value 키가 있기만 해도 고정값으로 본다(model_fields_set). 변수를 쓸 때는 value를 넣지 않는다.
-export function assignerFromForm(values: AssignerForm, convTypes: Record<string, VarType>) {
+/*
+ * 서버는 value 키가 있기만 해도 고정값으로 본다(model_fields_set). 변수를 쓸 때는 value를 넣지 않는다. 고정값은
+ * 대상의 선언 타입(대화 변수, loop 안이면 반복 변수)에 맞춰 읽는다.
+ */
+export function assignerFromForm(
+  values: AssignerForm,
+  convTypes: Record<string, VarType>,
+  loop: { id: string; types: Record<string, VarType> } | null = null,
+) {
   return {
     items: values.items.map((item) => {
       const target = item.target.trim();
       if (item.op === "clear") return { target, op: item.op };
       if (item.source === "var") return { target, op: item.op, var: item.var.trim() };
-      const declared = convTypes[parseSelector(target)?.name ?? ""];
+      const selector = parseSelector(target);
+      const types = loop && selector?.scope === loop.id ? loop.types : convTypes;
+      const declared = types[selector?.name ?? ""];
       let type: VarType | undefined = declared;
       if (item.op === "append" && declared) type = ARRAY_ITEM[declared] ?? "any";
       if (item.op === "+=" || item.op === "-=") type = "number";
@@ -1115,3 +1169,306 @@ export function agentFromForm(values: AgentNodeForm) {
     session_mode: values.session_mode,
   };
 }
+
+// loop (설계 2.4, 서버 LoopConfig). 반복 변수의 처음 값은 상류 변수나 고정값이다.
+
+export function loopSchema(t: T, tw: TW) {
+  return z.object({
+    loop_vars: z
+      .array(
+        z
+          .object({
+            name: nameSchema(t, tw).refine((value) => value !== LOOP_COUNT_OUTPUT, {
+              error: tw("forms.loop.reserved"),
+            }),
+            type: z.enum(VAR_TYPE_OPTIONS),
+            source: z.enum(["value", "var"]),
+            var: z.string(),
+            value_text: z.string(),
+          })
+          .superRefine((item, ctx) => {
+            if (item.source === "var") {
+              const text = item.var.trim();
+              if (!text || !parseSelector(text)) {
+                ctx.addIssue({ code: "custom", path: ["var"], message: tw("validation.selector") });
+              }
+            } else if (item.type === "number" && item.value_text.trim()) {
+              if (!isNumeric(item.value_text)) {
+                ctx.addIssue({
+                  code: "custom",
+                  path: ["value_text"],
+                  message: tw("validation.number"),
+                });
+              }
+            }
+          }),
+      )
+      .superRefine(uniqueBy("name", t("validation.duplicate"))),
+    break_conditions: z.array(conditionSchema(t, tw)),
+    logical: z.enum(["and", "or"]),
+    max_iterations: integer(t, 1, LOOP_MAX_ITERATIONS),
+  });
+}
+export type LoopForm = z.infer<ReturnType<typeof loopSchema>>;
+export type LoopVarForm = LoopForm["loop_vars"][number];
+
+export function loopToForm(config: Record<string, unknown>): LoopForm {
+  return {
+    loop_vars: records(config.loop_vars).map((item) => ({
+      name: str(item.name),
+      type: oneOf(VAR_TYPE_OPTIONS, item.type, "any"),
+      source: typeof item.var === "string" ? "var" : "value",
+      var: str(item.var),
+      value_text: literalText(item.value),
+    })),
+    break_conditions: records(config.break_conditions).map(conditionToForm),
+    logical: config.logical === "or" ? "or" : "and",
+    max_iterations: num(config.max_iterations, LOOP_DEFAULT_ITERATIONS),
+  };
+}
+
+// 빈 칸은 글 타입이면 빈 글, 아니면 null(처음 값 없음)이다. 서버는 var와 value 키가 함께 있으면 거부한다.
+export function loopFromForm(values: LoopForm) {
+  return {
+    loop_vars: values.loop_vars.map((item) => {
+      const base = { name: item.name.trim(), type: item.type };
+      if (item.source === "var") return { ...base, var: item.var.trim() };
+      const empty = item.value_text.trim() === "" && item.type !== "string";
+      return { ...base, value: empty ? null : literalValue(item.value_text, item.type) };
+    }),
+    break_conditions: values.break_conditions.map(conditionFromForm),
+    logical: values.logical,
+    max_iterations: values.max_iterations,
+  };
+}
+
+export function newLoopVar(): LoopVarForm {
+  return { name: "", type: "string", source: "value", var: "", value_text: "" };
+}
+
+// list_operator (설계 2.4, 서버 ListOperatorConfig). 거르기·정렬·자르기·꺼내기는 켠 것만 보낸다.
+
+export const LIST_SORT_ORDERS = ["asc", "desc"] as const;
+// 파일 배열 원소의 key(서버 list_operator.FILE_KEYS)와 그 값의 타입
+export const FILE_ITEM_KEYS = {
+  name: "string",
+  size: "number",
+  mime: "string",
+  extension: "string",
+} as const satisfies Record<string, VarType>;
+
+export function listOperatorSchema(t: T, tw: TW) {
+  const condition = z
+    .object({ key: z.string(), op: z.enum(IF_ELSE_OPS), value_text: z.string() })
+    .superRefine((item, ctx) => checkConditionValue(t, tw, item, ctx));
+  return z
+    .object({
+      input_var: selectorSchema(tw),
+      filter_enabled: z.boolean(),
+      filter: z.object({ logical: z.enum(["and", "or"]), conditions: z.array(condition) }),
+      sort_enabled: z.boolean(),
+      sort: z.object({ key: z.string(), order: z.enum(LIST_SORT_ORDERS) }),
+      slice_enabled: z.boolean(),
+      slice: z.object({ offset: integer(t, 0), limit: integer(t, 0).nullable() }),
+      extract_enabled: z.boolean(),
+      // 음수면 뒤에서 센다(-1이 마지막).
+      extract_index: z
+        .number({ error: t("validation.number") })
+        .int({ error: t("validation.integer") }),
+    })
+    .superRefine((values, ctx) => {
+      if (values.filter_enabled && values.filter.conditions.length === 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["filter", "conditions"],
+          message: tw("validation.list"),
+        });
+      }
+    });
+}
+export type ListOperatorForm = z.infer<ReturnType<typeof listOperatorSchema>>;
+export type ItemConditionForm = ListOperatorForm["filter"]["conditions"][number];
+
+export function listOperatorToForm(config: Record<string, unknown>): ListOperatorForm {
+  const filter = record(config.filter);
+  const sort = record(config.sort);
+  const slice = record(config.slice);
+  return {
+    input_var: str(config.input_var),
+    filter_enabled: config.filter !== null && config.filter !== undefined,
+    filter: {
+      logical: filter.logical === "or" ? "or" : "and",
+      conditions: records(filter.conditions).map((item) => ({
+        key: str(item.key),
+        op: oneOf(IF_ELSE_OPS, item.op, "="),
+        value_text: conditionValueText(item.value),
+      })),
+    },
+    sort_enabled: config.sort !== null && config.sort !== undefined,
+    sort: { key: str(sort.key), order: sort.order === "desc" ? "desc" : "asc" },
+    slice_enabled: config.slice !== null && config.slice !== undefined,
+    slice: { offset: num(slice.offset, 0), limit: numOrNull(slice.limit) },
+    extract_enabled: typeof config.extract_index === "number",
+    extract_index: num(config.extract_index, 0),
+  };
+}
+
+export function listOperatorFromForm(values: ListOperatorForm) {
+  const { offset, limit } = values.slice;
+  return {
+    input_var: values.input_var.trim(),
+    filter: values.filter_enabled
+      ? {
+          logical: values.filter.logical,
+          conditions: values.filter.conditions.map((item) => ({
+            key: item.key.trim(),
+            op: item.op,
+            value: conditionValue(item.op, item.value_text),
+          })),
+        }
+      : null,
+    sort: values.sort_enabled ? { key: values.sort.key.trim(), order: values.sort.order } : null,
+    slice: values.slice_enabled
+      ? {
+          offset: Number.isFinite(offset) ? offset : 0,
+          limit: limit !== null && Number.isFinite(limit) ? limit : null,
+        }
+      : null,
+    extract_index:
+      values.extract_enabled && Number.isFinite(values.extract_index) ? values.extract_index : null,
+  };
+}
+
+export function newItemCondition(): ItemConditionForm {
+  return { key: "", op: "=", value_text: "" };
+}
+
+// document_extractor (설계 2.4, 서버 DocumentExtractorConfig)
+
+export function documentExtractorSchema(tw: TW) {
+  return z.object({ file_var: selectorSchema(tw) });
+}
+export type DocumentExtractorForm = z.infer<ReturnType<typeof documentExtractorSchema>>;
+export const documentExtractorToForm = (
+  config: Record<string, unknown>,
+): DocumentExtractorForm => ({ file_var: str(config.file_var) });
+export const documentExtractorFromForm = (values: DocumentExtractorForm) => ({
+  file_var: values.file_var.trim(),
+});
+
+// tool (설계 2.4, 서버 ToolConfig). 매개변수마다 값을 템플릿 글·변수·고정값 중 하나로 준다.
+
+export const TOOL_ARG_MODES = ["template", "var", "const"] as const;
+export type ToolArgMode = (typeof TOOL_ARG_MODES)[number];
+
+export interface ToolForm {
+  tool: string;
+  params: Record<string, { mode: ToolArgMode; value_text: string }>;
+}
+
+interface ToolParamLike {
+  name: string;
+  type: string;
+  required: boolean;
+  default?: unknown;
+  max_length?: number | null;
+}
+
+interface ToolLike {
+  name: string;
+  params: readonly ToolParamLike[];
+}
+
+// 비우면 서버가 기본값을 쓴다. 기본값도 없는 필수 매개변수만 채워야 한다.
+export function paramNeedsValue(param: ToolParamLike): boolean {
+  return param.required && (param.default === null || param.default === undefined);
+}
+
+export function toolSchema(t: T, tw: TW, tools: readonly ToolLike[]) {
+  const arg = z.object({ mode: z.enum(TOOL_ARG_MODES), value_text: z.string() });
+  return z
+    .object({
+      tool: z.string().min(1, { error: tw("forms.tool.pick") }),
+      params: z.record(z.string(), arg),
+    })
+    .superRefine((values, ctx) => {
+      const tool = tools.find((item) => item.name === values.tool);
+      if (!tool) return;
+      for (const param of tool.params) {
+        const value = values.params[param.name];
+        const text = value?.value_text ?? "";
+        const path = ["params", param.name, "value_text"];
+        if (!text.trim()) {
+          if (paramNeedsValue(param)) {
+            ctx.addIssue({ code: "custom", path, message: t("validation.required") });
+          }
+          continue;
+        }
+        if (value?.mode === "var" && !parseSelector(text)) {
+          ctx.addIssue({ code: "custom", path, message: tw("validation.selectorFormat") });
+        } else if (value?.mode === "const" && param.type === "number" && !isNumeric(text)) {
+          ctx.addIssue({ code: "custom", path, message: tw("validation.number") });
+        } else if (
+          value?.mode !== "var" &&
+          typeof param.max_length === "number" &&
+          text.length > param.max_length
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            path,
+            message: t("validation.maxLength", { max: param.max_length }),
+          });
+        }
+      }
+    });
+}
+
+export function toolToForm(config: Record<string, unknown>): ToolForm {
+  const params: ToolForm["params"] = {};
+  for (const [name, value] of Object.entries(record(config.params))) {
+    const arg = record(value);
+    params[name] = {
+      mode: oneOf(TOOL_ARG_MODES, arg.mode, "template"),
+      value_text: literalText(arg.value),
+    };
+  }
+  return { tool: str(config.tool), params };
+}
+
+// 고정값은 매개변수 타입(string·number·boolean)으로 맞춰 넣는다. 고른 도구에 없는 매개변수는 버린다.
+export function toolFromForm(values: ToolForm, tools: readonly ToolLike[]) {
+  const tool = tools.find((item) => item.name === values.tool);
+  const params: Record<string, { mode: ToolArgMode; value: unknown }> = {};
+  for (const param of tool?.params ?? []) {
+    const arg = values.params[param.name] ?? { mode: "template", value_text: "" };
+    const text = arg.mode === "var" ? arg.value_text.trim() : arg.value_text;
+    let value: unknown = text;
+    if (arg.mode === "const" && text.trim() !== "" && param.type !== "string") {
+      value = literalValue(text, param.type as VarType);
+    }
+    params[param.name] = { mode: arg.mode, value };
+  }
+  return { tool: values.tool, params };
+}
+
+// 도구를 바꾸면 그 도구의 매개변수로 칸을 다시 만든다. 비운 칸은 서버가 기본값을 쓴다.
+export function toolParamsForm(tool: ToolLike | undefined): ToolForm["params"] {
+  const params: ToolForm["params"] = {};
+  for (const param of tool?.params ?? []) params[param.name] = { mode: "template", value_text: "" };
+  return params;
+}
+
+// human_input (설계 2.4, 서버 HumanInputConfig). 필드는 start 필드와 같은 모양이고 하나 이상이어야 한다.
+
+export function humanInputSchema(t: T, tw: TW) {
+  return z.object({ description: z.string(), fields: startFieldsSchema(t, tw, 1) });
+}
+export type HumanInputForm = z.infer<ReturnType<typeof humanInputSchema>>;
+export const humanInputToForm = (config: Record<string, unknown>): HumanInputForm => ({
+  description: str(config.description),
+  fields: startToForm(config).fields,
+});
+export const humanInputFromForm = (values: HumanInputForm) => ({
+  description: values.description,
+  fields: startFromForm({ fields: values.fields }).fields,
+});

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, History, MessagesSquare, Plus, SearchX } from "lucide-react";
+import { ArrowLeft, History, Plus, SearchX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router";
@@ -13,6 +13,7 @@ import { RunStatusView } from "@/components/chat/RunStatusBar";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { OutputsView } from "@/components/flow/run/OutputsView";
 import { PendingPrompt } from "@/components/flow/run/PendingPrompt";
+import { FlowChatApp } from "@/components/flow/webapp/FlowChatApp";
 import { FlowRunForm } from "@/components/flow/webapp/FlowRunForm";
 import { RunProgress } from "@/components/flow/webapp/RunProgress";
 import { Alert } from "@/components/ui/alert";
@@ -294,6 +295,8 @@ function FlowApp({ app }: { app: FlowAppOut }) {
                     nodeTitle={pendingTitle}
                     busy={meta.responding}
                     onRespond={(input) => void controller.respond(input)}
+                    upload={(file) => uploadFlowFile(app.slug, file)}
+                    onSubmitForm={(answers) => controller.submitForm(answers)}
                   />
                 ) : null}
                 <RunProgress state={state} />
@@ -363,17 +366,9 @@ export default function FlowAppPage() {
       </div>
     );
   }
+  // 다른 웹앱으로 옮겨 가면 상태를 새로 만든다. 챗플로우는 채팅(대화는 주소의 /c/:cid)이다.
   if (app.data.kind === "chatflow") {
-    return (
-      <div className="mx-auto max-w-xl p-8">
-        <EmptyState
-          icon={MessagesSquare}
-          title={t("flowApp.chatflowTitle", { name: app.data.name })}
-          hint={t("flowApp.chatflowHint")}
-        />
-      </div>
-    );
+    return <FlowChatApp key={app.data.workflow_id} app={app.data} />;
   }
-  // 다른 웹앱으로 옮겨 가면 상태를 새로 만든다.
   return <FlowApp key={app.data.workflow_id} app={app.data} />;
 }

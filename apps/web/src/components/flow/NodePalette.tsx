@@ -10,7 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useNodeTypes } from "@/features/workflows/api";
 import { useFlow, useFlowStoreApi } from "@/features/workflows/flowStoreContext";
 import {
-  ITERATION_TYPE,
+  isContainerType,
   nodeById,
   OUT_HANDLE,
   sourceHandles,
@@ -18,6 +18,7 @@ import {
 } from "@/features/workflows/graph";
 import {
   CATEGORY_ORDER,
+  loopOnly,
   nodeMeta,
   paletteTypes,
   TONE_CLASS,
@@ -67,7 +68,7 @@ export function NodePalette({
     const state = store.getState();
     const selectedId = state.selection.length === 1 ? state.selection[0] : undefined;
     const selected = selectedId ? nodeById(state.graph, selectedId) : undefined;
-    if (selected && !(type === ITERATION_TYPE && selected.parent_id)) {
+    if (selected && !(isContainerType(type) && selected.parent_id)) {
       const width = state.dimensions[selected.id]?.width ?? CARD_WIDTH;
       const position = { x: selected.position.x + width + GAP, y: selected.position.y };
       const connect = sourceHandles(selected).includes(OUT_HANDLE) && type !== START_TYPE;
@@ -134,6 +135,7 @@ export function NodePalette({
             const Icon = meta.icon;
             const label = nodeLabel(t, type);
             const implemented = infos.get(type)?.implemented ?? true;
+            const inLoopOnly = loopOnly(infos.get(type), kind);
             const blocked = type === START_TYPE && hasStart;
             return (
               <li key={type}>
@@ -144,7 +146,13 @@ export function NodePalette({
                   onDragStart={(event) => onDragStart(event, type)}
                   onClick={() => add(type)}
                   aria-label={t("palette.add", { name: label })}
-                  title={blocked ? t("palette.startExists") : nodeDescription(t, type)}
+                  title={
+                    blocked
+                      ? t("palette.startExists")
+                      : inLoopOnly
+                        ? t("palette.loopOnlyHint", { name: label })
+                        : nodeDescription(t, type)
+                  }
                   className={cn(
                     "flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-ink",
                     "hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50",
@@ -164,6 +172,7 @@ export function NodePalette({
                       {t("palette.notImplemented")}
                     </Badge>
                   ) : null}
+                  {inLoopOnly ? <Badge>{t("palette.loopOnly")}</Badge> : null}
                 </button>
               </li>
             );

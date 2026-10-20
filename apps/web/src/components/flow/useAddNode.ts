@@ -2,15 +2,18 @@ import { useReactFlow } from "@xyflow/react";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/toast";
+import { useNodeTypes } from "@/features/workflows/api";
 import { useFlowStoreApi } from "@/features/workflows/flowStoreContext";
 import {
+  containerEntryType,
   freePosition,
-  ITERATION_TYPE,
+  isContainerType,
+  LOOP_TYPE,
   MAX_NODES,
   nodeById,
   START_TYPE,
 } from "@/features/workflows/graph";
-import { createNodes, ITERATION_SIZE } from "@/features/workflows/nodeTypes";
+import { createNodes, ITERATION_SIZE, loopOnly } from "@/features/workflows/nodeTypes";
 import { nodeLabel } from "./labels";
 
 export interface AddNodeOptions {
@@ -27,6 +30,7 @@ const INSET = { left: 12, top: 56, right: 12, bottom: 12 };
 export function useAddNode() {
   const { t } = useTranslation("workflows");
   const store = useFlowStoreApi();
+  const nodeTypes = useNodeTypes();
   const { getInternalNode, getViewport, setCenter } = useReactFlow();
 
   // 새 노드가 화면 밖이면 그 노드가 가운데 오게 옮긴다(배율은 그대로).
@@ -56,7 +60,8 @@ export function useAddNode() {
   return useCallback(
     (type: string, position: { x: number; y: number }, options: AddNodeOptions = {}) => {
       const state = store.getState();
-      const extra = type === ITERATION_TYPE ? 2 : 1;
+      const container = isContainerType(type);
+      const extra = container ? 2 : 1;
       if (state.graph.nodes.length + extra > MAX_NODES) {
         toast.error(t("editor.tooManyNodes", { max: MAX_NODES }));
         return null;
@@ -65,10 +70,16 @@ export function useAddNode() {
         toast.error(t("palette.startExists"));
         return null;
       }
-      // 반복 안에 반복은 둘 수 없다(서버 nested_iteration).
-      const parentId = type === ITERATION_TYPE ? null : (options.parentId ?? null);
-      let placed = freePosition(state.graph, position, parentId, state.dimensions);
+      // 반복·루프 안에 반복·루프는 둘 수 없다(서버 nested_iteration).
+      const parentId = container ? null : (options.parentId ?? null);
       const parent = parentId ? nodeById(state.graph, parentId) : undefined;
+      // 워크플로우의 변수 쓰기처럼 loop 안에서만 둘 수 있는 노드(서버 loop_kinds)
+      const info = nodeTypes.data?.find((item) => item.type === type);
+      if (loopOnly(info, state.kind) && parent?.type !== LOOP_TYPE) {
+        toast.error(t("palette.loopOnlyHint", { name: nodeLabel(t, type) }));
+        return null;
+      }
+      let placed = freePosition(state.graph, position, parentId, state.dimensions);
       if (parent) {
         // 안쪽 노드는 반복 노드 틀 안에 둔다(ReactFlow extent=parent는 끌 때만 막는다).
         const width = Number(parent.ui.width ?? ITERATION_SIZE.width);
@@ -86,8 +97,11 @@ export function useAddNode() {
         title: sameType > 0 ? `${label} ${sameType + 1}` : label,
         position: placed,
         parentId,
-        labels: { className: (n) => t("forms.classifier.defaultName", { n }) },
-        iterationStartTitle: nodeLabel(t, "iteration_start"),
+        labels: {
+          className: (n) => t("forms.classifier.defaultName", { n }),
+          replyLabel: t("forms.humanInput.defaultLabel"),
+        },
+        entryTitle: nodeLabel(t, containerEntryType(type) ?? ""),
       });
       state.actions.addNodes(nodes, options.connectFrom);
       const id = nodes[0]?.id ?? null;
@@ -95,6 +109,6 @@ export function useAddNode() {
       if (id) requestAnimationFrame(() => requestAnimationFrame(() => reveal(id)));
       return id;
     },
-    [store, t, reveal],
+    [store, t, reveal, nodeTypes.data],
   );
 }

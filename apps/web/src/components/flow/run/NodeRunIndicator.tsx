@@ -1,6 +1,7 @@
 import { Play } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { isSubEntryType } from "@/features/workflows/graph";
 import "@/features/workflows/i18n";
 import { useFlowRunUi, useOptionalWfRun } from "@/features/workflows/wfRunContext";
 import type { NodeRunStatus } from "@/features/workflows/wfRunStore";
@@ -65,7 +66,7 @@ export function NodeRunIndicator({ nodeId }: { nodeId: string }) {
 export function SingleRunButton({ nodeId, type }: { nodeId: string; type: string }) {
   const { t } = useTranslation("workflows");
   const ui = useFlowRunUi();
-  if (!ui || type === "start" || type === "iteration_start") return null;
+  if (!ui || type === "start" || isSubEntryType(type)) return null;
   return (
     <button
       type="button"

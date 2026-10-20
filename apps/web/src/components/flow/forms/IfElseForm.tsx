@@ -2,22 +2,17 @@ import { useMemo } from "react";
 import { Controller, useFieldArray, useWatch, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import {
   ifElseFromForm,
   ifElseSchema,
   ifElseToForm,
-  LIST_OPS,
   newCondition,
-  OP_KEYS,
-  opsFor,
-  UNARY_OPS,
   type IfElseForm as IfElseFormValues,
 } from "@/features/workflows/configSchemas";
 import { nextItemId } from "@/features/workflows/graph";
 import { selectorType, useVariableGroups, type VarGroup } from "@/features/workflows/useUpstream";
 import { VariablePicker } from "../VariablePicker";
+import { ConditionRow, LogicalSelect } from "./ConditionRow";
 import {
   AddButton,
   errorAt,
@@ -29,7 +24,7 @@ import {
   type NodeFormProps,
 } from "./shared";
 
-function ConditionRow({
+function CaseCondition({
   form,
   caseIndex,
   index,
@@ -49,19 +44,15 @@ function ConditionRow({
   const { t } = useTranslation("workflows");
   const path = `cases.${caseIndex}.conditions.${index}` as const;
   const selector = useWatch({ control: form.control, name: `${path}.var` });
-  const op = useWatch({ control: form.control, name: `${path}.op` });
-  const type = selectorType(groups, selector ?? "");
-  const allowed = opsFor(type);
-  const ops = allowed.includes(op) ? allowed : [...allowed, op];
-  const label = t("forms.ifElse.removeCondition", { n: index + 1 });
-  const errors = [
-    errorAt(form, `${path}.var`, serverIssue),
-    errorAt(form, `${path}.op`, serverIssue),
-    errorAt(form, `${path}.value_text`, serverIssue) ?? serverIssue(`${path}.value`),
-  ].filter(Boolean);
   return (
-    <div className="flex flex-col gap-1 rounded-md bg-sunken p-2">
-      <div className="flex items-center gap-1.5">
+    <ConditionRow
+      form={form}
+      path={path}
+      type={selectorType(groups, selector ?? "")}
+      removeLabel={t("forms.ifElse.removeCondition", { n: index + 1 })}
+      serverIssue={serverIssue}
+      onRemove={onRemove}
+      subject={
         <Controller
           control={form.control}
           name={`${path}.var`}
@@ -75,55 +66,8 @@ function ConditionRow({
             />
           )}
         />
-        <RemoveButton label={label} onClick={onRemove} />
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Controller
-          control={form.control}
-          name={`${path}.op`}
-          render={({ field }) => (
-            <Select
-              aria-label={t("forms.ifElse.op")}
-              className="w-36 shrink-0"
-              value={field.value}
-              onValueChange={field.onChange}
-              options={ops.map((item) => ({
-                value: item,
-                label: `${item} · ${t(`forms.ifElse.ops.${OP_KEYS[item]}`)}`,
-              }))}
-            />
-          )}
-        />
-        {UNARY_OPS.has(op) ? null : type === "boolean" && !LIST_OPS.has(op) ? (
-          <Controller
-            control={form.control}
-            name={`${path}.value_text`}
-            render={({ field }) => (
-              <Select
-                aria-label={t("forms.ifElse.value")}
-                className="min-w-0 flex-1"
-                value={field.value || "true"}
-                onValueChange={field.onChange}
-                options={[
-                  { value: "true", label: "true" },
-                  { value: "false", label: "false" },
-                ]}
-              />
-            )}
-          />
-        ) : (
-          <Input
-            className="min-w-0 flex-1"
-            aria-label={t("forms.ifElse.value")}
-            placeholder={LIST_OPS.has(op) ? t("forms.ifElse.listHint") : t("forms.ifElse.value")}
-            {...form.register(`${path}.value_text`)}
-          />
-        )}
-      </div>
-      {errors.map((message) => (
-        <FieldMessage key={message} message={message} />
-      ))}
-    </div>
+      }
+    />
   );
 }
 
@@ -158,24 +102,7 @@ function CaseEditor({
         </span>
         <Badge className="font-mono">case_{caseId}</Badge>
         <div className="ml-auto flex items-center gap-1">
-          {fields.length > 1 ? (
-            <Controller
-              control={form.control}
-              name={`cases.${index}.logical`}
-              render={({ field }) => (
-                <Select
-                  aria-label={t("forms.ifElse.logical")}
-                  className="h-7 w-32 text-xs"
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  options={[
-                    { value: "and", label: t("forms.ifElse.and") },
-                    { value: "or", label: t("forms.ifElse.or") },
-                  ]}
-                />
-              )}
-            />
-          ) : null}
+          {fields.length > 1 ? <LogicalSelect form={form} name={`cases.${index}.logical`} /> : null}
           {removable ? (
             <RemoveButton
               label={t("forms.ifElse.removeCase", { n: index + 1 })}
@@ -185,7 +112,7 @@ function CaseEditor({
         </div>
       </div>
       {fields.map((field, conditionIndex) => (
-        <ConditionRow
+        <CaseCondition
           key={field.id}
           form={form}
           caseIndex={index}

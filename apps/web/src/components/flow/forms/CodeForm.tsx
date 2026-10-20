@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { Controller, useFieldArray } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { CodeEditor } from "@/components/ui/lazy-code-editor";
@@ -12,6 +14,9 @@ import {
   VAR_TYPE_OPTIONS,
   type CodeForm as CodeFormValues,
 } from "@/features/workflows/configSchemas";
+import { isImportedCode, withoutImportedCode } from "@/features/workflows/dsl";
+import { useFlowActions } from "@/features/workflows/flowStoreContext";
+import type { FlowNode } from "@/features/workflows/graph";
 import { toNumberOrNull } from "@/lib/formSchemas";
 import { NameVarRows } from "./NameVarRows";
 import {
@@ -25,6 +30,28 @@ import {
   type NodeFormProps,
 } from "./shared";
 
+// DSL로 가져온 코드(설계 9.3). 검토 완료는 ui의 imported_code 키만 지우고 저장은 자동 저장에 맡긴다.
+function ImportedCodeReview({ node }: { node: FlowNode }) {
+  const { t } = useTranslation("workflows");
+  const actions = useFlowActions();
+  return (
+    <Alert
+      tone="warn"
+      title={t("dsl.review.title")}
+      action={
+        <Button
+          size="sm"
+          onClick={() => actions.updateNode(node.id, { ui: withoutImportedCode(node.ui) })}
+        >
+          {t("dsl.review.done")}
+        </Button>
+      }
+    >
+      {t("dsl.review.body")}
+    </Alert>
+  );
+}
+
 export function CodeForm({ node }: NodeFormProps) {
   const { t } = useTranslation("workflows");
   const { t: tc } = useTranslation();
@@ -36,6 +63,7 @@ export function CodeForm({ node }: NodeFormProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {isImportedCode(node) ? <ImportedCodeReview node={node} /> : null}
       <NameVarRows
         form={form}
         name="inputs"

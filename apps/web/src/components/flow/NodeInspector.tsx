@@ -8,15 +8,17 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { CodeEditor } from "@/components/ui/lazy-code-editor";
 import { EmptyState } from "@/components/ui/layout";
-import { useNodeTypes } from "@/features/workflows/api";
+import { useNodeTypes, useToolSpecs } from "@/features/workflows/api";
 import { useFlow, useFlowActions } from "@/features/workflows/flowStoreContext";
 import {
-  ITERATION_START_TYPE,
+  enclosingLoop,
+  isSubEntryType,
+  LOOP_START_TYPE,
   nodeById,
   nodeOutputs,
   type FlowNode,
 } from "@/features/workflows/graph";
-import { nodeMeta, TONE_CLASS } from "@/features/workflows/nodeTypes";
+import { loopOnly, nodeMeta, TONE_CLASS } from "@/features/workflows/nodeTypes";
 import { cn } from "@/lib/cn";
 import { ErrorRetrySection } from "./ErrorRetrySection";
 import { NODE_FORMS } from "./forms";
@@ -116,12 +118,15 @@ function SingleNode({ node }: { node: FlowNode }) {
   const kind = useFlow((state) => state.kind);
   const formEpoch = useFlow((state) => state.formEpoch);
   const nodeTypes = useNodeTypes();
+  const tools = useToolSpecs();
   const info = nodeTypes.data?.find((item) => item.type === node.type);
+  const inLoop = useFlow((state) => enclosingLoop(state.graph, node.id) !== undefined);
   const meta = nodeMeta(node.type);
   const Icon = meta.icon;
   const Form = NODE_FORMS[node.type];
-  const entry = node.type === ITERATION_START_TYPE;
-  const outputs = nodeOutputs(node, info);
+  const entry = isSubEntryType(node.type);
+  const outputs = nodeOutputs(node, info, tools.data);
+  const onlyInLoop = loopOnly(info, kind);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -153,7 +158,9 @@ function SingleNode({ node }: { node: FlowNode }) {
       {info && !info.implemented && !entry ? (
         <Alert tone="warn" title={t("inspector.notImplemented")} />
       ) : null}
-      {info && !info.kinds.includes(kind) ? (
+      {onlyInLoop && !inLoop ? (
+        <Alert tone="danger" title={t("inspector.loopOnly", { kind: t(`kind.${kind}`) })} />
+      ) : info && !info.kinds.includes(kind) && !onlyInLoop ? (
         <Alert
           tone="danger"
           title={t("inspector.kindOnly", { kind: t(`kind.${info.kinds[0] ?? "workflow"}`) })}
@@ -166,7 +173,9 @@ function SingleNode({ node }: { node: FlowNode }) {
       </div>
       {entry ? (
         <p className="rounded-md bg-sunken px-3 py-2 text-xs text-ink-muted">
-          {t("inspector.entry", { id: node.id })}
+          {node.type === LOOP_START_TYPE
+            ? t("inspector.loopEntry", { id: node.id, loop: node.parent_id ?? "" })
+            : t("inspector.entry", { id: node.id })}
         </p>
       ) : Form ? (
         <Form key={`form:${node.id}:${formEpoch}`} node={node} />

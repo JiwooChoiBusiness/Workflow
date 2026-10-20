@@ -3,12 +3,15 @@ import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { useNodeTypes } from "@/features/workflows/api";
+import { isImportedCode } from "@/features/workflows/dsl";
 import { useFlow } from "@/features/workflows/flowStoreContext";
 import {
+  ANSWER_TYPE,
   FAIL_HANDLE,
   hasTargetHandle,
   IN_HANDLE,
   OUT_HANDLE,
+  prestreamSources,
   type FlowNode,
   type IssueCount,
 } from "@/features/workflows/graph";
@@ -53,6 +56,8 @@ export const NodeCard = memo(function NodeCard({ id, data: node, selected }: Nod
   const Icon = meta.icon;
   const branching = isBranching(node.type);
   const label = nodeLabel(t, node.type);
+  // 서버가 초안을 저장할 때 계산한 미리 흘리기 상류(설계 3.8). 사이에 분기가 있으면 비어 있다.
+  const streamed = node.type === ANSWER_TYPE ? prestreamSources(node) : [];
   return (
     <div
       className={cn(
@@ -94,6 +99,20 @@ export const NodeCard = memo(function NodeCard({ id, data: node, selected }: Nod
         {!implemented ? (
           <Badge tone="warn" className="mt-1">
             {t("card.notImplemented")}
+          </Badge>
+        ) : null}
+        {isImportedCode(node) ? (
+          <Badge tone="warn" className="mt-1" title={t("dsl.review.badgeHint")}>
+            {t("dsl.review.badge")}
+          </Badge>
+        ) : null}
+        {streamed.length > 0 ? (
+          <Badge
+            tone="info"
+            className="mt-1"
+            title={t("card.prestreamHint", { sources: streamed.join(", ") })}
+          >
+            {t("card.prestream")}
           </Badge>
         ) : null}
       </div>

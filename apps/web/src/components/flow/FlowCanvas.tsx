@@ -23,7 +23,7 @@ import { useFlow, useFlowActions, useFlowStoreApi } from "@/features/workflows/f
 import {
   connectProblem,
   FAIL_HANDLE,
-  ITERATION_TYPE,
+  isContainerType,
   parentsFirst,
   type FlowEdge as GraphEdge,
   type FlowNode,
@@ -42,6 +42,7 @@ export { ReactFlowProvider as FlowCanvasProvider } from "@xyflow/react";
 // 팔레트에서 끌어 온 노드 타입을 싣는 dataTransfer 형식
 export const NODE_DRAG_TYPE = "application/x-wf-node-type";
 
+// iteration과 loop는 하위 그래프를 담는 같은 틀(IterationNode)로 그린다.
 const nodeTypes = { card: NodeCard, iteration: IterationNode };
 const edgeTypes = { flow: FlowEdge };
 const markerEnd = { type: MarkerType.ArrowClosed, width: 14, height: 14 };
@@ -72,11 +73,11 @@ function toRfNodes(
     const measured = dims[node.id];
     const hit = nodeCache.get(node);
     if (hit && hit.selected === isSelected && hit.dims === measured) return hit.rf;
-    const iteration = node.type === ITERATION_TYPE;
-    const size = iteration ? iterationSize(node) : null;
+    const container = isContainerType(node.type);
+    const size = container ? iterationSize(node) : null;
     const rf: Node = {
       id: node.id,
-      type: iteration ? "iteration" : "card",
+      type: container ? "iteration" : "card",
       position: node.position,
       data: node,
       selected: isSelected,
@@ -248,10 +249,10 @@ export function FlowCanvas() {
       if (!type) return;
       event.preventDefault();
       const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      // 반복 노드 안에 놓으면 그 하위 그래프에 넣는다. 좌표는 반복 노드 기준이다.
+      // 반복·루프 틀 안에 놓으면 그 하위 그래프에 넣는다. 좌표는 틀 기준이다.
       const container = store
         .getState()
-        .graph.nodes.filter((node) => node.type === ITERATION_TYPE && !node.parent_id)
+        .graph.nodes.filter((node) => isContainerType(node.type) && !node.parent_id)
         .find((node) => {
           const size = iterationSize(node);
           const origin = getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
@@ -262,7 +263,7 @@ export function FlowCanvas() {
             point.y <= origin.y + size.height
           );
         });
-      if (container && type !== ITERATION_TYPE) {
+      if (container && !isContainerType(type)) {
         const origin =
           getInternalNode(container.id)?.internals.positionAbsolute ?? container.position;
         addNode(type, { x: point.x - origin.x, y: point.y - origin.y }, { parentId: container.id });

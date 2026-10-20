@@ -1,17 +1,16 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { apiFetch, isApiError } from "@/api/http";
-import type { InteractionInput } from "@/api/run-events";
+import type { WfInteractionInput } from "@/api/run-events";
 import type { ChatConnection } from "@/features/sessions/chatSession";
-import type { RunInputBody } from "@/features/sessions/types";
 import { streamRunEvents } from "@/lib/sse";
-import { provideWfInput, stopWfRun, wfRunEventsRequest } from "./api";
+import { provideWfInput, stopWfRun, wfRunEventsRequest, type WfInputBody } from "./api";
 import { createWfRunStore, isWfRunOpen, type WfRunStore, type WfStreamEvent } from "./wfRunStore";
 
 // 런 하나를 따라가는 데 쓰는 서버 호출. 콘솔(consoleWfRunApi)과 웹앱(features/webapp/flows)이 경로만 다르다.
 export interface WfRunApi {
   eventsRequest: (runId: string, after: number) => Request;
   stop: (runId: string) => Promise<unknown>;
-  input: (runId: string, body: RunInputBody) => Promise<unknown>;
+  input: (runId: string, body: WfInputBody) => Promise<unknown>;
   fetch: (request: Request) => Promise<Response>;
 }
 
@@ -21,6 +20,14 @@ export const consoleWfRunApi: WfRunApi = {
   input: provideWfInput,
   fetch: (request) => apiFetch(request),
 };
+
+function inputBody(input: WfInteractionInput): WfInputBody {
+  if ("kind" in input) return { kind: "form", values: input.values };
+  if ("answer" in input) return { answer: input.answer };
+  return input.decision === "approve"
+    ? { decision: "approve", session_auto_approve: Boolean(input.session_auto_approve) }
+    : { decision: "reject", note: input.note ?? null };
+}
 
 export interface WfRunMeta {
   connection: ChatConnection | null;
@@ -125,24 +132,32 @@ export class WfRunController {
     this.resume();
   }
 
-  // 서버가 받았으면 true.
-  async respond(input: InteractionInput): Promise<boolean> {
+  // 서버가 받았으면 true. 받지 못한 이유는 알린다(onError).
+  async respond(input: WfInteractionInput): Promise<boolean> {
+    const result = await this.sendInput(input);
+    if (result !== true && result !== null) this.report(result);
+    return result === true;
+  }
+
+  /*
+   * human_input 폼 응답(M19). 서버가 받았으면 true, 아니면 그 오류를 알리지 않고 돌려준다. 폼 카드가 422
+   * invalid_inputs는 칸 오류로, 409(대기 시간 지남·이미 답함·중지)는 안내로 보인다.
+   */
+  async submitForm(values: Record<string, unknown>): Promise<true | unknown> {
+    return (await this.sendInput({ kind: "form", values })) ?? false;
+  }
+
+  // 받았으면 true, 보내지 않았으면(런 없음, 이미 보내는 중) null, 아니면 그 오류.
+  private async sendInput(input: WfInteractionInput): Promise<true | null | unknown> {
     const runId = this.runId;
-    if (!runId || this.meta.getState().responding) return false;
-    const body: RunInputBody =
-      "answer" in input
-        ? { answer: input.answer }
-        : input.decision === "approve"
-          ? { decision: "approve", session_auto_approve: Boolean(input.session_auto_approve) }
-          : { decision: "reject", note: input.note ?? null };
+    if (!runId || this.meta.getState().responding) return null;
     this.meta.setState({ responding: true });
     try {
-      await this.api.input(runId, body);
+      await this.api.input(runId, inputBody(input));
     } catch (error) {
-      this.report(error);
-      // 이미 답했거나(다른 화면) 대기 시간이 지났다. 서버가 아는 상태로 맞춘다.
+      // 이미 답했거나(다른 화면) 대기 시간이 지났거나 런이 멈췄다. 서버가 아는 상태로 맞춘다.
       if (isApiError(error, 409)) this.resume();
-      return false;
+      return error;
     } finally {
       this.meta.setState({ responding: false });
     }

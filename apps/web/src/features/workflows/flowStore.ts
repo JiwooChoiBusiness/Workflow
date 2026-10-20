@@ -19,6 +19,7 @@ import {
   pruneHandleEdges,
   removeElements,
   renameNode,
+  withSavedPrestream,
   IN_HANDLE,
   OUT_HANDLE,
   type ConnectionLike,
@@ -402,6 +403,8 @@ export function createFlowStore(
           updatedAt: saved.updated_at,
           issues: saved.issues,
           issueCounts: countIssues(saved.issues),
+          // 서버가 저장하며 계산한 표시용 값만 옮긴다. 편집이 아니라서 revision은 그대로다.
+          graph: withSavedPrestream(get().graph, saved.graph),
         });
       },
     };

@@ -1178,6 +1178,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/console/workflows/{workflow_id}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workflow Api Keys */
+        get: operations["list_workflow_api_keys_api_console_workflows__workflow_id__api_keys_get"];
+        put?: never;
+        /**
+         * Create Workflow Api Key
+         * @description 서비스 API 키. scopes를 비우면 워크플로우는 workflow, 챗플로우는 chat이다(2단계 4.1).
+         */
+        post: operations["create_workflow_api_key_api_console_workflows__workflow_id__api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Workflow Api Key */
+        delete: operations["revoke_workflow_api_key_api_console_workflows__workflow_id__api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/workflows/{workflow_id}/preview/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Preview Conversations
+         * @description 이 챗플로우의 미리보기 대화(최근 대화 순).
+         */
+        get: operations["list_preview_conversations_api_console_workflows__workflow_id__preview_conversations_get"];
+        put?: never;
+        /**
+         * Create Preview Conversation
+         * @description 챗플로우 미리보기 대화. 초안으로 돈다. 워크플로우(kind=workflow)는 409 wrong_kind.
+         */
+        post: operations["create_preview_conversation_api_console_workflows__workflow_id__preview_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/console/workflows/{workflow_id}/export": {
         parameters: {
             query?: never;
@@ -1222,6 +1284,29 @@ export interface paths {
          *     dsl_too_large, 읽을 수 없는 YAML은 422 invalid_yaml이다.
          */
         post: operations["import_workflow_api_console_workflows_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Wf Runs
+         * @description 워크스페이스 전체 워크플로우 런(최근 것부터, 로그 화면의 워크플로우 런 탭).
+         *
+         *     지운 워크플로우의 런도 이름과 함께 나온다. 필터는 /workflows/{id}/runs와 같고 단일 노드 실행
+         *     런은 trigger=single_node로 고를 때만 나온다. 기간은 queued_at 기준 [since, until)이다.
+         */
+        get: operations["list_wf_runs_api_console_wf_runs_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1364,12 +1449,150 @@ export interface paths {
         put?: never;
         /**
          * Provide Wf Input
-         * @description 질문(answer)·승인(decision) 응답. 1단계 /runs/{rid}/input과 같은 본문이다(3.7의 3번).
+         * @description 질문(answer)·승인(decision)·폼(kind=form, values) 응답(3.7의 3번).
          *
-         *     기다리는 자식 런에 응답을 넘긴 뒤 같은 워크플로우 런을 다시 큐에 넣는다. streaming이면 첫
+         *     승인·질문은 1단계 /runs/{rid}/input과 같은 본문이고 기다리는 자식 런에 응답을 넘긴 뒤 같은
+         *     워크플로우 런을 다시 큐에 넣는다. 폼은 필드 정의로 검사(422 invalid_inputs)한 값을 담아 같은
+         *     런을 다시 넣는다. 기다리는 것과 다른 종류의 응답은 409 wrong_input_kind다. streaming이면 첫
          *     이벤트가 workflow.queued다.
          */
         post: operations["provide_wf_input_api_console_wf_runs__run_id__input_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-runs/{run_id}/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Wf Run File
+         * @description 런의 입력·출력에 든 파일, 그 런이 만든 파일, 챗플로우 런이면 그 대화에 붙은 업로드.
+         *
+         *     실행 패널과 런 상세의 결과 링크가 쓴다. 웹앱 런도 여기서 받을 수 있다.
+         */
+        get: operations["download_wf_run_file_api_console_wf_runs__run_id__files__file_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversations
+         * @description 대화 목록(최근 대화 순, 로그 화면용). 지운 대화는 나오지 않는다.
+         *
+         *     기간은 대화를 만든 시각 기준 [since, until)이다. 시간대 없이 온 시각은 서버 PC 시간대로 본다.
+         */
+        get: operations["list_conversations_api_console_wf_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation
+         * @description active_run이 있으면 GET /wf-runs/{id}/events?after=0으로 다시 붙는다.
+         */
+        get: operations["get_conversation_api_console_wf_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Conversation
+         * @description 돌던 런을 멈추고 지운다. 런·메시지는 로그로 남고 메시지에 붙인 업로드는 지운다.
+         */
+        delete: operations["delete_conversation_api_console_wf_conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Conversation */
+        patch: operations["patch_conversation_api_console_wf_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/console/wf-conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Messages
+         * @description seq 오름차순. 기본은 마지막 100개이고, 앞을 더 보려면 before_seq=첫 메시지의 seq.
+         */
+        get: operations["list_messages_api_console_wf_conversations__conversation_id__messages_get"];
+        put?: never;
+        /**
+         * Send Message
+         * @description 메시지를 보내고 런을 만든다. 진행 중인 런(입력 대기 포함)이 있으면 409 run_in_progress.
+         *
+         *     streaming이면 첫 이벤트가 workflow.queued이고 workflow.completed 뒤에 닫힌다. 성공한 런은 그
+         *     앞에 answer.completed{text, message_id}를 낸다.
+         */
+        post: operations["send_message_api_console_wf_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-conversations/{conversation_id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conversation Variables
+         * @description 대화 변수의 지금 값. 성공한 런이 끝날 때만 바뀐다.
+         */
+        get: operations["conversation_variables_api_console_wf_conversations__conversation_id__variables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/wf-conversations/{conversation_id}/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Conversation File
+         * @description 메시지에 붙은 업로드. 대화의 첨부 링크가 쓴다.
+         */
+        get: operations["download_conversation_file_api_console_wf_conversations__conversation_id__files__file_id__download_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1680,7 +1903,9 @@ export interface paths {
         put?: never;
         /**
          * Provide Flow Input
-         * @description agent 노드의 승인·질문 응답. 콘솔 /wf-runs/{rid}/input과 같다.
+         * @description agent 노드의 승인·질문과 human_input 폼 응답. 콘솔 /wf-runs/{rid}/input과 같다.
+         *
+         *     폼의 파일 칸에는 POST /flows/{slug}/files로 올린 id를 준다.
          */
         post: operations["provide_flow_input_api_web_wf_runs__run_id__input_post"];
         delete?: never;
@@ -1709,6 +1934,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/web/flows/{slug}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Flow Conversations
+         * @description 이 챗플로우 웹앱의 대화(최근 대화 순). 미리보기·서비스 API 대화는 섞이지 않는다.
+         */
+        get: operations["list_flow_conversations_api_web_flows__slug__conversations_get"];
+        put?: never;
+        /**
+         * Create Flow Conversation
+         * @description 새 대화. 지금의 발행 버전을 쓴다. 워크플로우(kind=workflow)는 409 wrong_kind.
+         */
+        post: operations["create_flow_conversation_api_web_flows__slug__conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Flow Conversation
+         * @description active_run이 있으면 GET /wf-runs/{id}/events?after=0으로 다시 붙는다.
+         */
+        get: operations["get_flow_conversation_api_web_wf_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Flow Conversation */
+        delete: operations["delete_flow_conversation_api_web_wf_conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Flow Conversation */
+        patch: operations["patch_flow_conversation_api_web_wf_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/web/wf-conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Flow Messages */
+        get: operations["list_flow_messages_api_web_wf_conversations__conversation_id__messages_get"];
+        put?: never;
+        /**
+         * Send Flow Message
+         * @description 콘솔 POST /wf-conversations/{cid}/messages와 같다.
+         *
+         *     파일은 POST /flows/{slug}/files로 올린 id를 files에 준다.
+         */
+        post: operations["send_flow_message_api_web_wf_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web/wf-conversations/{conversation_id}/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Flow Conversation File
+         * @description 웹앱 대화의 메시지에 붙은 업로드.
+         */
+        get: operations["download_flow_conversation_file_api_web_wf_conversations__conversation_id__files__file_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/info": {
         parameters: {
             query?: never;
@@ -1718,7 +2032,7 @@ export interface paths {
         };
         /**
          * Get Info
-         * @description 키에 묶인 에이전트와 그 발행 버전.
+         * @description 키에 묶인 에이전트(또는 워크플로우)와 그 발행 버전.
          */
         get: operations["get_info_api_v1_info_get"];
         put?: never;
@@ -1738,7 +2052,8 @@ export interface paths {
         };
         /**
          * Get Parameters
-         * @description 발행 버전의 승인 모드·한도·도구 그룹과 업로드 한도. 발행 전이면 null.
+         * @description 발행 버전의 입력·한도와 업로드 한도. 에이전트는 승인 모드·도구 그룹, 워크플로우는 start
+         *     필드(user_input_form)다. 발행 전이면 null·빈 목록이다.
          */
         get: operations["get_parameters_api_v1_parameters_get"];
         put?: never;
@@ -1780,7 +2095,8 @@ export interface paths {
         put?: never;
         /**
          * Stop Run
-         * @description 중지. 실행 중이면 도구 프로세스까지 끝내고 run.completed(cancelled)로 끝난다.
+         * @description 중지. 에이전트 런은 run.completed(cancelled), 챗플로우 런은 workflow.completed(cancelled)로
+         *     끝난다.
          */
         post: operations["stop_run_api_v1_chat_messages__run_id__stop_post"];
         delete?: never;
@@ -1801,6 +2117,8 @@ export interface paths {
         /**
          * Provide Input
          * @description 질문(answer)·승인(decision) 응답. 같은 런이 다시 큐에 들어가 이어서 실행된다.
+         *
+         *     챗플로우 키는 human_input 폼 응답(kind=form, values)도 보낸다. 에이전트 런에는 폼이 없어 422다.
          */
         post: operations["provide_input_api_v1_chat_messages__run_id__input_post"];
         delete?: never;
@@ -1838,7 +2156,8 @@ export interface paths {
         };
         /**
          * Get Run
-         * @description 런 상태·사용량·결과(과업)·대기 중인 승인·질문. 폴링용.
+         * @description 에이전트 런 상태·사용량·결과(과업)·대기 중인 승인·질문. 폴링용. 워크플로우 런은
+         *     GET /workflows/run/{run_id}.
          */
         get: operations["get_run_api_v1_runs__run_id__get"];
         put?: never;
@@ -1882,7 +2201,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Conversation
-         * @description 진행 중인 런을 멈추고 작업공간을 지운다. 결과 파일 기록은 로그로 남는다.
+         * @description 진행 중인 런을 멈추고 지운다. 에이전트 대화는 작업공간도 지운다. 로그는 남는다.
          */
         delete: operations["delete_conversation_api_v1_conversations__conversation_id__delete"];
         options?: never;
@@ -1900,7 +2219,9 @@ export interface paths {
         };
         /**
          * List Messages
-         * @description 대화의 메시지(블록·파일 포함), seq 오름차순. 처음에는 마지막 limit개를 준다.
+         * @description 대화의 메시지, seq 오름차순. 처음에는 마지막 limit개를 준다.
+         *
+         *     에이전트 키는 블록·파일이 든 1단계 메시지, 챗플로우 키는 user·assistant 글(text) 메시지다.
          */
         get: operations["list_messages_api_v1_messages_get"];
         put?: never;
@@ -1940,7 +2261,8 @@ export interface paths {
         };
         /**
          * Download File
-         * @description 이 에이전트의 대화·과업 세션 파일(첨부, 런 결과).
+         * @description 에이전트 키: 그 에이전트의 대화·과업 세션 파일(첨부, 런 결과). 워크플로우 키: 그 키로 만든
+         *     런·대화의 wf_file.
          */
         get: operations["download_file_api_v1_files__file_id__download_get"];
         put?: never;
@@ -1986,6 +2308,111 @@ export interface paths {
          *     세션으로 보므로 세션 소스를 task로 좁히지 않고, 과업 런인지는 view가 본다(오케스트레이션 6.3).
          */
         get: operations["get_task_api_v1_agent_tasks__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Workflow
+         * @description 발행 버전으로 실행한다. 발행 전이면 409 workflow_not_published, 입력이 start 필드에 맞지
+         *     않으면 422 invalid_inputs.
+         *
+         *     streaming이면 첫 이벤트가 workflow.queued이고 workflow.completed(입력 대기 포함) 뒤에 닫힌다.
+         */
+        post: operations["run_workflow_api_v1_workflows_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/run/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Run
+         * @description 상태·출력·사용량·대기 중인 승인·질문(폴링용). 챗플로우 런도 run_id로 본다.
+         */
+        get: operations["get_workflow_run_api_v1_workflows_run__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/run/{run_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Workflow Run
+         * @description 중지. 돌던 런은 workflow.completed(cancelled)로 끝나고 입력을 기다리던 자식 런도 멈춘다.
+         */
+        post: operations["stop_workflow_run_api_v1_workflows_run__run_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/run/{run_id}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provide Workflow Input
+         * @description agent 노드의 승인(decision)·질문(answer)과 human_input 폼(kind=form, values) 응답.
+         *
+         *     같은 런이 다시 큐에 들어가 이어서 실행된다. 폼의 파일 칸에는 /files/upload로 올린 id를 준다.
+         */
+        post: operations["provide_workflow_input_api_v1_workflows_run__run_id__input_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Runs
+         * @description 이 키로 만든 런(최근 것부터). 챗플로우 키면 대화 턴마다의 런이다.
+         */
+        get: operations["list_workflow_runs_api_v1_workflows_logs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2334,12 +2761,44 @@ export interface components {
             /** Agent Id */
             agent_id?: string | null;
         };
+        /**
+         * ApiFlowRunInput
+         * @description 워크플로우·챗플로우 런의 /input. 승인·질문 응답에 더해 human_input 폼 응답(kind=form,
+         *     values)을 받는다. 파일 칸 값은 /files/upload로 올린 id다. 에이전트 키로 form을 보내면 422다.
+         */
+        ApiFlowRunInput: {
+            /** User */
+            user?: string | null;
+            /** Answer */
+            answer?: string | null;
+            /** Decision */
+            decision?: ("approve" | "reject") | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Session Auto Approve
+             * @default false
+             */
+            session_auto_approve: boolean;
+            /**
+             * Response Mode
+             * @default none
+             * @enum {string}
+             */
+            response_mode: "none" | "streaming" | "blocking";
+            /** Kind */
+            kind?: ("approval" | "question" | "form") | null;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /** Name */
             name: string;
             /** Scopes */
-            scopes?: ("chat" | "tasks")[];
+            scopes?: ("chat" | "tasks" | "workflow")[] | null;
             /** Expires At */
             expires_at?: string | null;
         };
@@ -2350,11 +2809,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Agent Id
-             * Format: uuid
-             */
-            agent_id: string;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Workflow Id */
+            workflow_id?: string | null;
             /** Name */
             name: string;
             /** Key Prefix */
@@ -2387,11 +2845,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Agent Id
-             * Format: uuid
-             */
-            agent_id: string;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Workflow Id */
+            workflow_id?: string | null;
             /** Name */
             name: string;
             /** Key Prefix */
@@ -2418,31 +2875,6 @@ export interface components {
             has_more: boolean;
             /** Next Cursor */
             next_cursor?: string | null;
-        };
-        /**
-         * ApiRunInput
-         * @description 질문(answer)·승인(decision) 응답. 콘솔의 /runs/{id}/input과 같다.
-         */
-        ApiRunInput: {
-            /** User */
-            user?: string | null;
-            /** Answer */
-            answer?: string | null;
-            /** Decision */
-            decision?: ("approve" | "reject") | null;
-            /** Note */
-            note?: string | null;
-            /**
-             * Session Auto Approve
-             * @default false
-             */
-            session_auto_approve: boolean;
-            /**
-             * Response Mode
-             * @default none
-             * @enum {string}
-             */
-            response_mode: "none" | "streaming" | "blocking";
         };
         /** ChatMessageCreate */
         ChatMessageCreate: {
@@ -2589,6 +3021,18 @@ export interface components {
             type: "string" | "number" | "boolean" | "object" | "file" | "array[string]" | "array[number]" | "array[boolean]" | "array[object]" | "array[file]" | "array[any]" | "any";
             /** Default */
             default?: unknown;
+        };
+        /** ConversationVariableOut */
+        ConversationVariableOut: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "boolean" | "object" | "file" | "array[string]" | "array[number]" | "array[boolean]" | "array[object]" | "array[file]" | "array[any]" | "any";
+            /** Value */
+            value?: unknown;
         };
         /**
          * DraftUpdate
@@ -2748,6 +3192,15 @@ export interface components {
              */
             conversation_id: string;
         };
+        /** FlowApiMessageList */
+        FlowApiMessageList: {
+            /** Items */
+            items: components["schemas"]["WfMessageOut"][];
+            /** Has More */
+            has_more: boolean;
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /**
          * FlowAppOut
          * @description 웹앱(/flows/<slug>)이 보여 주는 발행 워크플로우 정보(2단계 설계 6.2).
@@ -2785,6 +3238,105 @@ export interface components {
             webapp: components["schemas"]["WebappSettings"];
         };
         /**
+         * FlowChatMessageResult
+         * @description 챗플로우 키의 chat-messages blocking 응답. 1단계 ChatMessageResult와 같은 이름을 쓴다.
+         */
+        FlowChatMessageResult: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Answer */
+            answer: string;
+            usage: components["schemas"]["UsageTotal"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
+            pending_interaction?: components["schemas"]["WfPendingOut"] | null;
+            error?: components["schemas"]["WfRunErrorOut"] | null;
+        };
+        /** FlowConversationDetail */
+        FlowConversationDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** External User */
+            external_user: string | null;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /** Message Count */
+            message_count: number;
+            /** Last Message At */
+            last_message_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            active_run: components["schemas"]["WfRunOut"] | null;
+            last_run: components["schemas"]["WfRunOut"] | null;
+        };
+        /** FlowConversationList */
+        FlowConversationList: {
+            /** Items */
+            items: components["schemas"]["FlowConversationOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** FlowConversationOut */
+        FlowConversationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** External User */
+            external_user: string | null;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /** Message Count */
+            message_count: number;
+            /** Last Message At */
+            last_message_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
          * FlowField
          * @description 발행 버전 start 노드의 입력 필드 하나. 웹앱이 이것으로 입력 폼을 만든다.
          */
@@ -2806,6 +3358,73 @@ export interface components {
             options?: string[] | null;
             /** Max Length */
             max_length?: number | null;
+        };
+        /** FlowFileUploadOut */
+        FlowFileUploadOut: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Filename */
+            filename: string;
+            /** Size */
+            size: number;
+            /** Mime */
+            mime: string;
+            /** Conversation Id */
+            conversation_id: string | null;
+        };
+        /** FlowInfoOut */
+        FlowInfoOut: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /** Published */
+            published: boolean;
+            /** Version Id */
+            version_id: string | null;
+            /** Version Number */
+            version_number: number | null;
+            /** Published At */
+            published_at: string | null;
+            /** Webapp Enabled */
+            webapp_enabled: boolean;
+        };
+        /** FlowParametersOut */
+        FlowParametersOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /** User Input Form */
+            user_input_form: components["schemas"]["FlowField"][];
+            limits: components["schemas"]["WorkflowLimits"] | null;
+            file_upload: components["schemas"]["FileUploadLimits"];
+            /** Response Modes */
+            response_modes: string[];
+            /** Scopes */
+            scopes: string[];
+            /** Opening Statement */
+            opening_statement?: string | null;
+            /** Suggested Questions */
+            suggested_questions?: string[];
         };
         /**
          * FlowRunResult
@@ -3238,11 +3857,15 @@ export interface components {
             dynamic_outputs: boolean;
             /** Branching */
             branching: boolean;
+            /** Loop Kinds */
+            loop_kinds?: ("workflow" | "chatflow")[];
         };
         /** NodeTypeList */
         NodeTypeList: {
             /** Items */
             items: components["schemas"]["NodeType"][];
+            /** Tools */
+            tools?: components["schemas"]["ToolSpecOut"][];
         };
         /** OutputSpecOut */
         OutputSpecOut: {
@@ -4155,6 +4778,48 @@ export interface components {
              */
             approval_mode: "inherit" | "off";
         };
+        /** ToolParamOut */
+        ToolParamOut: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "boolean" | "object" | "file" | "array[string]" | "array[number]" | "array[boolean]" | "array[object]" | "array[file]" | "array[any]" | "any";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Required */
+            required: boolean;
+            /** Default */
+            default?: unknown;
+            /** Options */
+            options?: string[] | null;
+            /** Max Length */
+            max_length?: number | null;
+        };
+        /**
+         * ToolSpecOut
+         * @description tool 노드가 부를 수 있는 내장 도구. config.tool에 name을 쓴다.
+         */
+        ToolSpecOut: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Params */
+            params: components["schemas"]["ToolParamOut"][];
+            /** Params Schema */
+            params_schema: {
+                [key: string]: unknown;
+            };
+            /** Outputs */
+            outputs: components["schemas"]["OutputSpecOut"][];
+        };
         /** Usage */
         Usage: {
             /**
@@ -4373,6 +5038,136 @@ export interface components {
             /** Suggested Questions */
             suggested_questions?: string[];
         };
+        /**
+         * WfChatResult
+         * @description 메시지 전송의 blocking 응답. 입력을 기다리면 run.pending_interaction에 승인·질문이 있다.
+         */
+        WfChatResult: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string | null;
+            run: components["schemas"]["WfRunOut"];
+            /** Answer */
+            answer: string;
+        };
+        /** WfConversationCreate */
+        WfConversationCreate: {
+            /** Title */
+            title?: string | null;
+        };
+        /** WfConversationDetail */
+        WfConversationDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "preview" | "webapp" | "api";
+            /** Title */
+            title: string | null;
+            /** Status */
+            status: string;
+            /** External User */
+            external_user: string | null;
+            /** Api Key Id */
+            api_key_id: string | null;
+            /** Message Count */
+            message_count: number;
+            /** Last Message At */
+            last_message_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            active_run: components["schemas"]["WfRunOut"] | null;
+            last_run: components["schemas"]["WfRunOut"] | null;
+        };
+        /** WfConversationList */
+        WfConversationList: {
+            /** Items */
+            items: components["schemas"]["WfConversationOut"][];
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /** WfConversationOut */
+        WfConversationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "preview" | "webapp" | "api";
+            /** Title */
+            title: string | null;
+            /** Status */
+            status: string;
+            /** External User */
+            external_user: string | null;
+            /** Api Key Id */
+            api_key_id: string | null;
+            /** Message Count */
+            message_count: number;
+            /** Last Message At */
+            last_message_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WfConversationPatch */
+        WfConversationPatch: {
+            /** Title */
+            title: string;
+        };
+        /** WfConversationVariables */
+        WfConversationVariables: {
+            /** Items */
+            items: components["schemas"]["ConversationVariableOut"][];
+        };
         /** WfEnvVarOut */
         WfEnvVarOut: {
             /** Name */
@@ -4408,6 +5203,74 @@ export interface components {
             size_bytes: number;
             /** Sha256 */
             sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * WfMessageCreate
+         * @description 대화에 보내는 메시지. 런 하나가 이 턴의 답을 만든다.
+         */
+        WfMessageCreate: {
+            /** Text */
+            text: string;
+            /** Inputs */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** Files */
+            files?: string[];
+            /**
+             * Response Mode
+             * @default streaming
+             * @enum {string}
+             */
+            response_mode: "streaming" | "blocking";
+        };
+        /** WfMessageList */
+        WfMessageList: {
+            /** Items */
+            items: components["schemas"]["WfMessageOut"][];
+            /** Has More */
+            has_more: boolean;
+        };
+        /** WfMessageOut */
+        WfMessageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Run Id */
+            run_id: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Text */
+            text: string;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            } | null;
+            /** Files */
+            files: components["schemas"]["WfFileOut"][];
+            /** Usage */
+            usage: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: ("queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled") | null;
             /**
              * Created At
              * Format: date-time
@@ -4553,7 +5416,9 @@ export interface components {
          * WfPendingOut
          * @description wf_run.pending_interaction.
          *
-         *     승인·질문 카드는 interaction으로 그리고 응답은 /input으로 보낸다.
+         *     kind가 approval·question이면 agent 노드의 자식 런이 묻는 것이라 interaction으로 승인·질문 카드를
+         *     그리고 /input에 answer·decision을 보낸다. form이면 human_input 노드의 폼이라 form으로 입력 칸을
+         *     그리고 /input에 kind=form과 values를 보낸다.
          */
         WfPendingOut: {
             /** Node Id */
@@ -4562,7 +5427,13 @@ export interface components {
             iteration_index?: number | null;
             /** Child Run Id */
             child_run_id?: string | null;
-            interaction: components["schemas"]["PendingInteractionOut"];
+            interaction?: components["schemas"]["PendingInteractionOut"] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "approval" | "question" | "form";
+            form?: components["schemas"]["WorkflowFormData"] | null;
         };
         /**
          * WfRunCreate
@@ -4673,10 +5544,132 @@ export interface components {
              */
             retryable: boolean;
         };
+        /**
+         * WfRunInput
+         * @description POST /wf-runs/{id}/input. 승인·질문은 1단계 /runs/{id}/input과 같은 본문이고,
+         *     human_input 폼은 kind=form과 values를 보낸다. 파일 칸 값은 이 워크플로우에 올린 파일 id(목록이면
+         *     id 배열)다.
+         */
+        WfRunInput: {
+            /** Kind */
+            kind?: ("approval" | "question" | "form") | null;
+            /** Answer */
+            answer?: string | null;
+            /** Decision */
+            decision?: ("approve" | "reject") | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Session Auto Approve
+             * @default false
+             */
+            session_auto_approve: boolean;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Response Mode
+             * @default none
+             * @enum {string}
+             */
+            response_mode: "none" | "streaming" | "blocking";
+        };
         /** WfRunList */
         WfRunList: {
             /** Items */
             items: components["schemas"]["WfRunOut"][];
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /**
+         * WfRunLogItem
+         * @description 워크스페이스 전체 런 목록(GET /wf-runs)의 항목. 워크플로우 종류는 kind와 같다.
+         */
+        WfRunLogItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /**
+             * Wf Version Id
+             * Format: uuid
+             */
+            wf_version_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "chatflow";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "preview" | "webapp" | "api" | "single_node" | "resume";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Outputs */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            error: components["schemas"]["WfRunErrorOut"] | null;
+            usage: components["schemas"]["UsageTotal"];
+            /** Node Run Count */
+            node_run_count: number;
+            pending_interaction: components["schemas"]["WfPendingOut"] | null;
+            /** Limits */
+            limits: {
+                [key: string]: unknown;
+            };
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Message Id */
+            message_id: string | null;
+            /** External User */
+            external_user: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Workflow Deleted */
+            workflow_deleted: boolean;
+        };
+        /** WfRunLogList */
+        WfRunLogList: {
+            /** Items */
+            items: components["schemas"]["WfRunLogItem"][];
             /** Next Offset */
             next_offset?: number | null;
         };
@@ -4813,6 +5806,56 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * WorkflowFormData
+         * @description human_input 노드가 기다리는 폼. 답은 /input에 kind=form과 values({필드 이름: 값})로
+         *     보낸다.
+         */
+        WorkflowFormData: {
+            /** Form Id */
+            form_id: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Fields */
+            fields: components["schemas"]["WorkflowFormField"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * WorkflowFormField
+         * @description human_input 폼의 입력 칸. start 필드와 같은 모양이고 값도 같은 규칙으로 검사·변환한다.
+         */
+        WorkflowFormField: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "paragraph" | "number" | "boolean" | "select" | "file" | "file_list";
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Default */
+            default?: unknown;
+            /** Options */
+            options?: string[] | null;
+            /** Max Length */
+            max_length?: number | null;
+        };
         /** WorkflowImportOut */
         WorkflowImportOut: {
             /**
@@ -4907,6 +5950,67 @@ export interface components {
         WorkflowPublishRequest: {
             /** Change Note */
             change_note?: string | null;
+        };
+        /** WorkflowRunList */
+        WorkflowRunList: {
+            /** Items */
+            items: components["schemas"]["WorkflowRunResult"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /**
+         * WorkflowRunRequest
+         * @description POST /workflows/run. 파일 입력은 start의 file 필드에 /files/upload로 올린 id를 준다.
+         */
+        WorkflowRunRequest: {
+            /** Inputs */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** User */
+            user?: string | null;
+            /**
+             * Response Mode
+             * @default streaming
+             * @enum {string}
+             */
+            response_mode: "streaming" | "blocking";
+        };
+        /**
+         * WorkflowRunResult
+         * @description 워크플로우 런의 blocking 응답이자 폴링 결과. 입력을 기다리면 pending_interaction이 있다.
+         */
+        WorkflowRunResult: {
+            /**
+             * Workflow Run Id
+             * Format: uuid
+             */
+            workflow_run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
+            /** Outputs */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            usage: components["schemas"]["UsageTotal"];
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            error?: components["schemas"]["WfRunErrorOut"] | null;
+            pending_interaction?: components["schemas"]["WfPendingOut"] | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Message Id */
+            message_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Ended At */
+            ended_at?: string | null;
         };
         /**
          * WorkflowSettings
@@ -7801,6 +8905,171 @@ export interface operations {
             };
         };
     };
+    list_workflow_api_keys_api_console_workflows__workflow_id__api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_workflow_api_key_api_console_workflows__workflow_id__api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revoke_workflow_api_key_api_console_workflows__workflow_id__api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_preview_conversations_api_console_workflows__workflow_id__preview_conversations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_preview_conversation_api_console_workflows__workflow_id__preview_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WfConversationCreate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     export_workflow_api_console_workflows__workflow_id__export_post: {
         parameters: {
             query?: {
@@ -7872,6 +9141,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowImportOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_wf_runs_api_console_wf_runs_get: {
+        parameters: {
+            query?: {
+                workflow_id?: string | null;
+                status?: ("queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled") | null;
+                trigger?: ("preview" | "webapp" | "api" | "single_node" | "resume") | null;
+                conversation_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfRunLogList"];
                 };
             };
             /** @description 오류 */
@@ -8092,7 +9399,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RunInput"];
+                "application/json": components["schemas"]["WfRunInput"];
             };
         };
         responses: {
@@ -8114,6 +9421,300 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WfRunOut"];
                 };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_wf_run_file_api_console_wf_runs__run_id__files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_conversations_api_console_wf_conversations_get: {
+        parameters: {
+            query?: {
+                workflow_id?: string | null;
+                source?: ("preview" | "webapp" | "api") | null;
+                api_key_id?: string | null;
+                external_user?: string | null;
+                since?: string | null;
+                until?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_conversation_api_console_wf_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationDetail"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_conversation_api_console_wf_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_conversation_api_console_wf_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfConversationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_messages_api_console_wf_conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: {
+                before_seq?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfMessageList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    send_message_api_console_wf_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfMessageCreate"];
+            };
+        };
+        responses: {
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 WfChatResult */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfChatResult"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    conversation_variables_api_console_wf_conversations__conversation_id__variables_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationVariables"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_conversation_file_api_console_wf_conversations__conversation_id__files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 오류 */
             "4XX": {
@@ -8818,7 +10419,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RunInput"];
+                "application/json": components["schemas"]["WfRunInput"];
             };
         };
         responses: {
@@ -8882,6 +10483,270 @@ export interface operations {
             };
         };
     };
+    list_flow_conversations_api_web_flows__slug__conversations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_flow_conversation_api_web_flows__slug__conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WfConversationCreate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_flow_conversation_api_web_wf_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationDetail"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_flow_conversation_api_web_wf_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_flow_conversation_api_web_wf_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfConversationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfConversationOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_flow_messages_api_web_wf_conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: {
+                before_seq?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfMessageList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    send_flow_message_api_web_wf_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WfMessageCreate"];
+            };
+        };
+        responses: {
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 WfChatResult */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WfChatResult"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_flow_conversation_file_api_web_wf_conversations__conversation_id__files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_info_api_v1_info_get: {
         parameters: {
             query?: never;
@@ -8897,7 +10762,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentInfoOut"];
+                    "application/json": components["schemas"]["AgentInfoOut"] | components["schemas"]["FlowInfoOut"];
                 };
             };
             /** @description 오류 */
@@ -8926,7 +10791,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentParametersOut"];
+                    "application/json": components["schemas"]["AgentParametersOut"] | components["schemas"]["FlowParametersOut"];
                 };
             };
             /** @description 오류 */
@@ -8953,13 +10818,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 ChatMessageResult */
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 에이전트 키는 ChatMessageResult, 챗플로우 키는 FlowChatMessageResult */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatMessageResult"];
+                    "application/json": components["schemas"]["ChatMessageResult"] | components["schemas"]["FlowChatMessageResult"];
                     "text/event-stream": string;
                 };
             };
@@ -9020,18 +10885,18 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ApiRunInput"];
+                "application/json": components["schemas"]["ApiFlowRunInput"];
             };
         };
         responses: {
-            /** @description response_mode=blocking이면 ChatMessageResult, streaming이면 SSE */
+            /** @description response_mode=blocking이면 결과, streaming이면 SSE */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "text/event-stream": string;
-                    "application/json": components["schemas"]["ChatMessageResult"];
+                    "application/json": components["schemas"]["ChatMessageResult"] | components["schemas"]["FlowChatMessageResult"];
                 };
             };
             /** @description response_mode=none(기본). 런이 다시 큐에 들어갔다 */
@@ -9040,7 +10905,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RunOut"];
+                    "application/json": components["schemas"]["RunOut"] | components["schemas"]["WfRunOut"];
                 };
             };
             /** @description 오류 */
@@ -9142,7 +11007,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationList"];
+                    "application/json": components["schemas"]["ConversationList"] | components["schemas"]["FlowConversationList"];
                 };
             };
             /** @description 오류 */
@@ -9175,7 +11040,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationDetail"];
+                    "application/json": components["schemas"]["ConversationDetail"] | components["schemas"]["FlowConversationDetail"];
                 };
             };
             /** @description 오류 */
@@ -9241,7 +11106,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationOut"];
+                    "application/json": components["schemas"]["ConversationOut"] | components["schemas"]["FlowConversationOut"];
                 };
             };
             /** @description 오류 */
@@ -9275,7 +11140,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiMessageList"];
+                    "application/json": components["schemas"]["ApiMessageList"] | components["schemas"]["FlowApiMessageList"];
                 };
             };
             /** @description 오류 */
@@ -9314,7 +11179,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FileUploadOut"];
+                    "application/json": components["schemas"]["FileUploadOut"] | components["schemas"]["FlowFileUploadOut"];
                 };
             };
             /** @description 오류 */
@@ -9413,6 +11278,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_workflow_api_v1_workflows_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowRunRequest"];
+            };
+        };
+        responses: {
+            /** @description response_mode=streaming(기본)이면 SSE, blocking이면 WorkflowRunResult */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResult"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_workflow_run_api_v1_workflows_run__run_id__get: {
+        parameters: {
+            query?: {
+                user?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stop_workflow_run_api_v1_workflows_run__run_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StopRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    provide_workflow_input_api_v1_workflows_run__run_id__input_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiFlowRunInput"];
+            };
+        };
+        responses: {
+            /** @description response_mode=blocking이면 결과, streaming이면 SSE */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": components["schemas"]["WorkflowRunResult"];
+                };
+            };
+            /** @description response_mode=none(기본). 런이 다시 큐에 들어갔다 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_workflow_runs_api_v1_workflows_logs_get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled") | null;
+                user?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunList"];
                 };
             };
             /** @description 오류 */

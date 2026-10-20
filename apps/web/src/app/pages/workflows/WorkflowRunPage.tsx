@@ -25,12 +25,13 @@ import { PageSpinner, Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { formatCost } from "@/features/settings/usage";
-import { flowFileUrl } from "@/features/webapp/flows";
 import {
   fetchWorkflowNodeRuns,
+  uploadWorkflowFile,
   useWfRun,
   useWfRunEventLog,
   useWorkflowVersion,
+  wfRunFileUrl,
   workflowKeys,
 } from "@/features/workflows/api";
 import { normalizeGraph } from "@/features/workflows/graph";
@@ -167,6 +168,8 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WfRunDetail }) 
               nodeTitle={titleOf(state.pendingInteraction.nodeId)}
               busy={meta.responding}
               onRespond={(input) => void controller.respond(input)}
+              upload={(file) => uploadWorkflowFile(workflowId, file)}
+              onSubmitForm={(values) => controller.submitForm(values)}
             />
           ) : null}
         </div>
@@ -201,10 +204,7 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WfRunDetail }) 
             {run.outputs ? (
               <OutputsView
                 outputs={run.outputs}
-                // 콘솔에는 wf 파일 내려받기 경로가 아직 없다. 웹앱 런은 웹앱 경로로 받는다.
-                fileUrl={
-                  run.trigger === "webapp" ? (fileId) => flowFileUrl(run.id, fileId) : undefined
-                }
+                fileUrl={(fileId) => wfRunFileUrl(run.id, fileId)}
               />
             ) : (
               <p className="text-sm text-ink-muted">{t("runPage.noOutputs")}</p>

@@ -85,7 +85,8 @@
       },
       "outputs": [],
       "dynamic_outputs": true,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "end",
@@ -128,7 +129,8 @@
       },
       "outputs": [],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "answer",
@@ -155,7 +157,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "template",
@@ -208,7 +211,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "if_else",
@@ -300,7 +304,8 @@
       },
       "outputs": [],
       "dynamic_outputs": false,
-      "branching": true
+      "branching": true,
+      "loop_kinds": []
     },
     {
       "type": "variable_aggregator",
@@ -345,7 +350,8 @@
       },
       "outputs": [],
       "dynamic_outputs": true,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "variable_assigner",
@@ -407,7 +413,8 @@
       },
       "outputs": [],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": ["chatflow", "workflow"]
     },
     {
       "type": "llm",
@@ -611,7 +618,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "http_request",
@@ -766,7 +774,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "code",
@@ -867,7 +876,8 @@
       },
       "outputs": [],
       "dynamic_outputs": true,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "question_classifier",
@@ -1029,7 +1039,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": true
+      "branching": true,
+      "loop_kinds": []
     },
     {
       "type": "parameter_extractor",
@@ -1217,7 +1228,8 @@
       },
       "outputs": [],
       "dynamic_outputs": true,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "agent",
@@ -1446,7 +1458,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "iteration",
@@ -1503,7 +1516,8 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
     },
     {
       "type": "iteration_start",
@@ -1528,7 +1542,833 @@
         }
       ],
       "dynamic_outputs": false,
-      "branching": false
+      "branching": false,
+      "loop_kinds": []
+    },
+    {
+      "type": "loop",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "Condition": {
+            "additionalProperties": false,
+            "properties": {
+              "var": {
+                "title": "Var",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "=",
+                  "≠",
+                  "contains",
+                  "not_contains",
+                  "starts_with",
+                  "ends_with",
+                  "is_empty",
+                  "is_not_empty",
+                  ">",
+                  "<",
+                  "≥",
+                  "≤",
+                  "in",
+                  "not_in",
+                  "regex"
+                ],
+                "title": "Op",
+                "type": "string"
+              },
+              "value": {
+                "default": null,
+                "title": "Value"
+              }
+            },
+            "required": ["var", "op"],
+            "title": "Condition",
+            "type": "object"
+          },
+          "LoopVar": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "type": {
+                "default": "any",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "object",
+                  "file",
+                  "array[string]",
+                  "array[number]",
+                  "array[boolean]",
+                  "array[object]",
+                  "array[file]",
+                  "array[any]",
+                  "any"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "var": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Var"
+              },
+              "value": {
+                "default": null,
+                "title": "Value"
+              }
+            },
+            "required": ["name"],
+            "title": "LoopVar",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "loop_vars": {
+            "items": {
+              "$ref": "#/$defs/LoopVar"
+            },
+            "title": "Loop Vars",
+            "type": "array"
+          },
+          "break_conditions": {
+            "items": {
+              "$ref": "#/$defs/Condition"
+            },
+            "title": "Break Conditions",
+            "type": "array"
+          },
+          "logical": {
+            "default": "and",
+            "enum": ["and", "or"],
+            "title": "Logical",
+            "type": "string"
+          },
+          "max_iterations": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Max Iterations",
+            "type": "integer"
+          }
+        },
+        "title": "LoopConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false,
+      "loop_kinds": []
+    },
+    {
+      "type": "loop_start",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EmptyConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "index",
+          "type": "number"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false,
+      "loop_kinds": []
+    },
+    {
+      "type": "list_operator",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "ItemCondition": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "default": "",
+                "title": "Key",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "=",
+                  "≠",
+                  "contains",
+                  "not_contains",
+                  "starts_with",
+                  "ends_with",
+                  "is_empty",
+                  "is_not_empty",
+                  ">",
+                  "<",
+                  "≥",
+                  "≤",
+                  "in",
+                  "not_in",
+                  "regex"
+                ],
+                "title": "Op",
+                "type": "string"
+              },
+              "value": {
+                "default": null,
+                "title": "Value"
+              }
+            },
+            "required": ["op"],
+            "title": "ItemCondition",
+            "type": "object"
+          },
+          "ListFilter": {
+            "additionalProperties": false,
+            "properties": {
+              "logical": {
+                "default": "and",
+                "enum": ["and", "or"],
+                "title": "Logical",
+                "type": "string"
+              },
+              "conditions": {
+                "items": {
+                  "$ref": "#/$defs/ItemCondition"
+                },
+                "minItems": 1,
+                "title": "Conditions",
+                "type": "array"
+              }
+            },
+            "required": ["conditions"],
+            "title": "ListFilter",
+            "type": "object"
+          },
+          "ListSlice": {
+            "additionalProperties": false,
+            "properties": {
+              "offset": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              },
+              "limit": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Limit"
+              }
+            },
+            "title": "ListSlice",
+            "type": "object"
+          },
+          "ListSort": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "default": "",
+                "title": "Key",
+                "type": "string"
+              },
+              "order": {
+                "default": "asc",
+                "enum": ["asc", "desc"],
+                "title": "Order",
+                "type": "string"
+              }
+            },
+            "title": "ListSort",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "input_var": {
+            "title": "Input Var",
+            "type": "string"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ListFilter"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ListSort"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "slice": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ListSlice"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "extract_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Extract Index"
+          }
+        },
+        "required": ["input_var"],
+        "title": "ListOperatorConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "result",
+          "type": "array[any]"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        },
+        {
+          "name": "first_record",
+          "type": "any"
+        },
+        {
+          "name": "last_record",
+          "type": "any"
+        },
+        {
+          "name": "item",
+          "type": "any"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false,
+      "loop_kinds": []
+    },
+    {
+      "type": "document_extractor",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "file_var": {
+            "title": "File Var",
+            "type": "string"
+          }
+        },
+        "required": ["file_var"],
+        "title": "DocumentExtractorConfig",
+        "type": "object"
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "texts",
+          "type": "array[string]"
+        }
+      ],
+      "dynamic_outputs": false,
+      "branching": false,
+      "loop_kinds": []
+    },
+    {
+      "type": "tool",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail", "default", "branch"],
+      "config_schema": {
+        "$defs": {
+          "ToolArg": {
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "default": "template",
+                "enum": ["template", "var", "const"],
+                "title": "Mode",
+                "type": "string"
+              },
+              "value": {
+                "default": "",
+                "title": "Value"
+              }
+            },
+            "title": "ToolArg",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "tool": {
+            "default": "",
+            "title": "Tool",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/$defs/ToolArg"
+            },
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "title": "ToolConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false,
+      "loop_kinds": []
+    },
+    {
+      "type": "human_input",
+      "version": 1,
+      "kinds": ["chatflow", "workflow"],
+      "implemented": true,
+      "error_strategies": ["fail"],
+      "config_schema": {
+        "$defs": {
+          "StartField": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "title": "Name",
+                "type": "string"
+              },
+              "type": {
+                "default": "string",
+                "enum": ["string", "number", "boolean", "select", "file", "file_list", "paragraph"],
+                "title": "Type",
+                "type": "string"
+              },
+              "label": {
+                "default": "",
+                "title": "Label",
+                "type": "string"
+              },
+              "required": {
+                "default": false,
+                "title": "Required",
+                "type": "boolean"
+              },
+              "default": {
+                "default": null,
+                "title": "Default"
+              },
+              "options": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Options"
+              },
+              "max_length": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Max Length"
+              }
+            },
+            "required": ["name"],
+            "title": "StartField",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/$defs/StartField"
+            },
+            "minItems": 1,
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": ["fields"],
+        "title": "HumanInputConfig",
+        "type": "object"
+      },
+      "outputs": [],
+      "dynamic_outputs": true,
+      "branching": false,
+      "loop_kinds": []
+    }
+  ],
+  "tools": [
+    {
+      "name": "current_time",
+      "label": "현재 시각",
+      "description": "지금 날짜와 시각을 정한 시간대와 형식으로 낸다",
+      "params": [
+        {
+          "name": "timezone",
+          "type": "string",
+          "label": "시간대",
+          "description": "local(이 PC의 시간대), UTC, +09:00 같은 오프셋, Asia/Seoul 같은 이름",
+          "required": false,
+          "default": "local",
+          "options": null,
+          "max_length": 64
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "label": "형식",
+          "description": "strftime 형식(예: %Y-%m-%d %H:%M). 비우면 ISO 8601",
+          "required": false,
+          "default": "",
+          "options": null,
+          "max_length": 100
+        }
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "title": "시간대",
+            "description": "local(이 PC의 시간대), UTC, +09:00 같은 오프셋, Asia/Seoul 같은 이름",
+            "type": "string",
+            "default": "local",
+            "maxLength": 64
+          },
+          "format": {
+            "title": "형식",
+            "description": "strftime 형식(예: %Y-%m-%d %H:%M). 비우면 ISO 8601",
+            "type": "string",
+            "default": "",
+            "maxLength": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "iso",
+          "type": "string"
+        },
+        {
+          "name": "date",
+          "type": "string"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "timezone",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "json_parse",
+      "label": "JSON 읽기",
+      "description": "JSON 글을 값으로 바꾼다. 경로를 주면 그 안의 값만 꺼낸다",
+      "params": [
+        {
+          "name": "text",
+          "type": "string",
+          "label": "JSON 글",
+          "description": "읽을 JSON 글",
+          "required": true,
+          "default": null,
+          "options": null,
+          "max_length": null
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "label": "경로",
+          "description": "꺼낼 값의 경로(예: items[0].name). 비우면 전체",
+          "required": false,
+          "default": "",
+          "options": null,
+          "max_length": 512
+        }
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "title": "JSON 글",
+            "description": "읽을 JSON 글",
+            "type": "string"
+          },
+          "path": {
+            "title": "경로",
+            "description": "꺼낼 값의 경로(예: items[0].name). 비우면 전체",
+            "type": "string",
+            "default": "",
+            "maxLength": 512
+          }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+      },
+      "outputs": [
+        {
+          "name": "value",
+          "type": "any"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "found",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "regex_extract",
+      "label": "정규식 추출",
+      "description": "글에서 정규식에 맞는 부분을 꺼낸다",
+      "params": [
+        {
+          "name": "text",
+          "type": "string",
+          "label": "글",
+          "description": "찾을 대상 글(1MB까지)",
+          "required": true,
+          "default": null,
+          "options": null,
+          "max_length": null
+        },
+        {
+          "name": "pattern",
+          "type": "string",
+          "label": "정규식",
+          "description": "파이썬 re 문법(512자까지)",
+          "required": true,
+          "default": null,
+          "options": null,
+          "max_length": 512
+        },
+        {
+          "name": "flags",
+          "type": "string",
+          "label": "플래그",
+          "description": "i(대소문자 무시)·m(여러 줄)·s(.이 줄바꿈 포함)",
+          "required": false,
+          "default": "",
+          "options": null,
+          "max_length": null
+        },
+        {
+          "name": "group",
+          "type": "string",
+          "label": "그룹",
+          "description": "꺼낼 그룹 번호나 이름. 비우거나 0이면 맞은 부분 전체",
+          "required": false,
+          "default": "",
+          "options": null,
+          "max_length": 64
+        }
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "title": "글",
+            "description": "찾을 대상 글(1MB까지)",
+            "type": "string"
+          },
+          "pattern": {
+            "title": "정규식",
+            "description": "파이썬 re 문법(512자까지)",
+            "type": "string",
+            "maxLength": 512
+          },
+          "flags": {
+            "title": "플래그",
+            "description": "i(대소문자 무시)·m(여러 줄)·s(.이 줄바꿈 포함)",
+            "type": "string",
+            "default": ""
+          },
+          "group": {
+            "title": "그룹",
+            "description": "꺼낼 그룹 번호나 이름. 비우거나 0이면 맞은 부분 전체",
+            "type": "string",
+            "default": "",
+            "maxLength": 64
+          }
+        },
+        "required": ["text", "pattern"],
+        "additionalProperties": false
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "matches",
+          "type": "array[string]"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        },
+        {
+          "name": "found",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "web_fetch",
+      "label": "웹 페이지 가져오기",
+      "description": "허용 목록에 있는 웹 페이지를 가져와 글만 남긴다",
+      "params": [
+        {
+          "name": "url",
+          "type": "string",
+          "label": "주소",
+          "description": "http·https 주소. 호스트가 허용 목록에 있어야 한다",
+          "required": true,
+          "default": null,
+          "options": null,
+          "max_length": 2048
+        },
+        {
+          "name": "max_length",
+          "type": "number",
+          "label": "최대 글자 수",
+          "description": "이보다 긴 글은 앞부분만 남긴다",
+          "required": false,
+          "default": 100000,
+          "options": null,
+          "max_length": null
+        }
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "title": "주소",
+            "description": "http·https 주소. 호스트가 허용 목록에 있어야 한다",
+            "type": "string",
+            "maxLength": 2048
+          },
+          "max_length": {
+            "title": "최대 글자 수",
+            "description": "이보다 긴 글은 앞부분만 남긴다",
+            "type": "number",
+            "default": 100000
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "status_code",
+          "type": "number"
+        },
+        {
+          "name": "content_type",
+          "type": "string"
+        }
+      ]
     }
   ]
 }

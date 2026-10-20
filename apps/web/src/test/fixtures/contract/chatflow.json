@@ -1,0 +1,1885 @@
+{
+  "basic": {
+    "workflowId": "01a13aa5-24d1-7a17-a315-8f4747bcddbc",
+    "conversationId": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+    "answerUi": {
+      "prestream_sources": ["llm_1"]
+    },
+    "turns": [
+      {
+        "text": "첫 질문",
+        "headers": {
+          "x-run-id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+          "x-conversation-id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+          "x-message-id": "01a13aa5-2514-7749-91ed-253215cfb697"
+        },
+        "events": [
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 1,
+            "ts": "2026-10-14T13:41:03.896Z",
+            "type": "workflow.queued",
+            "data": {
+              "position": 1
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 2,
+            "ts": "2026-10-14T13:41:03.914Z",
+            "type": "workflow.started",
+            "data": {
+              "workflow_id": "01a13aa5-24d1-7a17-a315-8f4747bcddbc",
+              "version_id": "01a13aa5-24d3-7f8d-b33d-73a5d7376aa8",
+              "kind": "chatflow",
+              "inputs_preview": {},
+              "truncated": false,
+              "resumed": false,
+              "node_count": 3
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 3,
+            "ts": "2026-10-14T13:41:03.918Z",
+            "type": "node.started",
+            "data": {
+              "node_run_id": "01a13aa5-252a-7957-8a46-33b4ea07b8c6",
+              "node_id": "start",
+              "node_type": "start",
+              "title": "시작",
+              "index": 0,
+              "iteration_id": null,
+              "iteration_index": null,
+              "attempt": 1,
+              "child_run_id": null,
+              "child_session_id": null
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 4,
+            "ts": "2026-10-14T13:41:03.921Z",
+            "type": "node.completed",
+            "data": {
+              "node_run_id": "01a13aa5-252a-7957-8a46-33b4ea07b8c6",
+              "node_id": "start",
+              "status": "succeeded",
+              "outputs_preview": {},
+              "truncated": false,
+              "error": null,
+              "usage": null,
+              "duration_ms": 0,
+              "branch": null,
+              "warnings": []
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 5,
+            "ts": "2026-10-14T13:41:03.923Z",
+            "type": "node.started",
+            "data": {
+              "node_run_id": "01a13aa5-2531-7185-9ba0-cd8de6c69ca7",
+              "node_id": "llm_1",
+              "node_type": "llm",
+              "title": "LLM",
+              "index": 1,
+              "iteration_id": null,
+              "iteration_index": null,
+              "attempt": 1,
+              "child_run_id": null,
+              "child_session_id": null
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 6,
+            "ts": "2026-10-14T13:41:03.924Z",
+            "type": "node.text_delta",
+            "data": {
+              "text": "가짜 응답: 첫 질문",
+              "node_id": "llm_1",
+              "node_run_id": "01a13aa5-2531-7185-9ba0-cd8de6c69ca7"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 7,
+            "ts": "2026-10-14T13:41:03.924Z",
+            "type": "answer.delta",
+            "data": {
+              "text": "가짜 응답: 첫 질문",
+              "node_id": "answer_1"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 8,
+            "ts": "2026-10-14T13:41:03.924Z",
+            "type": "node.usage",
+            "data": {
+              "model": "fake-model",
+              "key_index": null,
+              "input_tokens": 37,
+              "output_tokens": 4,
+              "reasoning_tokens": null,
+              "cached_input_tokens": null,
+              "estimated": true,
+              "cost_usd": null,
+              "node_id": "llm_1",
+              "node_run_id": "01a13aa5-2531-7185-9ba0-cd8de6c69ca7"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 9,
+            "ts": "2026-10-14T13:41:03.928Z",
+            "type": "node.completed",
+            "data": {
+              "node_run_id": "01a13aa5-2531-7185-9ba0-cd8de6c69ca7",
+              "node_id": "llm_1",
+              "status": "succeeded",
+              "outputs_preview": {
+                "text": "가짜 응답: 첫 질문",
+                "json": null,
+                "usage": {
+                  "input_tokens": 37,
+                  "output_tokens": 4,
+                  "reasoning_tokens": 0,
+                  "cached_input_tokens": 0,
+                  "cost_usd": null,
+                  "estimated": true
+                }
+              },
+              "truncated": false,
+              "error": null,
+              "usage": {
+                "input_tokens": 37,
+                "output_tokens": 4,
+                "reasoning_tokens": 0,
+                "cached_input_tokens": 0,
+                "cost_usd": null,
+                "estimated": true
+              },
+              "duration_ms": 1,
+              "branch": null,
+              "warnings": []
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 10,
+            "ts": "2026-10-14T13:41:03.931Z",
+            "type": "node.started",
+            "data": {
+              "node_run_id": "01a13aa5-2539-7815-b910-6f085c662e5f",
+              "node_id": "answer_1",
+              "node_type": "answer",
+              "title": "답변",
+              "index": 2,
+              "iteration_id": null,
+              "iteration_index": null,
+              "attempt": 1,
+              "child_run_id": null,
+              "child_session_id": null
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 11,
+            "ts": "2026-10-14T13:41:03.934Z",
+            "type": "node.completed",
+            "data": {
+              "node_run_id": "01a13aa5-2539-7815-b910-6f085c662e5f",
+              "node_id": "answer_1",
+              "status": "succeeded",
+              "outputs_preview": {
+                "text": "가짜 응답: 첫 질문"
+              },
+              "truncated": false,
+              "error": null,
+              "usage": null,
+              "duration_ms": 0,
+              "branch": null,
+              "warnings": []
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 12,
+            "ts": "2026-10-14T13:41:03.940Z",
+            "type": "answer.completed",
+            "data": {
+              "text": "가짜 응답: 첫 질문",
+              "message_id": "01a13aa5-2514-7749-91ed-253215cfb697"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 13,
+            "ts": "2026-10-14T13:41:03.940Z",
+            "type": "workflow.completed",
+            "data": {
+              "status": "succeeded",
+              "outputs": {},
+              "usage_total": {
+                "input_tokens": 37,
+                "output_tokens": 4,
+                "reasoning_tokens": 0,
+                "cached_input_tokens": 0,
+                "cost_usd": null,
+                "estimated": true
+              },
+              "node_runs": 3,
+              "duration_ms": 20,
+              "error": null,
+              "truncated": false
+            }
+          }
+        ]
+      },
+      {
+        "text": "둘째 질문",
+        "headers": {
+          "x-run-id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+          "x-conversation-id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+          "x-message-id": "01a13aa5-2553-7eb1-ac35-060e665202de"
+        },
+        "events": [
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 1,
+            "ts": "2026-10-14T13:41:03.961Z",
+            "type": "workflow.queued",
+            "data": {
+              "position": 1
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 2,
+            "ts": "2026-10-14T13:41:03.972Z",
+            "type": "workflow.started",
+            "data": {
+              "workflow_id": "01a13aa5-24d1-7a17-a315-8f4747bcddbc",
+              "version_id": "01a13aa5-24d3-7f8d-b33d-73a5d7376aa8",
+              "kind": "chatflow",
+              "inputs_preview": {},
+              "truncated": false,
+              "resumed": false,
+              "node_count": 3
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 3,
+            "ts": "2026-10-14T13:41:03.974Z",
+            "type": "node.started",
+            "data": {
+              "node_run_id": "01a13aa5-2564-7d60-80a2-dbc706c712b2",
+              "node_id": "start",
+              "node_type": "start",
+              "title": "시작",
+              "index": 0,
+              "iteration_id": null,
+              "iteration_index": null,
+              "attempt": 1,
+              "child_run_id": null,
+              "child_session_id": null
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 4,
+            "ts": "2026-10-14T13:41:03.977Z",
+            "type": "node.completed",
+            "data": {
+              "node_run_id": "01a13aa5-2564-7d60-80a2-dbc706c712b2",
+              "node_id": "start",
+              "status": "succeeded",
+              "outputs_preview": {},
+              "truncated": false,
+              "error": null,
+              "usage": null,
+              "duration_ms": 0,
+              "branch": null,
+              "warnings": []
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 5,
+            "ts": "2026-10-14T13:41:03.979Z",
+            "type": "node.started",
+            "data": {
+              "node_run_id": "01a13aa5-2569-70b4-a6e9-97550c516a85",
+              "node_id": "llm_1",
+              "node_type": "llm",
+              "title": "LLM",
+              "index": 1,
+              "iteration_id": null,
+              "iteration_index": null,
+              "attempt": 1,
+              "child_run_id": null,
+              "child_session_id": null
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 6,
+            "ts": "2026-10-14T13:41:03.979Z",
+            "type": "node.text_delta",
+            "data": {
+              "text": "가짜 응답: 둘째 질문",
+              "node_id": "llm_1",
+              "node_run_id": "01a13aa5-2569-70b4-a6e9-97550c516a85"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 7,
+            "ts": "2026-10-14T13:41:03.979Z",
+            "type": "answer.delta",
+            "data": {
+              "text": "가짜 응답: 둘째 질문",
+              "node_id": "answer_1"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 8,
+            "ts": "2026-10-14T13:41:03.979Z",
+            "type": "node.usage",
+            "data": {
+              "model": "fake-model",
+              "key_index": null,
+              "input_tokens": 59,
+              "output_tokens": 4,
+              "reasoning_tokens": null,
+              "cached_input_tokens": null,
+              "estimated": true,
+              "cost_usd": null,
+              "node_id": "llm_1",
+              "node_run_id": "01a13aa5-2569-70b4-a6e9-97550c516a85"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 9,
+            "ts": "2026-10-14T13:41:03.982Z",
+            "type": "node.completed",
+            "data": {
+              "node_run_id": "01a13aa5-2569-70b4-a6e9-97550c516a85",
+              "node_id": "llm_1",
+              "status": "succeeded",
+              "outputs_preview": {
+                "text": "가짜 응답: 둘째 질문",
+                "json": null,
+                "usage": {
+                  "input_tokens": 59,
+                  "output_tokens": 4,
+                  "reasoning_tokens": 0,
+                  "cached_input_tokens": 0,
+                  "cost_usd": null,
+                  "estimated": true
+                }
+              },
+              "truncated": false,
+              "error": null,
+              "usage": {
+                "input_tokens": 59,
+                "output_tokens": 4,
+                "reasoning_tokens": 0,
+                "cached_input_tokens": 0,
+                "cost_usd": null,
+                "estimated": true
+              },
+              "duration_ms": 0,
+              "branch": null,
+              "warnings": []
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 10,
+            "ts": "2026-10-14T13:41:03.984Z",
+            "type": "node.started",
+            "data": {
+              "node_run_id": "01a13aa5-256e-7a4b-8381-3dc2574618de",
+              "node_id": "answer_1",
+              "node_type": "answer",
+              "title": "답변",
+              "index": 2,
+              "iteration_id": null,
+              "iteration_index": null,
+              "attempt": 1,
+              "child_run_id": null,
+              "child_session_id": null
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 11,
+            "ts": "2026-10-14T13:41:03.986Z",
+            "type": "node.completed",
+            "data": {
+              "node_run_id": "01a13aa5-256e-7a4b-8381-3dc2574618de",
+              "node_id": "answer_1",
+              "status": "succeeded",
+              "outputs_preview": {
+                "text": "가짜 응답: 둘째 질문"
+              },
+              "truncated": false,
+              "error": null,
+              "usage": null,
+              "duration_ms": 0,
+              "branch": null,
+              "warnings": []
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 12,
+            "ts": "2026-10-14T13:41:03.991Z",
+            "type": "answer.completed",
+            "data": {
+              "text": "가짜 응답: 둘째 질문",
+              "message_id": "01a13aa5-2553-7eb1-ac35-060e665202de"
+            }
+          },
+          {
+            "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+            "session_id": null,
+            "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+            "seq": 13,
+            "ts": "2026-10-14T13:41:03.991Z",
+            "type": "workflow.completed",
+            "data": {
+              "status": "succeeded",
+              "outputs": {},
+              "usage_total": {
+                "input_tokens": 59,
+                "output_tokens": 4,
+                "reasoning_tokens": 0,
+                "cached_input_tokens": 0,
+                "cost_usd": null,
+                "estimated": true
+              },
+              "node_runs": 3,
+              "duration_ms": 14,
+              "error": null,
+              "truncated": false
+            }
+          }
+        ]
+      }
+    ],
+    "messages": {
+      "items": [
+        {
+          "id": "01a13aa5-2513-7839-b412-c02e53bf9baf",
+          "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+          "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+          "seq": 1,
+          "role": "user",
+          "text": "첫 질문",
+          "inputs": {},
+          "files": [],
+          "usage": null,
+          "status": null,
+          "created_at": "2026-10-14T13:41:03.892768Z"
+        },
+        {
+          "id": "01a13aa5-2514-7749-91ed-253215cfb697",
+          "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+          "run_id": "01a13aa5-2512-720b-85b4-1f14935f1027",
+          "seq": 2,
+          "role": "assistant",
+          "text": "가짜 응답: 첫 질문",
+          "inputs": null,
+          "files": [],
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "status": "succeeded",
+          "created_at": "2026-10-14T13:41:03.892768Z"
+        },
+        {
+          "id": "01a13aa5-2552-7a4f-8a14-e1dde04345fb",
+          "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+          "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+          "seq": 3,
+          "role": "user",
+          "text": "둘째 질문",
+          "inputs": {},
+          "files": [],
+          "usage": null,
+          "status": null,
+          "created_at": "2026-10-14T13:41:03.954621Z"
+        },
+        {
+          "id": "01a13aa5-2553-7eb1-ac35-060e665202de",
+          "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+          "run_id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+          "seq": 4,
+          "role": "assistant",
+          "text": "가짜 응답: 둘째 질문",
+          "inputs": null,
+          "files": [],
+          "usage": {
+            "input_tokens": 59,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "status": "succeeded",
+          "created_at": "2026-10-14T13:41:03.954621Z"
+        }
+      ],
+      "has_more": false
+    },
+    "detail": {
+      "id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+      "workflow_id": "01a13aa5-24d1-7a17-a315-8f4747bcddbc",
+      "wf_version_id": "01a13aa5-24d3-7f8d-b33d-73a5d7376aa8",
+      "source": "preview",
+      "title": "첫 질문",
+      "status": "active",
+      "external_user": null,
+      "api_key_id": null,
+      "message_count": 4,
+      "last_message_at": "2026-10-14T13:41:03.986352Z",
+      "created_at": "2026-10-14T13:41:03.856766Z",
+      "updated_at": "2026-10-14T13:41:03.990359Z",
+      "active_run": null,
+      "last_run": {
+        "id": "01a13aa5-2551-7164-9029-4c19c8cecfcd",
+        "workflow_id": "01a13aa5-24d1-7a17-a315-8f4747bcddbc",
+        "wf_version_id": "01a13aa5-24d3-7f8d-b33d-73a5d7376aa8",
+        "kind": "chatflow",
+        "trigger": "preview",
+        "status": "succeeded",
+        "inputs": {},
+        "outputs": {},
+        "error": null,
+        "usage": {
+          "input_tokens": 59,
+          "output_tokens": 4,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "node_run_count": 3,
+        "pending_interaction": null,
+        "limits": {
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "max_parallel_nodes": 4,
+          "pool_max_bytes": 16777216,
+          "checkpoint_interval_sec": 0.0
+        },
+        "conversation_id": "01a13aa5-24f0-77ba-bd2e-ed7e58e1bf54",
+        "message_id": "01a13aa5-2553-7eb1-ac35-060e665202de",
+        "external_user": null,
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T13:41:03.951620Z",
+        "started_at": "2026-10-14T13:41:03.962347Z",
+        "ended_at": "2026-10-14T13:41:03.986352Z",
+        "created_at": "2026-10-14T13:41:03.953619Z",
+        "updated_at": "2026-10-14T13:41:03.988347Z"
+      }
+    }
+  },
+  "approval": {
+    "workflowId": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+    "conversationId": "01a13aa5-25ba-7760-a053-08101eada7be",
+    "runId": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+    "events": [
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 1,
+        "ts": "2026-10-14T13:41:04.146Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 2,
+        "ts": "2026-10-14T13:41:04.155Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+          "version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+          "kind": "chatflow",
+          "inputs_preview": {},
+          "truncated": false,
+          "resumed": false,
+          "node_count": 5
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 3,
+        "ts": "2026-10-14T13:41:04.157Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-261b-76c4-80f2-740024c22b88",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 4,
+        "ts": "2026-10-14T13:41:04.159Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-261b-76c4-80f2-740024c22b88",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 5,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79",
+          "node_id": "llm_1",
+          "node_type": "llm",
+          "title": "llm_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 6,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "node.text_delta",
+        "data": {
+          "text": "가짜 응답: 셸을 써 줘",
+          "node_id": "llm_1",
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 7,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "answer.delta",
+        "data": {
+          "text": "가짜 응답: 셸을 써 줘",
+          "node_id": "answer_1"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 8,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "node.usage",
+        "data": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null,
+          "node_id": "llm_1",
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 9,
+        "ts": "2026-10-14T13:41:04.166Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79",
+          "node_id": "llm_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "가짜 응답: 셸을 써 줘",
+            "json": null,
+            "usage": {
+              "input_tokens": 14,
+              "output_tokens": 4,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            }
+          },
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 10,
+        "ts": "2026-10-14T13:41:04.166Z",
+        "type": "answer.delta",
+        "data": {
+          "text": "\n",
+          "node_id": "answer_1"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 11,
+        "ts": "2026-10-14T13:41:04.168Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-2626-7f05-a37d-02af49ea3c75",
+          "node_id": "answer_1",
+          "node_type": "answer",
+          "title": "answer_1",
+          "index": 2,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 12,
+        "ts": "2026-10-14T13:41:04.171Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-2626-7f05-a37d-02af49ea3c75",
+          "node_id": "answer_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "가짜 응답: 셸을 써 줘\n"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 13,
+        "ts": "2026-10-14T13:41:04.173Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 3,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 14,
+        "ts": "2026-10-14T13:41:04.230Z",
+        "type": "node.progress",
+        "data": {
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "child_session_id": "01a13aa5-2635-7ac5-876e-27fc8dd29243",
+          "steps": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "position": null,
+          "node_id": "agent_1",
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 15,
+        "ts": "2026-10-14T13:41:04.333Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e",
+          "node_id": "agent_1",
+          "status": "waiting_input",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 157,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 16,
+        "ts": "2026-10-14T13:41:04.342Z",
+        "type": "workflow.waiting_input",
+        "data": {
+          "node_id": "agent_1",
+          "iteration_index": null,
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "interaction": {
+            "interaction_id": "01a13aa5-26bc-746b-b437-f63c48c19cd8",
+            "kind": "approval",
+            "tool_call_id": "call_fake_0679a58d",
+            "tool_name": "shell",
+            "question": null,
+            "options": null,
+            "allow_free_text": null,
+            "input": {
+              "command": "echo fake-llm"
+            },
+            "cwd": ".",
+            "timeout_sec": 120
+          }
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 17,
+        "ts": "2026-10-14T13:41:04.342Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "waiting_input",
+          "outputs": null,
+          "usage_total": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "node_runs": 4,
+          "duration_ms": 180,
+          "error": null
+        }
+      }
+    ],
+    "waitingMessages": {
+      "items": [
+        {
+          "id": "01a13aa5-25cb-709f-a9e7-13999f1aa490",
+          "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+          "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+          "seq": 1,
+          "role": "user",
+          "text": "셸을 써 줘",
+          "inputs": {},
+          "files": [],
+          "usage": null,
+          "status": null,
+          "created_at": "2026-10-14T13:41:04.075039Z"
+        },
+        {
+          "id": "01a13aa5-25cc-7bc9-afb9-204f229c303a",
+          "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+          "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+          "seq": 2,
+          "role": "assistant",
+          "text": "가짜 응답: 셸을 써 줘\n",
+          "inputs": null,
+          "files": [],
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "status": "waiting_input",
+          "created_at": "2026-10-14T13:41:04.075039Z"
+        }
+      ],
+      "has_more": false
+    },
+    "waitingDetail": {
+      "id": "01a13aa5-25ba-7760-a053-08101eada7be",
+      "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+      "wf_version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+      "source": "preview",
+      "title": "셸을 써 줘",
+      "status": "active",
+      "external_user": null,
+      "api_key_id": null,
+      "message_count": 2,
+      "last_message_at": "2026-10-14T13:41:04.336607Z",
+      "created_at": "2026-10-14T13:41:04.058516Z",
+      "updated_at": "2026-10-14T13:41:04.340605Z",
+      "active_run": {
+        "id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+        "wf_version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+        "kind": "chatflow",
+        "trigger": "preview",
+        "status": "waiting_input",
+        "inputs": {},
+        "outputs": null,
+        "error": null,
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "node_run_count": 4,
+        "pending_interaction": {
+          "node_id": "agent_1",
+          "iteration_index": null,
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "interaction": {
+            "interaction_id": "01a13aa5-26bc-746b-b437-f63c48c19cd8",
+            "kind": "approval",
+            "tool_call_id": "call_fake_0679a58d",
+            "tool_name": "shell",
+            "question": null,
+            "options": null,
+            "allow_free_text": null,
+            "input": {
+              "command": "echo fake-llm"
+            },
+            "cwd": ".",
+            "timeout_sec": 120,
+            "created_at": "2026-10-14T13:41:04.316742Z"
+          }
+        },
+        "limits": {
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "max_parallel_nodes": 4,
+          "pool_max_bytes": 16777216,
+          "checkpoint_interval_sec": 0.0
+        },
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "message_id": "01a13aa5-25cc-7bc9-afb9-204f229c303a",
+        "external_user": null,
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T13:41:04.071039Z",
+        "started_at": "2026-10-14T13:41:04.147620Z",
+        "ended_at": null,
+        "created_at": "2026-10-14T13:41:04.074040Z",
+        "updated_at": "2026-10-14T13:41:04.338608Z"
+      },
+      "last_run": {
+        "id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+        "wf_version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+        "kind": "chatflow",
+        "trigger": "preview",
+        "status": "waiting_input",
+        "inputs": {},
+        "outputs": null,
+        "error": null,
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "node_run_count": 4,
+        "pending_interaction": {
+          "node_id": "agent_1",
+          "iteration_index": null,
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "interaction": {
+            "interaction_id": "01a13aa5-26bc-746b-b437-f63c48c19cd8",
+            "kind": "approval",
+            "tool_call_id": "call_fake_0679a58d",
+            "tool_name": "shell",
+            "question": null,
+            "options": null,
+            "allow_free_text": null,
+            "input": {
+              "command": "echo fake-llm"
+            },
+            "cwd": ".",
+            "timeout_sec": 120,
+            "created_at": "2026-10-14T13:41:04.316742Z"
+          }
+        },
+        "limits": {
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "max_parallel_nodes": 4,
+          "pool_max_bytes": 16777216,
+          "checkpoint_interval_sec": 0.0
+        },
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "message_id": "01a13aa5-25cc-7bc9-afb9-204f229c303a",
+        "external_user": null,
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T13:41:04.071039Z",
+        "started_at": "2026-10-14T13:41:04.147620Z",
+        "ended_at": null,
+        "created_at": "2026-10-14T13:41:04.074040Z",
+        "updated_at": "2026-10-14T13:41:04.338608Z"
+      }
+    },
+    "conflict": {
+      "status": 409,
+      "body": {
+        "error": {
+          "code": "run_in_progress",
+          "message": "이 대화에서 진행 중인 런이 있다. 끝나거나 승인·답을 받은 뒤 다시 보낸다",
+          "details": {
+            "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+            "status": "waiting_input",
+            "interaction": "approval"
+          }
+        }
+      }
+    },
+    "replayWaiting": [
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 1,
+        "ts": "2026-10-14T13:41:04.146Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 2,
+        "ts": "2026-10-14T13:41:04.155Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+          "version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+          "kind": "chatflow",
+          "inputs_preview": {},
+          "truncated": false,
+          "resumed": false,
+          "node_count": 5
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 3,
+        "ts": "2026-10-14T13:41:04.157Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-261b-76c4-80f2-740024c22b88",
+          "node_id": "start",
+          "node_type": "start",
+          "title": "start",
+          "index": 0,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 4,
+        "ts": "2026-10-14T13:41:04.159Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-261b-76c4-80f2-740024c22b88",
+          "node_id": "start",
+          "status": "succeeded",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 5,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79",
+          "node_id": "llm_1",
+          "node_type": "llm",
+          "title": "llm_1",
+          "index": 1,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 6,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "node.text_delta",
+        "data": {
+          "text": "가짜 응답: 셸을 써 줘",
+          "node_id": "llm_1",
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 7,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "answer.delta",
+        "data": {
+          "text": "가짜 응답: 셸을 써 줘",
+          "node_id": "answer_1"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 8,
+        "ts": "2026-10-14T13:41:04.163Z",
+        "type": "node.usage",
+        "data": {
+          "model": "fake-model",
+          "key_index": null,
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": null,
+          "cached_input_tokens": null,
+          "estimated": true,
+          "cost_usd": null,
+          "node_id": "llm_1",
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 9,
+        "ts": "2026-10-14T13:41:04.166Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-2620-77dd-a71f-a6017c3edc79",
+          "node_id": "llm_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "가짜 응답: 셸을 써 줘",
+            "json": null,
+            "usage": {
+              "input_tokens": 14,
+              "output_tokens": 4,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            }
+          },
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 10,
+        "ts": "2026-10-14T13:41:04.166Z",
+        "type": "answer.delta",
+        "data": {
+          "text": "\n",
+          "node_id": "answer_1"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 11,
+        "ts": "2026-10-14T13:41:04.168Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-2626-7f05-a37d-02af49ea3c75",
+          "node_id": "answer_1",
+          "node_type": "answer",
+          "title": "answer_1",
+          "index": 2,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 12,
+        "ts": "2026-10-14T13:41:04.171Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-2626-7f05-a37d-02af49ea3c75",
+          "node_id": "answer_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "가짜 응답: 셸을 써 줘\n"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 13,
+        "ts": "2026-10-14T13:41:04.173Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 3,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 14,
+        "ts": "2026-10-14T13:41:04.230Z",
+        "type": "node.progress",
+        "data": {
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "child_session_id": "01a13aa5-2635-7ac5-876e-27fc8dd29243",
+          "steps": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": false
+          },
+          "position": null,
+          "node_id": "agent_1",
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 15,
+        "ts": "2026-10-14T13:41:04.333Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e",
+          "node_id": "agent_1",
+          "status": "waiting_input",
+          "outputs_preview": {},
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 157,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 16,
+        "ts": "2026-10-14T13:41:04.342Z",
+        "type": "workflow.waiting_input",
+        "data": {
+          "node_id": "agent_1",
+          "iteration_index": null,
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "interaction": {
+            "interaction_id": "01a13aa5-26bc-746b-b437-f63c48c19cd8",
+            "kind": "approval",
+            "tool_call_id": "call_fake_0679a58d",
+            "tool_name": "shell",
+            "question": null,
+            "options": null,
+            "allow_free_text": null,
+            "input": {
+              "command": "echo fake-llm"
+            },
+            "cwd": ".",
+            "timeout_sec": 120
+          }
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 17,
+        "ts": "2026-10-14T13:41:04.342Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "waiting_input",
+          "outputs": null,
+          "usage_total": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "node_runs": 4,
+          "duration_ms": 180,
+          "error": null
+        }
+      }
+    ],
+    "input": {
+      "id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+      "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+      "wf_version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+      "kind": "chatflow",
+      "trigger": "preview",
+      "status": "queued",
+      "inputs": {},
+      "outputs": null,
+      "error": null,
+      "usage": {
+        "input_tokens": 14,
+        "output_tokens": 4,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cost_usd": null,
+        "estimated": true
+      },
+      "node_run_count": 4,
+      "pending_interaction": {
+        "node_id": "agent_1",
+        "iteration_index": null,
+        "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+        "interaction": {
+          "interaction_id": "01a13aa5-26bc-746b-b437-f63c48c19cd8",
+          "kind": "approval",
+          "tool_call_id": "call_fake_0679a58d",
+          "tool_name": "shell",
+          "question": null,
+          "options": null,
+          "allow_free_text": null,
+          "input": {
+            "command": "echo fake-llm"
+          },
+          "cwd": ".",
+          "timeout_sec": 120,
+          "created_at": "2026-10-14T13:41:04.316742Z"
+        }
+      },
+      "limits": {
+        "max_run_seconds": 1800,
+        "max_total_tokens": 2000000,
+        "max_cost_usd": null,
+        "max_parallel_nodes": 4,
+        "pool_max_bytes": 16777216,
+        "checkpoint_interval_sec": 0.0
+      },
+      "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+      "message_id": "01a13aa5-25cc-7bc9-afb9-204f229c303a",
+      "external_user": null,
+      "cancel_requested_at": null,
+      "queued_at": "2026-10-14T13:41:04.071039Z",
+      "started_at": "2026-10-14T13:41:04.147620Z",
+      "ended_at": null,
+      "created_at": "2026-10-14T13:41:04.074040Z",
+      "updated_at": "2026-10-14T13:41:04.399646Z"
+    },
+    "resume": [
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 18,
+        "ts": "2026-10-14T13:41:04.400Z",
+        "type": "workflow.queued",
+        "data": {
+          "position": 1
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 19,
+        "ts": "2026-10-14T13:41:04.444Z",
+        "type": "workflow.started",
+        "data": {
+          "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+          "version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+          "kind": "chatflow",
+          "inputs_preview": {},
+          "truncated": false,
+          "resumed": true,
+          "node_count": 5
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 20,
+        "ts": "2026-10-14T13:41:04.444Z",
+        "type": "workflow.resumed",
+        "data": {
+          "node_id": "agent_1"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 21,
+        "ts": "2026-10-14T13:41:04.451Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e",
+          "node_id": "agent_1",
+          "node_type": "agent",
+          "title": "agent_1",
+          "index": 3,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "child_session_id": "01a13aa5-2635-7ac5-876e-27fc8dd29243"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 22,
+        "ts": "2026-10-14T13:41:04.457Z",
+        "type": "node.progress",
+        "data": {
+          "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b",
+          "child_session_id": "01a13aa5-2635-7ac5-876e-27fc8dd29243",
+          "steps": 1,
+          "usage": {
+            "input_tokens": 1698,
+            "output_tokens": 8,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "position": null,
+          "node_id": "agent_1",
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 23,
+        "ts": "2026-10-14T13:41:04.848Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-262b-7a54-8a90-cde4fe43bd4e",
+          "node_id": "agent_1",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "도구 실행 결과를 확인했습니다.",
+            "result": null,
+            "files": [],
+            "status": "succeeded",
+            "usage": {
+              "input_tokens": 3428,
+              "output_tokens": 13,
+              "reasoning_tokens": 0,
+              "cached_input_tokens": 0,
+              "cost_usd": null,
+              "estimated": true
+            },
+            "child_run_id": "01a13aa5-2638-71ae-b294-7ccb2dd3f96b"
+          },
+          "truncated": false,
+          "error": null,
+          "usage": {
+            "input_tokens": 3428,
+            "output_tokens": 13,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "duration_ms": 394,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 24,
+        "ts": "2026-10-14T13:41:04.851Z",
+        "type": "node.started",
+        "data": {
+          "node_run_id": "01a13aa5-28d0-7352-91b8-6793fccfd370",
+          "node_id": "answer_2",
+          "node_type": "answer",
+          "title": "answer_2",
+          "index": 4,
+          "iteration_id": null,
+          "iteration_index": null,
+          "attempt": 1,
+          "child_run_id": null,
+          "child_session_id": null
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 25,
+        "ts": "2026-10-14T13:41:04.851Z",
+        "type": "answer.delta",
+        "data": {
+          "text": "에이전트: 도구 실행 결과를 확인했습니다.",
+          "node_id": "answer_2",
+          "node_run_id": "01a13aa5-28d0-7352-91b8-6793fccfd370"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 26,
+        "ts": "2026-10-14T13:41:04.854Z",
+        "type": "node.completed",
+        "data": {
+          "node_run_id": "01a13aa5-28d0-7352-91b8-6793fccfd370",
+          "node_id": "answer_2",
+          "status": "succeeded",
+          "outputs_preview": {
+            "text": "에이전트: 도구 실행 결과를 확인했습니다."
+          },
+          "truncated": false,
+          "error": null,
+          "usage": null,
+          "duration_ms": 0,
+          "branch": null,
+          "warnings": []
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 27,
+        "ts": "2026-10-14T13:41:04.860Z",
+        "type": "answer.completed",
+        "data": {
+          "text": "가짜 응답: 셸을 써 줘\n에이전트: 도구 실행 결과를 확인했습니다.",
+          "message_id": "01a13aa5-25cc-7bc9-afb9-204f229c303a"
+        }
+      },
+      {
+        "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "session_id": null,
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "seq": 28,
+        "ts": "2026-10-14T13:41:04.860Z",
+        "type": "workflow.completed",
+        "data": {
+          "status": "succeeded",
+          "outputs": {},
+          "usage_total": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "node_runs": 5,
+          "duration_ms": 586,
+          "error": null,
+          "truncated": false
+        }
+      }
+    ],
+    "doneMessages": {
+      "items": [
+        {
+          "id": "01a13aa5-25cb-709f-a9e7-13999f1aa490",
+          "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+          "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+          "seq": 1,
+          "role": "user",
+          "text": "셸을 써 줘",
+          "inputs": {},
+          "files": [],
+          "usage": null,
+          "status": null,
+          "created_at": "2026-10-14T13:41:04.075039Z"
+        },
+        {
+          "id": "01a13aa5-25cc-7bc9-afb9-204f229c303a",
+          "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+          "run_id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+          "seq": 2,
+          "role": "assistant",
+          "text": "가짜 응답: 셸을 써 줘\n에이전트: 도구 실행 결과를 확인했습니다.",
+          "inputs": null,
+          "files": [],
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 4,
+            "reasoning_tokens": 0,
+            "cached_input_tokens": 0,
+            "cost_usd": null,
+            "estimated": true
+          },
+          "status": "succeeded",
+          "created_at": "2026-10-14T13:41:04.075039Z"
+        }
+      ],
+      "has_more": false
+    },
+    "doneDetail": {
+      "id": "01a13aa5-25ba-7760-a053-08101eada7be",
+      "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+      "wf_version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+      "source": "preview",
+      "title": "셸을 써 줘",
+      "status": "active",
+      "external_user": null,
+      "api_key_id": null,
+      "message_count": 2,
+      "last_message_at": "2026-10-14T13:41:04.854342Z",
+      "created_at": "2026-10-14T13:41:04.058516Z",
+      "updated_at": "2026-10-14T13:41:04.859420Z",
+      "active_run": null,
+      "last_run": {
+        "id": "01a13aa5-25ca-7454-bdc0-a389e91a3aa6",
+        "workflow_id": "01a13aa5-259d-7d67-a09f-d17955dcfddc",
+        "wf_version_id": "01a13aa5-259e-75e4-a93f-50b2d277057f",
+        "kind": "chatflow",
+        "trigger": "preview",
+        "status": "succeeded",
+        "inputs": {},
+        "outputs": {},
+        "error": null,
+        "usage": {
+          "input_tokens": 14,
+          "output_tokens": 4,
+          "reasoning_tokens": 0,
+          "cached_input_tokens": 0,
+          "cost_usd": null,
+          "estimated": true
+        },
+        "node_run_count": 5,
+        "pending_interaction": null,
+        "limits": {
+          "max_run_seconds": 1800,
+          "max_total_tokens": 2000000,
+          "max_cost_usd": null,
+          "max_parallel_nodes": 4,
+          "pool_max_bytes": 16777216,
+          "checkpoint_interval_sec": 0.0
+        },
+        "conversation_id": "01a13aa5-25ba-7760-a053-08101eada7be",
+        "message_id": "01a13aa5-25cc-7bc9-afb9-204f229c303a",
+        "external_user": null,
+        "cancel_requested_at": null,
+        "queued_at": "2026-10-14T13:41:04.071039Z",
+        "started_at": "2026-10-14T13:41:04.147620Z",
+        "ended_at": "2026-10-14T13:41:04.854342Z",
+        "created_at": "2026-10-14T13:41:04.074040Z",
+        "updated_at": "2026-10-14T13:41:04.856343Z"
+      }
+    }
+  }
+}

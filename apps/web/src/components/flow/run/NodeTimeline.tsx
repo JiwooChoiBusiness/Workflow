@@ -33,10 +33,12 @@ function IterationGroup({
   index,
   runs,
   card,
+  loop,
 }: {
   index: number;
   runs: NodeRunView[];
   card: CardProps;
+  loop: boolean;
 }) {
   const { t } = useTranslation("workflows");
   const containsFocus = runs.some((run) => run.id === card.focusId);
@@ -51,7 +53,9 @@ function IterationGroup({
           className={cn("size-3.5 text-ink-subtle transition-transform", shown && "rotate-90")}
           aria-hidden
         />
-        <span className="font-medium text-ink">{t("node.iteration", { n: index + 1 })}</span>
+        <span className="font-medium text-ink">
+          {loop ? t("node.loopRound", { n: index + 1 }) : t("node.iteration", { n: index + 1 })}
+        </span>
         <span className="text-ink-subtle">{t("node.iterationNodes", { count: runs.length })}</span>
         <span className="ml-auto">
           <NodeStatusBadge status={groupStatus(runs)} />
@@ -80,12 +84,15 @@ function IterationBody({
   card,
   loadIteration,
   iterationNodeId,
+  loop,
 }: {
   view: IterationView | undefined;
   groups: Groups | undefined;
   card: CardProps;
   loadIteration?: (iterationNodeId: string) => Promise<WfNodeRunOut[]>;
   iterationNodeId: string;
+  // loop는 total이 최대 반복 수라 그 전에 끝날 수 있다.
+  loop: boolean;
 }) {
   const { t } = useTranslation("workflows");
   const [loading, setLoading] = useState(false);
@@ -112,7 +119,11 @@ function IterationBody({
     <div className="flex flex-col gap-1.5">
       <p className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         {total !== null ? (
-          <span>{t("node.iterationProgress", { done: done ?? 0, total })}</span>
+          <span>
+            {loop
+              ? t("node.loopProgress", { done: done ?? 0, total })
+              : t("node.iterationProgress", { done: done ?? 0, total })}
+          </span>
         ) : null}
         {view?.failedCount ? (
           <Badge tone="danger">{t("node.iterationFailed", { count: view.failedCount })}</Badge>
@@ -136,7 +147,13 @@ function IterationBody({
         )
       ) : (
         indexes.map((index) => (
-          <IterationGroup key={index} index={index} runs={groups!.get(index)!} card={card} />
+          <IterationGroup
+            key={index}
+            index={index}
+            runs={groups!.get(index)!}
+            card={card}
+            loop={loop}
+          />
         ))
       )}
       {error ? <ErrorAlert error={error} title={t("node.loadFailed")} /> : null}
@@ -144,9 +161,12 @@ function IterationBody({
   );
 }
 
+const CONTAINERS: ReadonlySet<string> = new Set(["iteration", "loop"]);
+
 /*
- * 노드 런을 실행 순서대로(설계 7.3 NodeTimeline). iteration 안쪽 노드 런은 그 iteration 카드 안에 반복
- * 순번별로 접어 둔다. focusId인 노드 런은 펼치고 화면에 보이게 한다.
+ * 노드 런을 실행 순서대로(설계 7.3 NodeTimeline). iteration·loop 안쪽 노드 런은 그 카드 안에 반복 순번별로
+ * 접어 둔다(loop도 iteration.* 이벤트를 내고 안쪽 노드 런의 iteration_id가 loop다). focusId인 노드 런은
+ * 펼치고 화면에 보이게 한다.
  */
 export function NodeTimeline({
   state,
@@ -198,7 +218,7 @@ export function NodeTimeline({
     <ol className="flex flex-col gap-1.5" aria-label={t("run.timeline")}>
       {roots.map((run) => {
         const type = run.nodeType ?? nodeInfo(run.nodeId)?.type;
-        const iteration = type === "iteration";
+        const iteration = CONTAINERS.has(type ?? "");
         const focused = run.id === focusId;
         const containsFocus =
           iteration && focusId !== null && anyInside(run.nodeId, (item) => item.id === focusId);
@@ -222,6 +242,7 @@ export function NodeTimeline({
                   card={card}
                   loadIteration={loadIteration}
                   iterationNodeId={run.nodeId}
+                  loop={type === "loop"}
                 />
               ) : null}
             </NodeRunCard>

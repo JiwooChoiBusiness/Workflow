@@ -5,7 +5,13 @@
  */
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { RunEventDataMap } from "@/api/run-events.gen";
-import type { WaitingInputData, WfEvent, WfEventOf, WfEventType } from "@/api/run-events";
+import type {
+  WaitingInputData,
+  WfEvent,
+  WfEventOf,
+  WfEventType,
+  WorkflowFormData,
+} from "@/api/run-events";
 import type { WfNodeRunOut, WfRunOut } from "@/api/types";
 import { emptyUsage, usageFromTotal, type UsageTotals } from "@/stores/runStore";
 
@@ -72,11 +78,52 @@ export interface IterationView {
   durationMs: number | null;
 }
 
-export interface WfPendingInteraction {
+interface PendingBase {
   nodeId: string;
   iterationIndex: number | null;
   childRunId: string | null;
+}
+
+// agent 노드의 자식 런이 묻는 승인·질문. 답은 1단계와 같은 본문(answer·decision)이다.
+export interface WfPendingQuestion extends PendingBase {
+  kind: "approval" | "question";
   interaction: WaitingInputData;
+  form: null;
+}
+
+// human_input 노드의 폼(M19). 답은 kind=form과 values다.
+export interface WfPendingForm extends PendingBase {
+  kind: "form";
+  interaction: null;
+  form: WorkflowFormData;
+}
+
+export type WfPendingInteraction = WfPendingQuestion | WfPendingForm;
+
+// workflow.waiting_input의 data와 런의 pending_interaction(WfPendingOut)이 같은 모양이다.
+interface PendingWire {
+  node_id: string;
+  iteration_index?: number | null;
+  child_run_id?: string | null;
+  interaction?: WaitingInputData | null;
+  kind?: "approval" | "question" | "form" | null;
+  form?: WorkflowFormData | null;
+}
+
+// M19 전에 남은 이벤트·행에는 kind가 없고 승인·질문뿐이었다. 그때는 interaction이 있는지로 가른다.
+export function pendingFrom(wire: PendingWire): WfPendingInteraction | null {
+  const base = {
+    nodeId: wire.node_id,
+    iterationIndex: wire.iteration_index ?? null,
+    childRunId: wire.child_run_id ?? null,
+  };
+  if (wire.form && (wire.kind === "form" || !wire.interaction)) {
+    return { ...base, kind: "form", interaction: null, form: wire.form };
+  }
+  if (wire.interaction) {
+    return { ...base, kind: wire.interaction.kind, interaction: wire.interaction, form: null };
+  }
+  return null;
 }
 
 interface Frame {
@@ -102,6 +149,9 @@ export interface WfRunViewState {
   outputs: Record<string, unknown> | null;
   outputsTruncated: boolean;
   answerText: string;
+  // 이 스트림이 재개(workflow.started resumed)를 본 때의 answerText 길이. 재개 스트림은 멈추기 전에 흘린
+  // 글을 다시 보내지 않아서, 챗플로우 화면이 그 앞부분을 저장된 메시지 글로 채울 때 쓴다.
+  answerResumedAt: number | null;
   pendingInteraction: WfPendingInteraction | null;
   usage: UsageTotals;
   error: WfRunError | null;
@@ -129,6 +179,7 @@ export function initialWfRunState(partial: Partial<WfRunViewState> = {}): WfRunV
     outputs: null,
     outputsTruncated: false,
     answerText: "",
+    answerResumedAt: null,
     pendingInteraction: null,
     usage: emptyUsage(),
     error: null,
@@ -261,18 +312,14 @@ const handlers: { [T in WfEventType]?: Handler<T> } = {
     nodeCount: event.data.node_count,
     inputsPreview: event.data.inputs_preview,
     pendingInteraction: null,
+    answerResumedAt: event.data.resumed ? state.answerText.length : null,
   }),
 
   "workflow.resumed": (state) => ({ ...state, pendingInteraction: null }),
 
   "workflow.waiting_input": (state, event) => ({
     ...state,
-    pendingInteraction: {
-      nodeId: event.data.node_id,
-      iterationIndex: event.data.iteration_index ?? null,
-      childRunId: event.data.child_run_id ?? null,
-      interaction: event.data.interaction,
-    },
+    pendingInteraction: pendingFrom(event.data),
   }),
 
   "workflow.error": (state, event) => ({ ...state, error: runError(event.data) }),
@@ -463,7 +510,12 @@ const handlers: { [T in WfEventType]?: Handler<T> } = {
 
   "answer.delta": (state, event) => ({ ...state, answerText: state.answerText + event.data.text }),
 
-  "answer.completed": (state, event) => ({ ...state, answerText: event.data.text }),
+  // 런 전체의 답이다. 재개 전 앞부분을 따로 채울 필요가 없어진다.
+  "answer.completed": (state, event) => ({
+    ...state,
+    answerText: event.data.text,
+    answerResumedAt: null,
+  }),
 };
 
 export type WfStreamEvent = WfEvent | { type: "ping" };
@@ -508,14 +560,7 @@ export function stateFromRun(run: WfRunOut, nodeRuns: readonly WfNodeRunOut[]): 
           retryable: run.error.retryable ?? false,
         }
       : null,
-    pendingInteraction: run.pending_interaction
-      ? {
-          nodeId: run.pending_interaction.node_id,
-          iterationIndex: run.pending_interaction.iteration_index ?? null,
-          childRunId: run.pending_interaction.child_run_id ?? null,
-          interaction: run.pending_interaction.interaction,
-        }
-      : null,
+    pendingInteraction: run.pending_interaction ? pendingFrom(run.pending_interaction) : null,
   });
   state = mergeNodeRuns(state, nodeRuns);
   return state;
@@ -584,11 +629,16 @@ export function finishedNodeCount(state: WfRunViewState): number {
   return count;
 }
 
+// 하위 그래프를 도는 노드. 안쪽 노드가 도는 동안 자기도 running이라 상태 표시줄에는 안쪽 노드를 보인다.
+const CONTAINER_TYPES: ReadonlySet<string> = new Set(["iteration", "loop"]);
+
 // 상태 표시줄에 넣을 지금 도는 노드의 이름. 여러 개면 먼저 시작한 것이다.
 export function runningNode(state: WfRunViewState): string | null {
   for (const id of state.order) {
     const run = state.nodeRuns[id];
-    if (run?.status === "running" && run.nodeType !== "iteration") return run.title ?? run.nodeId;
+    if (run?.status === "running" && !CONTAINER_TYPES.has(run.nodeType ?? "")) {
+      return run.title ?? run.nodeId;
+    }
   }
   return null;
 }

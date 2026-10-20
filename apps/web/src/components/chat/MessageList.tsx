@@ -148,11 +148,14 @@ const TimelineEntry = memo(function TimelineEntry({
 export function MessageList({
   renderInteraction,
   fileHref,
+  footer,
   className,
 }: {
   renderInteraction: (interaction: PendingInteraction) => ReactNode;
   // 첨부 파일 내려받기 주소. 콘솔과 웹앱의 경로가 다르다.
   fileHref?: FileHref;
+  // 목록 끝에 둘 카드(챗플로우 human_input 폼처럼 승인·질문이 아닌 대기)
+  footer?: ReactNode;
   className?: string;
 }) {
   const { t } = useTranslation("chat");
@@ -191,7 +194,7 @@ export function MessageList({
       }}
     >
       <div ref={contentRef} className="flex flex-col gap-3 px-4 py-4">
-        {items.length === 0 && !pending ? (
+        {items.length === 0 && !pending && !footer ? (
           <p className="py-10 text-center text-sm text-ink-subtle">{t("list.empty")}</p>
         ) : null}
         {items.map((item) => (
@@ -204,6 +207,7 @@ export function MessageList({
           </div>
         ))}
         {pending && !approvalInline ? renderInteraction(pending) : null}
+        {footer}
       </div>
     </div>
   );

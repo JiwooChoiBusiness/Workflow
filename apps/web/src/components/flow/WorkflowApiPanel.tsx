@@ -59,8 +59,10 @@ export function useWorkflowExamples(kind: WorkflowKind, apiKey?: string): Labele
   const json = '  -H "Content-Type: application/json" \\';
   const post = (path: string, stream: boolean, body: unknown) =>
     withBody([`curl${stream ? " -N" : ""} ${origin}${path} \\`, `${auth} \\`, json], body);
+  const get = (path: string) => [`curl "${origin}${path}" \\`, auth].join("\n");
   const item = (
-    id: "run" | "runBlocking" | "runStatus" | "chat" | "chatBlocking",
+    id:
+      "run" | "runBlocking" | "runStatus" | "chat" | "chatBlocking" | "conversations" | "messages",
     command: string,
   ) => ({
     id,
@@ -88,6 +90,8 @@ export function useWorkflowExamples(kind: WorkflowKind, apiKey?: string): Labele
           response_mode: "blocking",
         }),
       ),
+      item("conversations", get("/api/v1/conversations?user=me&limit=20")),
+      item("messages", get("/api/v1/messages?conversation_id=<conversation_id>&user=me")),
     ];
   }
   return [
@@ -99,7 +103,7 @@ export function useWorkflowExamples(kind: WorkflowKind, apiKey?: string): Labele
       "runBlocking",
       post("/api/v1/workflows/run", false, { inputs, user: "me", response_mode: "blocking" }),
     ),
-    item("runStatus", [`curl ${origin}/api/v1/workflows/run/<run_id> \\`, auth].join("\n")),
+    item("runStatus", get("/api/v1/workflows/run/<run_id>?user=me")),
   ];
 }
 
@@ -158,16 +162,14 @@ function WebAppToggle({ workflow }: { workflow: WorkflowOut }) {
               </Button>
             </div>
           ) : null}
-          {workflow.kind === "chatflow" ? (
-            <p className="text-xs text-ink-muted">{t("webapp.chatNotReady")}</p>
-          ) : null}
         </div>
       )}
     </Panel>
   );
 }
 
-// 오른쪽 패널의 API 탭: 웹앱 공개, API 키(1단계 ApiKeyPanel), 서비스 API 호출 예시.
+// 오른쪽 패널의 API 탭: 웹앱 공개, API 키(1단계 ApiKeyPanel), 서비스 API 호출 예시. 챗플로우 키는 1단계와
+// 같은 chat-messages·conversations·messages 경로를, 워크플로우 키는 workflows/run을 쓴다(설계 6.3).
 export function WorkflowApiPanel({ workflow }: { workflow: WorkflowOut }) {
   const { t } = useTranslation("workflows");
   const { t: ta } = useTranslation("agents");
@@ -186,10 +188,7 @@ export function WorkflowApiPanel({ workflow }: { workflow: WorkflowOut }) {
         renderExamples={(apiKey) => <Examples kind={workflow.kind} apiKey={apiKey} />}
       />
       <Panel title={ta("apiExamples.title")} description={t("api.examplesDescription")}>
-        <div className="flex flex-col gap-3">
-          <Alert tone="info" title={t("api.notReady")} />
-          <Examples kind={workflow.kind} />
-        </div>
+        <Examples kind={workflow.kind} />
       </Panel>
     </div>
   );

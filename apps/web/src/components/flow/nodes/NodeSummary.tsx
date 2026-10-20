@@ -1,7 +1,9 @@
+import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { useAgents } from "@/features/agents/api";
+import { useToolSpecs } from "@/features/workflows/api";
 import type { FlowNode } from "@/features/workflows/graph";
 
 // 노드 카드의 핵심 설정 한 줄(설계 7.1). 분기 노드의 가지 줄은 BranchRows가 그린다.
@@ -26,6 +28,46 @@ function Mono({ children }: { children: string }) {
 
 function Line({ children }: { children: ReactNode }) {
   return <p className="truncate">{children}</p>;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function ToolSummary({ name }: { name: string }) {
+  const { t } = useTranslation("workflows");
+  const tools = useToolSpecs();
+  if (!name) return <Line>{t("card.pickTool")}</Line>;
+  const label = tools.data?.find((tool) => tool.name === name)?.label;
+  return (
+    <Line>
+      {label ? <>{label} · </> : null}
+      <Mono>{name}</Mono>
+    </Line>
+  );
+}
+
+// 켠 단계만 차례대로(거르기 → 정렬 → 자르기 → 꺼내기).
+function listSteps(config: Record<string, unknown>, t: TFunction<"workflows">) {
+  const steps: string[] = [];
+  const filter = record(config.filter);
+  if (filter) steps.push(t("card.listFilter", { count: list(filter.conditions).length }));
+  const sort = record(config.sort);
+  if (sort) steps.push(t(sort.order === "desc" ? "card.listSortDesc" : "card.listSortAsc"));
+  const slice = record(config.slice);
+  if (slice) {
+    steps.push(
+      typeof slice.limit === "number"
+        ? t("card.listSlice", { offset: Number(slice.offset ?? 0), limit: slice.limit })
+        : t("card.listSkip", { offset: Number(slice.offset ?? 0) }),
+    );
+  }
+  if (typeof config.extract_index === "number") {
+    steps.push(t("card.listItem", { index: config.extract_index }));
+  }
+  return steps;
 }
 
 function AgentSummary({ agentId }: { agentId: string }) {
@@ -150,6 +192,45 @@ export function NodeSummary({ node }: { node: FlowNode }) {
           <Mono>{t("card.entry")}</Mono>
         </Line>
       );
+    case "loop_start":
+      return (
+        <Line>
+          <Mono>{t("card.loopEntry")}</Mono>
+        </Line>
+      );
+    case "list_operator": {
+      const steps = listSteps(config, t);
+      return (
+        <Line>
+          <Mono>{text(config.input_var) || "…"}</Mono>
+          {steps.length ? <> · {steps.join(" → ")}</> : null}
+        </Line>
+      );
+    }
+    case "document_extractor":
+      return (
+        <Line>
+          {t("card.extractFrom")} <Mono>{text(config.file_var) || "…"}</Mono>
+        </Line>
+      );
+    case "tool":
+      return <ToolSummary name={text(config.tool)} />;
+    case "human_input": {
+      const fields = list(config.fields)
+        .map((field) => text(field.name))
+        .filter(Boolean);
+      return (
+        <Line>
+          {t("card.form", { count: fields.length })}
+          {fields.length ? (
+            <>
+              {" "}
+              · <Mono>{fields.join(", ")}</Mono>
+            </>
+          ) : null}
+        </Line>
+      );
+    }
     default:
       return null;
   }

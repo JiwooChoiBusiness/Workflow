@@ -1,17 +1,21 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { apiFetch, isApiError, requestJson, uploadFile, withQuery } from "@/api/http";
-import type { WfFileOut, WfRunOut } from "@/api/types";
+import { ApiError, apiFetch, isApiError, requestJson, uploadFile, withQuery } from "@/api/http";
+import type { WfFileOut, WfMessageCreate, WfRunOut } from "@/api/types";
+import type { ChatflowApi } from "@/features/workflows/chatflowSession";
 import type { WfRunApi } from "@/features/workflows/wfRunController";
 
-// 웹앱의 워크플로우(설계 6.2, 7.4)는 /api/web/flows와 /api/web/wf-runs만 부른다. 로그인은 콘솔과 같은 쿠키다.
+// 웹앱의 워크플로우·챗플로우(설계 6.2, 7.4)는 /api/web/flows, /api/web/wf-runs, /api/web/wf-conversations만
+// 부른다. 로그인은 콘솔과 같은 쿠키다.
 
 const enc = encodeURIComponent;
 const RUNS_PAGE = 20;
+const CONVERSATIONS_PAGE = 30;
 
 export const flowKeys = {
   app: (slug: string) => ["webapp-flow", slug] as const,
   runs: (slug: string) => ["webapp-flow", slug, "runs"] as const,
+  conversations: (slug: string) => ["webapp-flow", slug, "conversations"] as const,
 };
 
 export function useFlowApp(slug: string) {
@@ -71,6 +75,10 @@ export function flowFileUrl(runId: string, fileId: string): string {
   return `/api/web/wf-runs/${enc(runId)}/files/${enc(fileId)}/download`;
 }
 
+export function flowConversationFileUrl(conversationId: string, fileId: string): string {
+  return `/api/web/wf-conversations/${enc(conversationId)}/files/${enc(fileId)}/download`;
+}
+
 export const webWfRunApi: WfRunApi = {
   eventsRequest: (runId, after) =>
     new Request(withQuery(`/api/web/wf-runs/${enc(runId)}/events`, { after }), {
@@ -84,3 +92,75 @@ export const webWfRunApi: WfRunApi = {
     }),
   fetch: (request) => apiFetch(request),
 };
+
+// 챗플로우 웹앱의 대화 목록(최근 대화 순). 미리보기·서비스 API 대화는 섞이지 않는다.
+export function useFlowConversations(slug: string) {
+  return useInfiniteQuery({
+    queryKey: flowKeys.conversations(slug),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET("/api/web/flows/{slug}/conversations", {
+          params: { path: { slug }, query: { limit: CONVERSATIONS_PAGE, offset: pageParam } },
+        }),
+      ),
+    getNextPageParam: (page) => page.next_offset ?? undefined,
+  });
+}
+
+export async function createFlowConversation(slug: string): Promise<string> {
+  const created = await unwrap(
+    api.POST("/api/web/flows/{slug}/conversations", { params: { path: { slug } }, body: {} }),
+  );
+  return created.id;
+}
+
+const conversationPath = (id: string) => ({ params: { path: { conversation_id: id } } });
+
+export function renameFlowConversation(conversationId: string, title: string) {
+  return unwrap(
+    api.PATCH("/api/web/wf-conversations/{conversation_id}", {
+      ...conversationPath(conversationId),
+      body: { title },
+    }),
+  );
+}
+
+export function deleteFlowConversation(conversationId: string) {
+  return unwrap(
+    api.DELETE("/api/web/wf-conversations/{conversation_id}", conversationPath(conversationId)),
+  );
+}
+
+/*
+ * 채팅이 쓰는 서버 호출의 웹앱 판. 웹앱 API는 대화가 어느 챗플로우의 것인지 묻지 않으므로 주소에 다른
+ * 웹앱의 대화를 넣으면 없는 대화(404)로 다룬다.
+ */
+export function webChatApi(slug: string, workflowId: string): ChatflowApi {
+  return {
+    getConversation: async (conversationId) => {
+      const detail = await unwrap(
+        api.GET("/api/web/wf-conversations/{conversation_id}", conversationPath(conversationId)),
+      );
+      if (detail.workflow_id !== workflowId) {
+        throw new ApiError(404, "conversation_not_found", "이 웹앱의 대화가 아니다");
+      }
+      return detail;
+    },
+    listMessages: (conversationId) =>
+      unwrap(
+        api.GET("/api/web/wf-conversations/{conversation_id}/messages", {
+          params: { path: { conversation_id: conversationId }, query: { limit: 100 } },
+        }),
+      ),
+    messageRequest: (conversationId: string, body: WfMessageCreate) =>
+      new Request(`/api/web/wf-conversations/${enc(conversationId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify(body),
+      }),
+    upload: (file) => uploadFlowFile(slug, file),
+    stop: (runId) => webWfRunApi.stop(runId),
+    fileUrl: flowConversationFileUrl,
+  };
+}

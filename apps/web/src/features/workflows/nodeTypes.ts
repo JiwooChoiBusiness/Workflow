@@ -8,9 +8,12 @@ import {
   Braces,
   CircleHelp,
   CornerDownRight,
+  FileText,
   Flag,
   GitBranch,
   Globe,
+  IterationCw,
+  ListFilter,
   Merge,
   MessageSquareText,
   PenLine,
@@ -20,12 +23,16 @@ import {
   Sparkles,
   SquareCode,
   Tags,
+  UserRoundPen,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import type { NodeTypeInfo, WorkflowKind } from "@/api/types";
 import {
-  ITERATION_START_TYPE,
+  containerEntryType,
   ITERATION_TYPE,
+  isSubEntryType,
+  LOOP_TYPE,
   nextNodeId,
   type FlowGraph,
   type FlowNode,
@@ -44,6 +51,7 @@ const META: Record<string, NodeMeta> = {
   start: { category: "io", icon: Play, tone: "accent" },
   end: { category: "io", icon: Flag, tone: "accent" },
   answer: { category: "io", icon: MessageSquareText, tone: "accent" },
+  human_input: { category: "io", icon: UserRoundPen, tone: "accent" },
   llm: { category: "model", icon: Sparkles, tone: "info" },
   question_classifier: { category: "model", icon: Tags, tone: "info" },
   parameter_extractor: { category: "model", icon: ScanText, tone: "info" },
@@ -51,11 +59,16 @@ const META: Record<string, NodeMeta> = {
   if_else: { category: "logic", icon: GitBranch, tone: "warn" },
   iteration: { category: "logic", icon: Repeat, tone: "warn" },
   iteration_start: { category: "logic", icon: CornerDownRight, tone: "warn" },
+  loop: { category: "logic", icon: IterationCw, tone: "warn" },
+  loop_start: { category: "logic", icon: CornerDownRight, tone: "warn" },
   variable_aggregator: { category: "logic", icon: Merge, tone: "warn" },
   variable_assigner: { category: "logic", icon: PenLine, tone: "warn" },
   template: { category: "transform", icon: Braces, tone: "ok" },
   code: { category: "transform", icon: SquareCode, tone: "ok" },
   http_request: { category: "transform", icon: Globe, tone: "ok" },
+  list_operator: { category: "transform", icon: ListFilter, tone: "ok" },
+  document_extractor: { category: "transform", icon: FileText, tone: "ok" },
+  tool: { category: "transform", icon: Wrench, tone: "ok" },
 };
 
 const UNKNOWN_META: NodeMeta = { category: "transform", icon: CircleHelp, tone: "ok" };
@@ -67,22 +80,31 @@ export const PALETTE_ORDER: readonly string[] = [
   "start",
   "end",
   "answer",
+  "human_input",
   "llm",
   "question_classifier",
   "parameter_extractor",
   "agent",
   "if_else",
   "iteration",
+  "loop",
   "variable_aggregator",
   "variable_assigner",
   "template",
   "code",
   "http_request",
+  "list_operator",
+  "document_extractor",
+  "tool",
 ];
 
 // i18n(workflows nodes.*)에 이름이 있는 타입. 모르는 타입은 타입 이름을 그대로 보인다.
 export type KnownNodeType = keyof (typeof import("@/locales/ko/workflows.json"))["nodes"];
-export const KNOWN_TYPES: ReadonlySet<string> = new Set([...PALETTE_ORDER, ITERATION_START_TYPE]);
+export const KNOWN_TYPES: ReadonlySet<string> = new Set([
+  ...PALETTE_ORDER,
+  "iteration_start",
+  "loop_start",
+]);
 
 export function isKnownType(type: string): type is KnownNodeType {
   return KNOWN_TYPES.has(type);
@@ -126,7 +148,13 @@ export function defaultModel() {
 export interface DefaultLabels {
   // 분류기 새 클래스 이름("분류 1")
   className: (n: number) => string;
+  // human_input 새 노드의 첫 필드 표시 이름
+  replyLabel?: string;
 }
+
+// loop 상한(서버 loop.MAX_ITERATIONS)과 새 노드의 기본값
+export const LOOP_MAX_ITERATIONS = 100;
+export const LOOP_DEFAULT_ITERATIONS = 10;
 
 export function defaultConfig(
   type: string,
@@ -208,6 +236,35 @@ export function defaultConfig(
         max_parallel: 1,
         error_mode: "terminate",
       };
+    case LOOP_TYPE:
+      return {
+        loop_vars: [],
+        break_conditions: [],
+        logical: "and",
+        max_iterations: LOOP_DEFAULT_ITERATIONS,
+      };
+    case "list_operator":
+      return { input_var: "", filter: null, sort: null, slice: null, extract_index: null };
+    case "document_extractor":
+      return { file_var: chat ? "sys.files" : "" };
+    case "tool":
+      return { tool: "", params: {} };
+    case "human_input":
+      // 서버는 필드가 하나 이상이어야 받는다. 바로 쓸 수 있게 여러 줄 글 칸 하나를 둔다.
+      return {
+        description: "",
+        fields: [
+          {
+            name: "reply",
+            type: "paragraph",
+            label: labels.replyLabel ?? "",
+            required: true,
+            default: null,
+            options: null,
+            max_length: null,
+          },
+        ],
+      };
     case "agent":
       // 서버 AgentConfig(설계 2.3, 12장). agent_id는 사용자가 고른다. limits는 비우면 버전 한도를 쓴다.
       return {
@@ -225,6 +282,7 @@ export function defaultConfig(
   }
 }
 
+// iteration·loop 틀의 처음 크기
 export const ITERATION_SIZE = { width: 520, height: 260 };
 
 export interface NewNodeOptions {
@@ -234,13 +292,14 @@ export interface NewNodeOptions {
   position: { x: number; y: number };
   parentId?: string | null;
   labels: DefaultLabels;
-  // iteration_start 노드의 이름(iteration을 만들 때 함께 만든다)
-  iterationStartTitle?: string;
+  // 진입 자리(iteration_start·loop_start)의 이름. 틀을 만들 때 함께 만든다.
+  entryTitle?: string;
 }
 
-// 새 노드 하나(iteration이면 하위 진입 노드 iteration_start까지)를 만든다.
+// 새 노드 하나(iteration·loop면 하위 진입 자리 iteration_start·loop_start까지)를 만든다.
 export function createNodes(graph: FlowGraph, options: NewNodeOptions): FlowNode[] {
   const id = nextNodeId(graph, options.type);
+  const entryType = containerEntryType(options.type);
   const node: FlowNode = {
     id,
     type: options.type,
@@ -251,15 +310,15 @@ export function createNodes(graph: FlowGraph, options: NewNodeOptions): FlowNode
     retry: { max_attempts: 0, interval_ms: 1000 },
     parent_id: options.parentId ?? null,
     position: { x: Math.round(options.position.x), y: Math.round(options.position.y) },
-    ui: options.type === ITERATION_TYPE ? { ...ITERATION_SIZE } : {},
+    ui: entryType ? { ...ITERATION_SIZE } : {},
   };
-  if (options.type !== ITERATION_TYPE) return [node];
+  if (!entryType) return [node];
   const withNode: FlowGraph = { ...graph, nodes: [...graph.nodes, node] };
   const entry: FlowNode = {
-    id: nextNodeId(withNode, ITERATION_START_TYPE),
-    type: ITERATION_START_TYPE,
+    id: nextNodeId(withNode, entryType),
+    type: entryType,
     version: 1,
-    title: options.iterationStartTitle ?? "",
+    title: options.entryTitle ?? "",
     config: {},
     error: { strategy: "fail", default_outputs: {} },
     retry: { max_attempts: 0, interval_ms: 1000 },
@@ -270,10 +329,17 @@ export function createNodes(graph: FlowGraph, options: NewNodeOptions): FlowNode
   return [node, entry];
 }
 
-// 팔레트에 보일 타입. 서버가 이 kind에 둘 수 있다고 한 것만, iteration_start는 iteration이 만든다.
+// 이 kind에서는 loop 안에만 둘 수 있는 타입(워크플로우의 variable_assigner, 서버 NodeType.loop_kinds)
+export function loopOnly(info: NodeTypeInfo | undefined, kind: WorkflowKind): boolean {
+  return info !== undefined && !info.kinds.includes(kind) && (info.loop_kinds ?? []).includes(kind);
+}
+
+// 팔레트에 보일 타입. 서버가 이 kind에 둘 수 있다고 한 것(loop 안에서만 되는 것 포함)만. 진입 자리는 틀이 만든다.
 export function paletteTypes(infos: NodeTypeInfo[] | undefined, kind: WorkflowKind): string[] {
   const allowed = (infos ?? [])
-    .filter((info) => info.type !== ITERATION_START_TYPE && info.kinds.includes(kind))
+    .filter(
+      (info) => !isSubEntryType(info.type) && (info.kinds.includes(kind) || loopOnly(info, kind)),
+    )
     .map((info) => info.type);
   const known = PALETTE_ORDER.filter((type) => allowed.includes(type));
   const extra = allowed.filter((type) => !PALETTE_ORDER.includes(type)).sort();

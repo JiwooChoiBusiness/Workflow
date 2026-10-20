@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyWfEvents, initialWfRunState } from "@/features/workflows/wfRunStore";
+import { secondNodesContract } from "@/test/secondNodesContract";
 import { wfContract } from "@/test/wfContract";
 import { NodeTimeline } from "./NodeTimeline";
 import { singleRunInputs } from "./SingleRunDialog";
@@ -40,6 +41,37 @@ describe("NodeTimeline", () => {
     const inner = screen.getAllByTestId("node-run-template_3");
     expect(inner).toHaveLength(1);
     expect(inner[0]!.dataset.status).toBe("succeeded");
+  });
+
+  it("loop 안쪽 노드 런도 회차별로 접고, 돈 횟수를 최대 반복 수와 함께 보인다", async () => {
+    const user = userEvent.setup();
+    const state = applyWfEvents(initialWfRunState(), secondNodesContract.events);
+    render(wrap(<NodeTimeline state={state} nodeInfo={noInfo} fetchDetail={false} />));
+
+    const timeline = screen.getByRole("list", { name: "노드" });
+    expect(
+      within(timeline)
+        .getAllByTestId(/^node-run-/)
+        .map((item) => item.dataset.testid),
+    ).toEqual([
+      "node-run-start",
+      "node-run-parse",
+      "node-run-pick",
+      "node-run-now",
+      "node-run-loop_1",
+      "node-run-ask",
+    ]);
+    const loop = screen.getByTestId("node-run-loop_1");
+    await user.click(within(loop).getAllByRole("button")[0]!);
+    expect(within(loop).getByText("3회 · 최대 5회")).toBeTruthy();
+    const rounds = within(loop).getAllByRole("button", { name: /회차/ });
+    expect(rounds.map((item) => item.textContent?.match(/\d+회차/)?.[0])).toEqual([
+      "1회차",
+      "2회차",
+      "3회차",
+    ]);
+    await user.click(rounds[2]!);
+    expect(within(loop).getAllByTestId("node-run-set")).toHaveLength(1);
   });
 
   it("건너뛴 노드는 펼치지 않고, 실패한 노드는 펼치면 오류를 보인다", async () => {

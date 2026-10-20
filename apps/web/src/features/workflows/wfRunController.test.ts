@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DataRunEvent, WfEvent } from "@/api/run-events";
 import { ApiError } from "@/api/http";
 import { sseBody } from "@/test/contract";
+import { secondNodesContract } from "@/test/secondNodesContract";
 import { wfContract } from "@/test/wfContract";
 import { WfRunController, type WfRunApi } from "./wfRunController";
 
@@ -119,6 +120,56 @@ describe("wfRunController", () => {
     expect((result as ApiError).code).toBe("invalid_inputs");
     expect(onError).not.toHaveBeenCalled();
     expect(controller.store.getState().runId).toBeNull();
+  });
+
+  it("폼으로 멈춘 런에 폼 응답을 보내면 같은 런을 이어 받고, 거절은 알리지 않고 돌려준다", async () => {
+    const { runId, events, resume, invalid } = secondNodesContract;
+    const last = events[events.length - 1]!.seq;
+    const { api, requests } = fakeApi(
+      { "/start": events, [`/events/${runId}?after=${last}`]: resume },
+      runId,
+    );
+    const onError = vi.fn();
+    const controller = new WfRunController(api, { onError, sleep: async () => undefined });
+    await controller.start(() => new Request("http://test/start", { method: "POST" }));
+    await settled(controller);
+    expect(controller.store.getState().pendingInteraction?.kind).toBe("form");
+
+    const rejected = new ApiError(
+      422,
+      invalid.body.error.code,
+      invalid.body.error.message,
+      invalid.body.error.details,
+    );
+    vi.mocked(api.input).mockRejectedValueOnce(rejected);
+    expect(await controller.submitForm({ note: "x" })).toBe(rejected);
+    expect(onError).not.toHaveBeenCalled();
+    expect(requests).toEqual(["POST /start"]);
+
+    expect(await controller.submitForm({ ok: true, note: "좋음" })).toBe(true);
+    expect(api.input).toHaveBeenLastCalledWith(runId, {
+      kind: "form",
+      values: { ok: true, note: "좋음" },
+    });
+    await settled(controller);
+    expect(controller.store.getState().status).toBe("succeeded");
+    expect(controller.store.getState().pendingInteraction).toBeNull();
+    expect(controller.store.getState().outputs).toMatchObject({ ok: true, note: "좋음" });
+  });
+
+  it("respond에 폼 응답을 넘기면 kind=form 본문으로 보내고, 거절되면 알린다", async () => {
+    const { runId, events } = secondNodesContract;
+    const { api } = fakeApi({ "/start": events }, runId);
+    const onError = vi.fn();
+    const controller = new WfRunController(api, { onError, sleep: async () => undefined });
+    await controller.start(() => new Request("http://test/start", { method: "POST" }));
+    await settled(controller);
+    const closed = new ApiError(409, "run_not_waiting", "끝난 런");
+    vi.mocked(api.input).mockRejectedValueOnce(closed);
+
+    expect(await controller.respond({ kind: "form", values: { ok: false } })).toBe(false);
+    expect(api.input).toHaveBeenCalledWith(runId, { kind: "form", values: { ok: false } });
+    expect(onError).toHaveBeenCalledWith(closed);
   });
 
   it("저장된 런에 붙으면 처음부터 다시 그린다", async () => {

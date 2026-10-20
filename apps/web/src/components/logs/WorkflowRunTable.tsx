@@ -1,4 +1,4 @@
-import { FilterX, ScrollText } from "lucide-react";
+import { FilterX, ScrollText, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { WfRunOut } from "@/api/types";
@@ -119,6 +119,19 @@ export function WorkflowRunFilterBar({
           )}
         />
       ))}
+      {filters.conversation ? (
+        <span className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-surface pr-1 pl-2.5 text-sm text-ink">
+          {tw("logs.conversationFilter", { id: shortRunId(filters.conversation) })}
+          <Button
+            variant="ghost"
+            size="iconSm"
+            aria-label={tw("logs.conversationFilterClear")}
+            onClick={() => onChange({ ...filters, conversation: null })}
+          >
+            <X className="size-3.5" aria-hidden />
+          </Button>
+        </span>
+      ) : null}
       {active ? (
         <Button
           variant="ghost"

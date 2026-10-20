@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import type { NodeTypeInfo, WorkflowKind } from "@/api/types";
 import {
   connectProblem,
+  enclosingLoop,
   expandRemoval,
   freePosition,
+  hasTargetHandle,
+  loopVariables,
   nextEdgeId,
   nextNodeId,
+  nodeById,
   nodeIdProblem,
   nodeOutputs,
   normalizeGraph,
@@ -18,6 +23,7 @@ import {
   type FlowGraph,
   type FlowNode,
 } from "./graph";
+import { createNodes, loopOnly, paletteTypes } from "./nodeTypes";
 
 function node(id: string, type: string, extra: Partial<FlowNode> = {}): FlowNode {
   return {
@@ -345,5 +351,180 @@ describe("referencedVariables", () => {
       }),
     ).toEqual([{ selector: "conv.count", scope: "conv", name: "count", type: "number" }]);
     expect(referencedVariables(graph, "nope", "workflow")).toEqual([]);
+  });
+});
+
+// start → list_1 → loop_1(하위: loop_start_1 → assign_1 → tool_1) → ask_1
+function loopSample(): FlowGraph {
+  return {
+    nodes: [
+      node("start", "start", { config: { fields: [{ name: "q", type: "string" }] } }),
+      node("list_1", "list_operator", { config: { input_var: "start.q" } }),
+      node("loop_1", "loop", {
+        config: {
+          loop_vars: [
+            { name: "n", type: "number", value: 0 },
+            { name: "text", type: "string", var: "list_1.first_record" },
+          ],
+          break_conditions: [{ var: "loop_1.n", op: "≥", value: "3" }],
+          logical: "and",
+          max_iterations: 5,
+        },
+      }),
+      node("loop_start_1", "loop_start", { parent_id: "loop_1" }),
+      node("assign_1", "variable_assigner", {
+        parent_id: "loop_1",
+        config: { items: [{ target: "loop_1.n", op: "+=", value: 1 }] },
+      }),
+      node("tool_1", "tool", {
+        parent_id: "loop_1",
+        config: {
+          tool: "json_parse",
+          params: {
+            text: { mode: "var", value: "loop_1.text" },
+            path: { mode: "const", value: "{{ loop_1.text }}" },
+          },
+        },
+      }),
+      node("ask_1", "human_input", {
+        config: {
+          description: "{{ loop_1.text }}",
+          fields: [
+            { name: "ok", type: "boolean" },
+            { name: "docs", type: "file_list" },
+          ],
+        },
+      }),
+    ],
+    edges: [
+      edge("start", "list_1"),
+      edge("list_1", "loop_1"),
+      edge("loop_start_1", "assign_1"),
+      edge("assign_1", "tool_1"),
+      edge("loop_1", "ask_1"),
+    ],
+    viewport: {},
+  };
+}
+
+const jsonParse = {
+  name: "json_parse",
+  label: "JSON 읽기",
+  description: "",
+  params: [],
+  params_schema: {},
+  outputs: [
+    { name: "value", type: "any" as const },
+    { name: "found", type: "boolean" as const },
+  ],
+};
+
+describe("loop 하위 그래프", () => {
+  it("틀을 만들면 loop_start가 함께 생기고 진입 자리라 들어오는 연결을 받지 않는다", () => {
+    const graph = loopSample();
+    const nodes = createNodes(graph, {
+      type: "loop",
+      kind: "workflow",
+      title: "루프",
+      position: { x: 0, y: 0 },
+      labels: { className: (n) => `분류 ${n}` },
+      entryTitle: "루프 시작",
+    });
+    expect(nodes.map((item) => [item.id, item.type, item.parent_id])).toEqual([
+      ["loop_2", "loop", null],
+      ["loop_start_2", "loop_start", "loop_2"],
+    ]);
+    expect(nodes[0]!.config).toMatchObject({ loop_vars: [], max_iterations: 10 });
+    expect(nodes[0]!.ui).toEqual({ width: 520, height: 260 });
+    expect(hasTargetHandle(nodes[1]!)).toBe(false);
+    expect(connectProblem(graph, { source: "assign_1", target: "loop_start_1" })).toBe("entry");
+    expect(connectProblem(graph, { source: "list_1", target: "assign_1" })).toBe("frame");
+  });
+
+  it("안쪽 노드는 loop의 바깥 상류와 반복 변수를 본다", () => {
+    const graph = loopSample();
+    expect(upstreamIds(graph, "tool_1")).toEqual(["assign_1", "loop_start_1", "list_1", "start"]);
+    expect(enclosingLoop(graph, "tool_1")?.id).toBe("loop_1");
+    expect(enclosingLoop(graph, "ask_1")).toBeUndefined();
+    expect(loopVariables(nodeById(graph, "loop_1")!)).toEqual([
+      { selector: "loop_1.n", name: "n", type: "number" },
+      { selector: "loop_1.text", name: "text", type: "string" },
+    ]);
+  });
+
+  it("출력: loop는 반복 변수와 loop_count, human_input은 필드, tool은 고른 도구의 출력", () => {
+    const graph = loopSample();
+    const names = (id: string, tools = [jsonParse]) =>
+      nodeOutputs(nodeById(graph, id)!, undefined, tools).map(
+        (item) => `${item.name}:${item.type}`,
+      );
+    expect(names("loop_1")).toEqual(["n:number", "text:string", "loop_count:number"]);
+    expect(names("loop_start_1")).toEqual(["index:number"]);
+    expect(names("ask_1")).toEqual(["ok:boolean", "docs:array[file]"]);
+    expect(names("tool_1")).toEqual(["value:any", "found:boolean"]);
+    expect(names("tool_1", [])).toEqual([]);
+    expect(names("list_1")).toEqual([
+      "result:array[any]",
+      "count:number",
+      "first_record:any",
+      "last_record:any",
+      "item:any",
+    ]);
+  });
+
+  it("loop를 지우면 안쪽까지 지우고 loop_start만 따로는 지우지 않는다", () => {
+    const graph = loopSample();
+    expect([...expandRemoval(graph, ["loop_start_1"])]).toEqual([]);
+    expect([...expandRemoval(graph, ["loop_1"])].sort()).toEqual([
+      "assign_1",
+      "loop_1",
+      "loop_start_1",
+      "tool_1",
+    ]);
+  });
+
+  it("loop id를 바꾸면 대입 대상·도구 변수 매개변수·템플릿을 고치고 고정값은 그대로 둔다", () => {
+    const renamed = renameNode(loopSample(), "loop_1", "count");
+    const config = (id: string) => nodeById(renamed, id)!.config;
+    expect(config("assign_1").items).toEqual([{ target: "count.n", op: "+=", value: 1 }]);
+    expect(config("tool_1").params).toEqual({
+      text: { mode: "var", value: "count.text" },
+      path: { mode: "const", value: "{{ loop_1.text }}" },
+    });
+    expect(config("count").break_conditions).toEqual([{ var: "count.n", op: "≥", value: "3" }]);
+    expect(config("ask_1").description).toBe("{{ count.text }}");
+    expect(nodeById(renamed, "loop_start_1")!.parent_id).toBe("count");
+  });
+
+  it("노드 하나 실행의 입력칸은 도구 변수 매개변수를 넣고 고정값 글은 템플릿으로 읽지 않는다", () => {
+    const graph = loopSample();
+    const refs = referencedVariables(graph, "tool_1", "workflow", { tools: [jsonParse] });
+    expect(refs.map((item) => [item.selector, item.type])).toEqual([["loop_1.text", "string"]]);
+    // +=는 대상의 지금 값을 읽으므로 입력칸이 된다(덮어쓰기는 읽지 않는다).
+    expect(referencedVariables(graph, "assign_1", "workflow").map((v) => v.selector)).toEqual([
+      "loop_1.n",
+    ]);
+    // loop 자신을 돌리면 안쪽이 읽는 반복 변수는 루프가 만든다.
+    const own = referencedVariables(graph, "loop_1", "workflow");
+    expect(own.map((item) => item.selector)).toEqual(["list_1.first_record"]);
+  });
+});
+
+describe("팔레트", () => {
+  const info = (type: string, kinds: WorkflowKind[], loopKinds: WorkflowKind[] = []) =>
+    ({ type, kinds, loop_kinds: loopKinds }) as unknown as NodeTypeInfo;
+
+  it("워크플로우는 loop 안에서만 되는 노드도 보이고 진입 자리는 숨긴다", () => {
+    const infos = [
+      info("start", ["workflow", "chatflow"]),
+      info("loop", ["workflow", "chatflow"]),
+      info("loop_start", ["workflow", "chatflow"]),
+      info("variable_assigner", ["chatflow"], ["chatflow", "workflow"]),
+      info("answer", ["chatflow"]),
+    ];
+    expect(paletteTypes(infos, "workflow")).toEqual(["start", "loop", "variable_assigner"]);
+    expect(loopOnly(infos[3], "workflow")).toBe(true);
+    expect(loopOnly(infos[3], "chatflow")).toBe(false);
+    expect(loopOnly(infos[4], "workflow")).toBe(false);
   });
 });

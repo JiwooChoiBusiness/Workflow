@@ -4,6 +4,7 @@
  */
 import type {
   NodeTypeInfo,
+  ToolSpec,
   VarType,
   WfEdgeOut,
   WfGraphOut,
@@ -24,7 +25,7 @@ export type FlowNode = {
   config: Record<string, unknown>;
   error: { strategy: ErrorStrategy; default_outputs: Record<string, unknown> };
   retry: { max_attempts: number; interval_ms: number };
-  // iteration 하위 그래프에 속하면 그 iteration 노드 id. 위치는 부모 기준 좌표다(ReactFlow 하위 흐름과 같다).
+  // iteration·loop 하위 그래프에 속하면 그 노드 id. 위치는 부모 기준 좌표다(ReactFlow 하위 흐름과 같다).
   parent_id: string | null;
   position: { x: number; y: number };
   ui: Record<string, unknown>;
@@ -53,11 +54,32 @@ export const END_TYPE = "end";
 export const ANSWER_TYPE = "answer";
 export const ITERATION_TYPE = "iteration";
 export const ITERATION_START_TYPE = "iteration_start";
+export const LOOP_TYPE = "loop";
+export const LOOP_START_TYPE = "loop_start";
 export const MAX_NODES = 100;
 export const MAX_EDGES = 300;
 export const NODE_ID_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
 export const RESERVED_SCOPES: ReadonlySet<string> = new Set(["sys", "env", "conv"]);
-const ENTRY_TYPES: ReadonlySet<string> = new Set([START_TYPE, ITERATION_START_TYPE]);
+// 하위 그래프를 담는 노드와 그 진입 자리(서버 frames.CONTAINER_ENTRIES). 진입 자리는 틀을 만들 때 함께 생긴다.
+const CONTAINER_ENTRIES: ReadonlyMap<string, string> = new Map([
+  [ITERATION_TYPE, ITERATION_START_TYPE],
+  [LOOP_TYPE, LOOP_START_TYPE],
+]);
+const SUB_ENTRY_TYPES: ReadonlySet<string> = new Set(CONTAINER_ENTRIES.values());
+const ENTRY_TYPES: ReadonlySet<string> = new Set([START_TYPE, ...SUB_ENTRY_TYPES]);
+
+export function isContainerType(type: string): boolean {
+  return CONTAINER_ENTRIES.has(type);
+}
+
+export function containerEntryType(type: string): string | undefined {
+  return CONTAINER_ENTRIES.get(type);
+}
+
+// 하위 그래프의 진입 자리(iteration_start·loop_start). 지우거나 따로 실행하지 않는다.
+export function isSubEntryType(type: string): boolean {
+  return SUB_ENTRY_TYPES.has(type);
+}
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -188,8 +210,8 @@ function ancestors(incoming: Map<string, string[]>, nodeId: string): string[] {
 }
 
 /*
- * 노드가 참조할 수 있는 상류 노드 id(가까운 것부터). 같은 프레임의 조상이고, iteration 하위 노드는
- * 그 iteration의 바깥 조상도 본다(서버 _Checker.upstream과 같은 규칙).
+ * 노드가 참조할 수 있는 상류 노드 id(가까운 것부터). 같은 프레임의 조상이고, iteration·loop 하위 노드는
+ * 그 틀의 바깥 조상도 본다(서버 _Checker.upstream과 같은 규칙). loop의 반복 변수는 loopVariables가 따로 준다.
  */
 export function upstreamIds(graph: FlowGraph, nodeId: string): string[] {
   const node = nodeById(graph, nodeId);
@@ -307,17 +329,28 @@ export function parseSelector(text: string): Selector | null {
   return { scope: match.groups.scope!, name: match.groups.name!, path: match.groups.path ?? "" };
 }
 
-// 변수 선택자가 들어가는 config 키. 나머지 글자 값은 템플릿일 수 있는 것으로 본다.
+// 변수 선택자가 들어가는 config 키. 나머지 글자 값은 템플릿일 수 있는 것으로 본다. target은 대입 노드의
+// 대상(conv.<이름>이나 loop 반복 변수 <loop id>.<이름>)이다.
 const SELECTOR_KEYS: ReadonlySet<string> = new Set([
   "var",
   "query_var",
   "input_var",
   "output_var",
   "files_var",
+  "file_var",
+  "target",
 ]);
-// 파이썬 코드는 템플릿이 아니다.
-const CODE_KEYS: ReadonlySet<string> = new Set(["code"]);
+// 템플릿이 아닌 글: 파이썬 코드와 tool 노드의 고정값 매개변수(아래 childKey가 "const"로 바꿔 넘긴다).
+const LITERAL_KEYS: ReadonlySet<string> = new Set(["code", "const"]);
 const TEMPLATE_BLOCK = /(\{\{|\{%)([\s\S]*?)(\}\}|%\})/g;
+
+// tool 노드 매개변수 {mode, value}는 mode가 value의 뜻을 정한다. var면 선택자, const면 고정값, template이면 템플릿.
+function childKey(parent: Record<string, unknown>, key: string): string {
+  if (key !== "value" || typeof parent.mode !== "string") return key;
+  if (parent.mode === "var") return "var";
+  if (parent.mode === "const") return "const";
+  return key;
+}
 
 export function renameSelector(text: string, from: string, to: string): string {
   const selector = parseSelector(text);
@@ -343,7 +376,7 @@ export function renameInTemplate(text: string, from: string, to: string): string
 function renameValue(value: unknown, key: string | null, from: string, to: string): unknown {
   if (typeof value === "string") {
     if (key !== null && SELECTOR_KEYS.has(key)) return renameSelector(value, from, to);
-    if (key !== null && CODE_KEYS.has(key)) return value;
+    if (key !== null && LITERAL_KEYS.has(key)) return value;
     return renameInTemplate(value, from, to);
   }
   if (Array.isArray(value)) {
@@ -358,12 +391,13 @@ function renameValue(value: unknown, key: string | null, from: string, to: strin
     return changed ? next : value;
   }
   if (typeof value === "object" && value !== null) {
+    const parent = value as Record<string, unknown>;
     let changed = false;
     const next: Record<string, unknown> = {};
-    for (const [childKey, child] of Object.entries(value)) {
-      const renamed = renameValue(child, childKey, from, to);
+    for (const [key, child] of Object.entries(parent)) {
+      const renamed = renameValue(child, childKey(parent, key), from, to);
       if (renamed !== child) changed = true;
-      next[childKey] = renamed;
+      next[key] = renamed;
     }
     return changed ? next : value;
   }
@@ -402,13 +436,14 @@ export function renameNode(graph: FlowGraph, from: string, to: string): FlowGrap
   };
 }
 
-// 지울 노드에 iteration이 있으면 그 하위 노드도 함께 지운다. iteration_start만 따로 지우지 않는다.
+// 지울 노드에 iteration·loop가 있으면 그 하위 노드도 함께 지운다. 진입 자리(iteration_start·loop_start)만
+// 따로 지우지 않는다.
 export function expandRemoval(graph: FlowGraph, nodeIds: Iterable<string>): Set<string> {
   const requested = new Set(nodeIds);
   const removed = new Set<string>();
   for (const node of graph.nodes) {
     if (!requested.has(node.id)) continue;
-    if (node.type === ITERATION_START_TYPE && !(node.parent_id && requested.has(node.parent_id))) {
+    if (isSubEntryType(node.type) && !(node.parent_id && requested.has(node.parent_id))) {
       continue;
     }
     removed.add(node.id);
@@ -491,7 +526,22 @@ const FIXED_OUTPUTS: Record<string, [string, VarType][]> = {
     ["item", "any"],
     ["index", "number"],
   ],
+  loop_start: [["index", "number"]],
+  list_operator: [
+    ["result", "array[any]"],
+    ["count", "number"],
+    ["first_record", "any"],
+    ["last_record", "any"],
+    ["item", "any"],
+  ],
+  document_extractor: [
+    ["text", "string"],
+    ["texts", "array[string]"],
+  ],
 };
+
+// loop 출력에서 반복 횟수. 반복 변수 이름으로 쓸 수 없다(서버 loop.COUNT_OUTPUT).
+export const LOOP_COUNT_OUTPUT = "loop_count";
 
 const START_FIELD_TYPES: Record<string, VarType> = {
   string: "string",
@@ -526,8 +576,31 @@ function namedItems(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.map(record) : [];
 }
 
-// 노드 출력(이름·타입). config에 따라 달라지는 타입은 서버 outputs(config)와 같은 규칙으로 계산한다.
-export function nodeOutputs(node: FlowNode, info?: NodeTypeInfo): VarOption[] {
+// loop의 반복 변수(이름·타입). 하위 그래프 노드와 종료 조건이 "<loop id>.<이름>"으로 읽는다.
+export function loopVariables(loop: FlowNode): VarOption[] {
+  return namedItems(loop.config.loop_vars).flatMap((item) =>
+    typeof item.name === "string" && item.name
+      ? [{ selector: `${loop.id}.${item.name}`, name: item.name, type: varType(item.type) }]
+      : [],
+  );
+}
+
+// 노드를 바로 품은 loop. iteration 안이거나 바깥이면 undefined다.
+export function enclosingLoop(graph: FlowGraph, nodeId: string): FlowNode | undefined {
+  const parentId = nodeById(graph, nodeId)?.parent_id;
+  const parent = parentId ? nodeById(graph, parentId) : undefined;
+  return parent?.type === LOOP_TYPE ? parent : undefined;
+}
+
+/*
+ * 노드 출력(이름·타입). config에 따라 달라지는 타입은 서버 outputs(config)와 같은 규칙으로 계산한다. tool
+ * 노드의 출력은 고른 도구가 정하므로 GET /node-types의 tools를 넘겨야 보인다.
+ */
+export function nodeOutputs(
+  node: FlowNode,
+  info?: NodeTypeInfo,
+  tools?: readonly ToolSpec[],
+): VarOption[] {
   const make = (name: string, type: VarType): VarOption => ({
     selector: `${node.id}.${name}`,
     name,
@@ -556,6 +629,20 @@ export function nodeOutputs(node: FlowNode, info?: NodeTypeInfo): VarOption[] {
       ];
     case "variable_aggregator":
       return [make("output", varType(node.config.output_type))];
+    case LOOP_TYPE:
+      return [
+        ...loopVariables(node).map((item) => make(item.name, item.type)),
+        make(LOOP_COUNT_OUTPUT, "number"),
+      ];
+    case "human_input":
+      return named(
+        namedItems(node.config.fields),
+        (item) => START_FIELD_TYPES[String(item.type ?? "string")] ?? "string",
+      );
+    case "tool": {
+      const tool = tools?.find((item) => item.name === node.config.tool);
+      return (tool?.outputs ?? []).map((output) => make(output.name, output.type));
+    }
     default:
       break;
   }
@@ -598,6 +685,8 @@ export interface ReferencedVar {
 }
 
 const TEMPLATE_NAME = /(?<![A-Za-z0-9_.])([a-z][a-z0-9_]{0,31})\.([A-Za-z_][A-Za-z0-9_]*)/g;
+// 대입 노드가 대상의 지금 값을 읽는 연산. 덮어쓰기·비우기는 읽지 않는다.
+const READ_TARGET_OPS: ReadonlySet<string> = new Set(["append", "+=", "-="]);
 
 function collectReferences(
   value: unknown,
@@ -606,6 +695,8 @@ function collectReferences(
   found: Map<string, Selector>,
 ): void {
   if (typeof value === "string") {
+    // 대입 대상은 연산에 따라 읽기도 하고 안 읽기도 해서 referencedVariables가 따로 본다.
+    if (key === "target") return;
     if (key !== null && SELECTOR_KEYS.has(key)) {
       const selector = parseSelector(value);
       if (selector && known(selector.scope)) {
@@ -613,7 +704,7 @@ function collectReferences(
       }
       return;
     }
-    if (key !== null && CODE_KEYS.has(key)) return;
+    if (key !== null && LITERAL_KEYS.has(key)) return;
     for (const block of value.matchAll(TEMPLATE_BLOCK)) {
       for (const match of (block[2] ?? "").matchAll(TEMPLATE_NAME)) {
         const scope = match[1]!;
@@ -629,16 +720,17 @@ function collectReferences(
     return;
   }
   if (typeof value === "object" && value !== null) {
-    for (const [childKey, child] of Object.entries(value)) {
-      collectReferences(child, childKey, known, found);
+    const parent = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(parent)) {
+      collectReferences(child, childKey(parent, key), known, found);
     }
   }
 }
 
 /*
  * 노드가 참조하는 변수(단일 노드 실행의 입력칸, 설계 6.1·7.3). 선택자 칸과 템플릿 안의 이름을 모은다. env는
- * 서버가 초안 값을 쓰고, 실행할 노드 자신(iteration이면 안쪽 노드까지)의 출력은 줄 수 없어 뺀다(서버
- * workflow_single_run과 같은 규칙). iteration은 안쪽 노드가 바깥을 가리키는 것도 넣는다.
+ * 서버가 초안 값을 쓰고, 실행할 노드 자신(iteration·loop면 안쪽 노드까지)의 출력은 줄 수 없어 뺀다(서버
+ * workflow_single_run과 같은 규칙). iteration·loop는 안쪽 노드가 바깥을 가리키는 것도 넣는다.
  */
 export function referencedVariables(
   graph: FlowGraph,
@@ -646,6 +738,7 @@ export function referencedVariables(
   kind: WorkflowKind,
   options: {
     nodeTypes?: NodeTypeInfo[];
+    tools?: readonly ToolSpec[];
     conversationVars?: { name: string; type: VarType }[];
   } = {},
 ): ReferencedVar[] {
@@ -658,7 +751,16 @@ export function referencedVariables(
     !own.has(scope) &&
     (scope === "sys" || (scope === "conv" && kind === "chatflow") || nodes.has(scope));
   const found = new Map<string, Selector>();
-  for (const source of [node, ...inner]) collectReferences(source.config, null, known, found);
+  for (const source of [node, ...inner]) {
+    collectReferences(source.config, null, known, found);
+    if (source.type !== "variable_assigner") continue;
+    for (const item of namedItems(source.config.items)) {
+      const target = typeof item.target === "string" ? parseSelector(item.target) : null;
+      if (target && READ_TARGET_OPS.has(String(item.op)) && known(target.scope)) {
+        found.set(`${target.scope}.${target.name}`, { ...target, path: "" });
+      }
+    }
+  }
 
   const infos = new Map((options.nodeTypes ?? []).map((info) => [info.type, info]));
   const sys = new Map(sysVariables(kind).map((item) => [item.name, item.type]));
@@ -668,7 +770,7 @@ export function referencedVariables(
     if (selector.scope === "conv") return conv.get(selector.name) ?? null;
     const target = nodes.get(selector.scope);
     if (!target) return null;
-    const output = nodeOutputs(target, infos.get(target.type)).find(
+    const output = nodeOutputs(target, infos.get(target.type), options.tools).find(
       (item) => item.name === selector.name,
     );
     return output?.type ?? null;
@@ -711,6 +813,43 @@ export function countIssues(issues: WfIssue[]): Map<string, IssueCount> {
     counts.set(key, count);
   }
   return counts;
+}
+
+// 챗플로우 answer 노드의 미리 흘릴 llm id(설계 3.8). 서버가 초안을 저장할 때 계산해 ui에 둔다.
+export const PRESTREAM_KEY = "prestream_sources";
+
+export function prestreamSources(node: FlowNode): string[] {
+  const value = node.ui[PRESTREAM_KEY];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+/*
+ * 저장 응답 그래프의 answer 노드 ui.prestream_sources를 지금 그래프에 옮긴다. 캔버스 표시용 값이라
+ * 실행 취소 자리를 만들지 않는다. 바뀐 것이 없으면 같은 그래프를 돌려준다(카드가 다시 그려지지 않게).
+ */
+export function withSavedPrestream(
+  graph: FlowGraph,
+  saved: WfGraphOut | null | undefined,
+): FlowGraph {
+  const found = new Map<string, unknown>();
+  for (const raw of saved?.nodes ?? []) {
+    if (raw.type === ANSWER_TYPE) found.set(raw.id, record(raw.ui)[PRESTREAM_KEY]);
+  }
+  if (found.size === 0) return graph;
+  let changed = false;
+  const nodes = graph.nodes.map((node) => {
+    if (node.type !== ANSWER_TYPE || !found.has(node.id)) return node;
+    const value = found.get(node.id);
+    if (JSON.stringify(node.ui[PRESTREAM_KEY]) === JSON.stringify(value)) return node;
+    changed = true;
+    const ui = { ...node.ui };
+    if (value === undefined) delete ui[PRESTREAM_KEY];
+    else ui[PRESTREAM_KEY] = value;
+    return { ...node, ui };
+  });
+  return changed ? { ...graph, nodes } : graph;
 }
 
 // 서버가 받는 그래프 모양. 노드는 이미 정규화되어 있어 그대로 보낸다.

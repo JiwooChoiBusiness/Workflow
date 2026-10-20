@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import { Panel } from "@/components/ui/layout";
-import { useMergedWorkflowRuns, useWorkflows } from "@/features/workflows/api";
+import { useWorkflows, useWorkspaceWfRuns } from "@/features/workflows/api";
+import "@/features/workflows/i18n";
 import {
   DEFAULT_WF_RUN_FILTERS,
   hasWfRunFilters,
@@ -11,26 +12,25 @@ import {
 } from "@/features/workflows/runLogFilters";
 import { WorkflowRunFilterBar, WorkflowRunTable } from "./WorkflowRunTable";
 
-const PAGE = 50;
-// 서버 목록 한 번에 받는 최대 수(GET /workflows/{id}/runs?limit)
-const MAX_LIMIT = 200;
-
-// /logs의 워크플로우 런 탭(설계 7.2). 고른 워크플로우가 없으면 모든 워크플로우의 런을 시작 시각 순으로 섞는다.
+// /logs의 워크플로우 런 탭(설계 7.2). 워크스페이스 전체 런을 최근 것부터 받고 지운 워크플로우의 런도 보인다.
 export function WorkflowRunLog() {
+  const { t } = useTranslation("workflows");
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = parseWfRunFilters(searchParams);
   const workflows = useWorkflows();
-  const [limit, setLimit] = useState(PAGE);
+  const runs = useWorkspaceWfRuns(filters);
   const list = (workflows.data ?? []).map((item) => ({ id: item.id, name: item.name }));
-  const names = new Map(list.map((item) => [item.id, item.name]));
-  const ids = filters.workflow ? [filters.workflow] : list.map((item) => item.id);
-  const runs = useMergedWorkflowRuns(ids, filters, limit);
+  const items = runs.data?.pages.flatMap((page) => page.items) ?? [];
+  const names = new Map(
+    items.map((run) => [
+      run.workflow_id,
+      run.workflow_deleted ? t("logs.deletedName", { name: run.workflow_name }) : run.workflow_name,
+    ]),
+  );
 
   const update = (next: WfRunFilters) => {
-    setLimit(PAGE);
     setSearchParams(wfRunFiltersToParams(next, searchParams), { replace: true });
   };
-  const noWorkflows = workflows.isSuccess && ids.length === 0;
 
   return (
     <>
@@ -39,16 +39,13 @@ export function WorkflowRunLog() {
       </div>
       <Panel bodyClassName="p-0">
         <WorkflowRunTable
-          runs={noWorkflows ? [] : (runs.data?.items ?? [])}
-          loading={workflows.isPending || (!noWorkflows && runs.isPending)}
-          error={workflows.error ?? runs.error}
-          onRetry={() => {
-            void workflows.refetch();
-            void runs.refetch();
-          }}
-          hasMore={Boolean(runs.data?.more) && limit < MAX_LIMIT}
-          loadingMore={runs.isFetching && !runs.isPending}
-          onMore={() => setLimit((current) => Math.min(current + PAGE, MAX_LIMIT))}
+          runs={items}
+          loading={runs.isPending}
+          error={runs.error}
+          onRetry={() => void runs.refetch()}
+          hasMore={runs.hasNextPage}
+          loadingMore={runs.isFetchingNextPage}
+          onMore={() => void runs.fetchNextPage()}
           filtered={hasWfRunFilters(filters)}
           onClearFilters={() => update(DEFAULT_WF_RUN_FILTERS)}
           workflowNames={names}

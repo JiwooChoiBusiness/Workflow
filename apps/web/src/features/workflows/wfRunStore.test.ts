@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WfEvent } from "@/api/run-events";
+import { chatContract } from "@/test/chatContract";
+import { secondNodesContract } from "@/test/secondNodesContract";
 import { wfContract } from "@/test/wfContract";
 import {
   applyWfEvent,
@@ -9,6 +11,8 @@ import {
   initialWfRunState,
   mergeNodeRuns,
   NODE_TEXT_LIMIT,
+  pendingFrom,
+  runningNode,
   stateFromRun,
   type WfRunViewState,
 } from "./wfRunStore";
@@ -200,7 +204,8 @@ describe("wfRunStore 리듀서(실제 서버 이벤트)", () => {
     expect(mergeNodeRuns(state, children.items)).toBe(state);
 
     const waiting = stateFromRun(wfContract.agent.waiting, wfContract.agent.waiting.node_runs);
-    expect(waiting.pendingInteraction?.interaction.kind).toBe("approval");
+    expect(waiting.pendingInteraction?.kind).toBe("approval");
+    expect(waiting.pendingInteraction?.interaction?.kind).toBe("approval");
     expect(latest(waiting, "agent_1").childRunId).toBe(
       wfContract.agent.waiting.pending_interaction?.child_run_id,
     );
@@ -233,6 +238,77 @@ describe("wfRunStore 리듀서(실제 서버 이벤트)", () => {
     }
     expect(state.nodeRuns[llmRunId]!.text).toHaveLength(NODE_TEXT_LIMIT);
     expect(state.nodeRuns[llmRunId]!.textDropped).toBe(true);
+  });
+});
+
+describe("wfRunStore 리듀서(챗플로우 답)", () => {
+  it("answer.delta를 이어 붙이고 answer.completed가 런 전체의 답으로 바꾼다", () => {
+    const [turn] = chatContract.basic.turns;
+    const state = run(turn!.events);
+    expect(state.answerText).toBe("가짜 응답: 첫 질문");
+    expect(state.answerResumedAt).toBeNull();
+  });
+
+  it("재개 스트림을 본 때의 답 길이를 남기고, 런 전체의 답을 받으면 지운다", () => {
+    const { events, resume } = chatContract.approval;
+    const waiting = run(events);
+    const prefix = waiting.answerText;
+    expect(prefix).not.toBe("");
+    const started = resume.findIndex((event) => event.type === "workflow.started");
+    const resumed = applyWfEvents(waiting, resume.slice(0, started + 1));
+    expect(resumed.answerResumedAt).toBe(prefix.length);
+    const done = applyWfEvents(resumed, resume.slice(started + 1));
+    expect(done.answerResumedAt).toBeNull();
+    expect(done.answerText).toBe(chatContract.approval.doneMessages.items[1]!.text);
+  });
+});
+
+describe("wfRunStore 리듀서(2차 노드: loop와 human_input 폼)", () => {
+  const { events, resume, waiting, runId } = secondNodesContract;
+
+  it("폼 대기를 kind=form으로 두고 런 상세에서도 같은 폼을 읽는다", () => {
+    const state = run(events);
+    expect(state.status).toBe("waiting_input");
+    const pending = state.pendingInteraction;
+    expect(pending?.kind).toBe("form");
+    expect(pending?.interaction).toBeNull();
+    expect(pending?.nodeId).toBe("ask");
+    expect(pending?.form?.description).toBe("가장 큰 값: 5, 루프 3회");
+    expect(pending?.form?.fields.map((field) => field.name)).toEqual(["ok", "note"]);
+
+    const fromRest = stateFromRun(waiting, waiting.node_runs);
+    expect(fromRest.runId).toBe(runId);
+    expect(fromRest.pendingInteraction?.kind).toBe("form");
+    expect(fromRest.pendingInteraction?.form?.form_id).toBe(pending?.form?.form_id);
+  });
+
+  it("loop는 iteration 이벤트로 회차를 세고 안쪽 노드 런을 회차별로 둔다", () => {
+    const state = run(events);
+    expect(state.iterations.loop_1).toMatchObject({ total: 5, count: 3, failedCount: 0 });
+    expect(byNode(state, "add").map((item) => [item.iterationId, item.iterationIndex])).toEqual([
+      ["loop_1", 0],
+      ["loop_1", 1],
+      ["loop_1", 2],
+    ]);
+    // 안쪽 노드가 도는 동안 상태 표시줄에는 loop가 아니라 안쪽 노드 이름이 보인다.
+    const inner = events.findIndex(
+      (event) => event.type === "node.started" && event.data.node_id === "tpl",
+    );
+    expect(runningNode(run(events.slice(0, inner + 1)))).toBe("tpl");
+  });
+
+  it("폼에 답해 재개되면 대기를 지우고 출력으로 끝난다", () => {
+    const done = applyWfEvents(run(events), resume);
+    expect(done.status).toBe("succeeded");
+    expect(done.pendingInteraction).toBeNull();
+    expect(done.outputs).toMatchObject({ first: 5, count: 3, rounds: 3, ok: true });
+    expect(latest(done, "ask").status).toBe("succeeded");
+  });
+
+  it("kind가 없는 예전 대기는 interaction으로 가르고, 둘 다 없으면 대기로 두지 않는다", () => {
+    const interaction = { interaction_id: "i1", kind: "question" as const, question: "?" };
+    expect(pendingFrom({ node_id: "agent_1", interaction })?.kind).toBe("question");
+    expect(pendingFrom({ node_id: "agent_1", interaction: null, form: null })).toBeNull();
   });
 });
 

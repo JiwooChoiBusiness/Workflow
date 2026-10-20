@@ -15,6 +15,7 @@ import {
   type AssignerForm as AssignerFormValues,
 } from "@/features/workflows/configSchemas";
 import { useFlow } from "@/features/workflows/flowStoreContext";
+import { enclosingLoop, loopVariables } from "@/features/workflows/graph";
 import { VariablePicker } from "../VariablePicker";
 import {
   AddButton,
@@ -30,27 +31,45 @@ import {
 
 const PICK = "__pick__";
 
+/*
+ * variable_assigner(설계 2.3·2.4): 대화 변수를 바꾼다. loop 안에 두면 그 loop의 반복 변수(<loop id>.<이름>)도
+ * 대상이 되고, 워크플로우에서는 loop 안에서만 쓸 수 있어 반복 변수만 고른다.
+ */
 export function AssignerForm({ node }: NodeFormProps) {
   const { t } = useTranslation("workflows");
+  const kind = useFlow((state) => state.kind);
   const conversationVars = useFlow((state) => state.conversationVars);
+  const loop = useFlow((state) => enclosingLoop(state.graph, node.id));
+  const chat = kind === "chatflow";
+  const loopVars = useMemo(() => (loop ? loopVariables(loop) : []), [loop]);
   const convTypes = useMemo(() => {
     const types: Record<string, VarType> = {};
     for (const item of conversationVars) types[item.name] = item.type;
     return types;
   }, [conversationVars]);
-  // 고정값은 대상 대화 변수의 타입에 맞춰 넣는다. 변환 함수가 그 표를 알아야 해서 여기서 만든다.
-  const fromForm = useCallback(
-    (values: AssignerFormValues) => assignerFromForm(values, convTypes),
-    [convTypes],
+  const loopTypes = useMemo(
+    () =>
+      loop
+        ? { id: loop.id, types: Object.fromEntries(loopVars.map((v) => [v.name, v.type])) }
+        : null,
+    [loop, loopVars],
   );
-  const schema = useMemo(() => assignerSchema(t), [t]);
+  // 고정값은 대상 변수의 타입에 맞춰 넣는다. 변환 함수가 그 표를 알아야 해서 여기서 만든다.
+  const fromForm = useCallback(
+    (values: AssignerFormValues) => assignerFromForm(values, convTypes, loopTypes),
+    [convTypes, loopTypes],
+  );
+  const loopId = loop?.id ?? null;
+  const schema = useMemo(() => assignerSchema(t, { loopId, conv: chat }), [t, loopId, chat]);
   const form = useNodeForm<AssignerFormValues>(node, schema, assignerToForm, fromForm);
   const serverIssue = useServerIssue(node.id);
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
   const items = useWatch({ control: form.control, name: "items" });
+  const targetLabel = loop ? t("forms.assigner.loopTarget") : t("forms.assigner.target");
   const targetOptions = [
-    { value: PICK, label: t("forms.assigner.target"), disabled: true },
-    ...conversationVars.map((item) => ({
+    { value: PICK, label: targetLabel, disabled: true },
+    ...loopVars.map((item) => ({ value: item.selector, label: item.selector, hint: item.type })),
+    ...(chat ? conversationVars : []).map((item) => ({
       value: `conv.${item.name}`,
       label: `conv.${item.name}`,
       hint: item.type,
@@ -63,7 +82,8 @@ export function AssignerForm({ node }: NodeFormProps) {
 
   return (
     <Section
-      title={t("forms.assigner.items")}
+      title={loop ? t("forms.assigner.loopItems") : t("forms.assigner.items")}
+      hint={loop ? t("forms.assigner.loopHint", { name: loop.title || loop.id }) : undefined}
       actions={
         <AddButton
           label={t("forms.assigner.add")}
@@ -73,10 +93,15 @@ export function AssignerForm({ node }: NodeFormProps) {
         />
       }
     >
-      {conversationVars.length === 0 ? (
-        <Alert tone="warn" title={t("forms.assigner.noConv")} />
+      {targetOptions.length === 1 ? (
+        <Alert
+          tone="warn"
+          title={loop ? t("forms.assigner.noTargets") : t("forms.assigner.noConv")}
+        />
       ) : null}
-      {fields.length === 0 ? <EmptyRows>{t("forms.assigner.empty")}</EmptyRows> : null}
+      {fields.length === 0 ? (
+        <EmptyRows>{loop ? t("forms.assigner.loopEmpty") : t("forms.assigner.empty")}</EmptyRows>
+      ) : null}
       {fields.map((field, index) => {
         const item = items?.[index];
         const path = `items.${index}` as const;
@@ -91,7 +116,7 @@ export function AssignerForm({ node }: NodeFormProps) {
         return (
           <div key={field.id} className="flex flex-col gap-2 rounded-md border border-line p-2.5">
             <div className="flex items-start gap-1.5">
-              <Field className="min-w-0 flex-1" label={t("forms.assigner.target")}>
+              <Field className="min-w-0 flex-1" label={targetLabel}>
                 <Controller
                   control={form.control}
                   name={`${path}.target`}

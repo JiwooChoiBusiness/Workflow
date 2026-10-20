@@ -1,7 +1,7 @@
 /*
  * 노드 폼의 config가 서버 Config 모델(GET /api/console/node-types의 config_schema)을 지키는지 본다.
- * 픽스처는 LLM_FAKE=true 서버에서 받은 응답이다(2026-10-14, M14까지). 서버 노드 config가 바뀌면
- * 픽스처를 다시 받고 이 테스트가 어긋난 곳을 알려 준다.
+ * 픽스처는 LLM_FAKE=true 서버에서 받은 응답이다(2026-10-15, M19의 2차 노드와 내장 도구 tools까지). 서버
+ * 노드 config가 바뀌면 픽스처를 다시 받고 이 테스트가 어긋난 곳을 알려 준다.
  */
 import { describe, expect, it } from "vitest";
 import "@/features/workflows/i18n";
@@ -18,12 +18,15 @@ import {
   answerToForm,
   ASSIGN_OPS,
   assignerFromForm,
+  assignerSchema,
   assignerToForm,
   classifierFromForm,
   classifierSchema,
   classifierToForm,
   codeFromForm,
   codeToForm,
+  documentExtractorFromForm,
+  documentExtractorToForm,
   endFromForm,
   endSchema,
   endToForm,
@@ -35,6 +38,9 @@ import {
   httpFromForm,
   httpSchema,
   httpToForm,
+  humanInputFromForm,
+  humanInputSchema,
+  humanInputToForm,
   IF_ELSE_OPS,
   ifElseFromForm,
   ifElseSchema,
@@ -42,9 +48,16 @@ import {
   ITERATION_ERROR_MODES,
   iterationFromForm,
   iterationToForm,
+  LIST_SORT_ORDERS,
+  listOperatorFromForm,
+  listOperatorSchema,
+  listOperatorToForm,
   llmFromForm,
   llmSchema,
   llmToForm,
+  loopFromForm,
+  loopSchema,
+  loopToForm,
   opsFor,
   PARAM_TYPES,
   PROMPT_ROLES,
@@ -54,6 +67,10 @@ import {
   startToForm,
   templateFromForm,
   templateToForm,
+  TOOL_ARG_MODES,
+  toolFromForm,
+  toolSchema,
+  toolToForm,
   VAR_TYPE_OPTIONS,
 } from "./configSchemas";
 import { DEFAULT_SYSTEM_PROMPT, defaultConfig, PALETTE_ORDER } from "./nodeTypes";
@@ -100,6 +117,9 @@ function check(value: unknown, input: Schema, root: Schema, path: string, errors
       for (const [key, item] of Object.entries(record)) {
         if (properties[key]) check(item, properties[key], root, `${path}.${key}`, errors);
         else if (schema.additionalProperties === false) errors.push(`${path}.${key}: 모르는 키`);
+        else if (typeof schema.additionalProperties === "object") {
+          check(item, schema.additionalProperties as Schema, root, `${path}.${key}`, errors);
+        }
       }
       return;
     }
@@ -177,17 +197,27 @@ function problems(type: string, config: unknown): string[] {
   return errors;
 }
 
+// 경로의 "[]"는 배열 원소, "*"는 additionalProperties(이름이 정해지지 않은 키), anyOf는 null이 아닌 쪽이다.
 function enumAt(type: string, ...path: string[]): unknown[] {
   const root = schemas.get(type)!;
   let current: Schema = root;
   for (const key of path) {
     current = resolve(current, root);
+    if (Array.isArray(current.anyOf)) {
+      current = resolve(
+        (current.anyOf as Schema[]).find((option) => option.type !== "null")!,
+        root,
+      );
+    }
     if (key === "[]") current = current.items as Schema;
+    else if (key === "*") current = current.additionalProperties as Schema;
     else current = (current.properties as Record<string, Schema>)[key]!;
   }
   current = resolve(current, root);
   return (current.enum ?? []) as unknown[];
 }
+
+const tools = nodeTypeList.tools;
 
 const labels = { className: (n: number) => `분류 ${n}` };
 const AGENT_ID = "01a1391c-6458-7b30-9a21-310217cd8e29";
@@ -371,13 +401,76 @@ const SAMPLES: Record<
     },
     (c) => agentFromForm(agentToForm(c)),
   ],
+  loop: [
+    {
+      loop_vars: [
+        { name: "text", type: "string", value: "" },
+        { name: "n", type: "number", value: 0 },
+        { name: "topic", type: "string", var: "start.q" },
+        { name: "items", type: "array[string]", value: ["a"] },
+        { name: "last", type: "any", value: null },
+      ],
+      break_conditions: [
+        { var: "loop_1.n", op: "≥", value: "3" },
+        { var: "loop_start_1.index", op: "=", value: "2" },
+      ],
+      logical: "or",
+      max_iterations: 100,
+    },
+    (c) => loopFromForm(loopToForm(c)),
+  ],
+  list_operator: [
+    {
+      input_var: "start.docs",
+      filter: {
+        logical: "and",
+        conditions: [
+          { key: "extension", op: "=", value: "pdf" },
+          { key: "size", op: ">", value: "10" },
+          { key: "name", op: "in", value: ["a.pdf", "b.pdf"] },
+        ],
+      },
+      sort: { key: "size", order: "desc" },
+      slice: { offset: 1, limit: 2 },
+      extract_index: -1,
+    },
+    (c) => listOperatorFromForm(listOperatorToForm(c)),
+  ],
+  document_extractor: [
+    { file_var: "start.docs" },
+    (c) => documentExtractorFromForm(documentExtractorToForm(c)),
+  ],
+  tool: [
+    {
+      tool: "regex_extract",
+      params: {
+        text: { mode: "var", value: "start.q" },
+        pattern: { mode: "const", value: "\\d+" },
+        flags: { mode: "template", value: "{{ start.flags }}" },
+        group: { mode: "const", value: "" },
+      },
+    },
+    (c) => toolFromForm(toolToForm(c), tools),
+  ],
+  human_input: [
+    {
+      description: "앞부분: {{ llm_1.text }}",
+      fields: [
+        { name: "ok", type: "boolean", label: "괜찮은가", required: true, default: null },
+        { name: "note", type: "paragraph", label: "메모", required: false, max_length: 500 },
+        { name: "pick", type: "select", label: "", required: false, options: ["좋음", "나쁨"] },
+        { name: "proof", type: "file", label: "", required: false },
+      ],
+    },
+    (c) => humanInputFromForm(humanInputToForm(c)),
+  ],
 };
 
 describe("서버 config_schema 계약", () => {
   it("픽스처의 모든 타입에 폼이나 자리가 있다", () => {
     const types = nodeTypeList.items
       .map((item) => item.type)
-      .filter((type) => type !== "iteration_start");
+      .filter((type) => type !== "iteration_start" && type !== "loop_start");
     expect([...types].sort()).toEqual([...PALETTE_ORDER].sort());
     expect(Object.keys(SAMPLES).sort()).toEqual([...PALETTE_ORDER].sort());
   });
@@ -410,6 +503,46 @@ describe("서버 config_schema 계약", () => {
     same(VAR_TYPE_OPTIONS, enumAt("variable_aggregator", "output_type"));
     same(PARAM_TYPES, enumAt("parameter_extractor", "parameters", "[]", "type"));
     same(ITERATION_ERROR_MODES, enumAt("iteration", "error_mode"));
+    same(VAR_TYPE_OPTIONS, enumAt("loop", "loop_vars", "[]", "type"));
+    same(IF_ELSE_OPS, enumAt("loop", "break_conditions", "[]", "op"));
+    same(IF_ELSE_OPS, enumAt("list_operator", "filter", "conditions", "[]", "op"));
+    same(LIST_SORT_ORDERS, enumAt("list_operator", "sort", "order"));
+    same(TOOL_ARG_MODES, enumAt("tool", "params", "*", "mode"));
+    same(START_FIELD_TYPES, enumAt("human_input", "fields", "[]", "type"));
+  });
+
+  it("고정값으로 채운 도구 매개변수가 그 도구의 params_schema를 지킨다", () => {
+    const samples: Record<string, string> = {
+      timezone: "Asia/Seoul",
+      format: "%Y-%m-%d",
+      text: '{"a": 1}',
+      path: "a",
+      pattern: "\\d+",
+      flags: "i",
+      group: "1",
+      url: "https://example.com",
+      max_length: "5000",
+    };
+    for (const tool of tools) {
+      const form = {
+        tool: tool.name,
+        params: Object.fromEntries(
+          tool.params.map((param) => [
+            param.name,
+            { mode: "const" as const, value_text: samples[param.name] ?? "x" },
+          ]),
+        ),
+      };
+      const config = toolFromForm(form, tools);
+      const values = Object.fromEntries(
+        Object.entries(config.params).map(([name, arg]) => [name, arg.value]),
+      );
+      const errors: string[] = [];
+      const schema = tool.params_schema as Schema;
+      check(values, schema, schema, tool.name, errors);
+      expect(errors).toEqual([]);
+      expect(problems("tool", config)).toEqual([]);
+    }
   });
 
   it("새 llm 노드의 시스템 프롬프트가 서버 DEFAULT_SYSTEM_PROMPT와 같다", () => {
@@ -552,5 +685,101 @@ describe("폼 검증", () => {
     );
     expect(config.items[0]).toEqual({ target: "conv.a", op: "overwrite", var: "start.q" });
     expect("value" in config.items[0]!).toBe(false);
+  });
+
+  it("loop 안의 대입 노드는 반복 변수를 대상으로 받고 고정값을 그 타입으로 읽는다", () => {
+    const values = assignerToForm({
+      items: [
+        { target: "loop_1.n", op: "+=", value: 1 },
+        { target: "loop_1.text", op: "overwrite", value: "가" },
+        { target: "conv.topic", op: "overwrite", value: "x" },
+      ],
+    });
+    const inWorkflowLoop = assignerSchema(tw, { loopId: "loop_1", conv: false }).safeParse(values);
+    expect(inWorkflowLoop.error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "items.2.target",
+    ]);
+    expect(assignerSchema(tw, { loopId: "loop_1", conv: true }).safeParse(values).success).toBe(
+      true,
+    );
+    expect(assignerSchema(tw).safeParse(values).success).toBe(false);
+    const config = assignerFromForm(
+      { items: [{ ...values.items[1]!, value_text: "12" }] },
+      {},
+      { id: "loop_1", types: { text: "string" } },
+    );
+    expect(config.items[0]).toEqual({ target: "loop_1.text", op: "overwrite", value: "12" });
+  });
+
+  it("loop는 예약 이름·빈 변수·숫자가 아닌 처음 값을 막고 빈 칸은 null로 보낸다", () => {
+    const values = loopToForm({
+      loop_vars: [
+        { name: "loop_count", type: "number", value: 1 },
+        { name: "a", type: "string", var: "" },
+        { name: "b", type: "number", value: "x" },
+      ],
+    });
+    expect(
+      loopSchema(t, tw)
+        .safeParse(values)
+        .error!.issues.map((i) => i.path.join(".")),
+    ).toEqual(["loop_vars.0.name", "loop_vars.1.var", "loop_vars.2.value_text"]);
+    const config = loopFromForm({
+      ...values,
+      loop_vars: [{ name: "n", type: "number", source: "value", var: "", value_text: "" }],
+    });
+    expect(config.loop_vars).toEqual([{ name: "n", type: "number", value: null }]);
+  });
+
+  it("list_operator는 켠 단계만 보내고 켠 거르기에는 조건이 있어야 한다", () => {
+    const values = listOperatorToForm({ input_var: "start.items" });
+    expect(listOperatorFromForm(values)).toEqual({
+      input_var: "start.items",
+      filter: null,
+      sort: null,
+      slice: null,
+      extract_index: null,
+    });
+    const result = listOperatorSchema(t, tw).safeParse({ ...values, filter_enabled: true });
+    expect(result.error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "filter.conditions",
+    ]);
+    const sliced = listOperatorFromForm({
+      ...values,
+      slice_enabled: true,
+      slice: { offset: 2, limit: null },
+      extract_enabled: true,
+      extract_index: -1,
+    });
+    expect(sliced.slice).toEqual({ offset: 2, limit: null });
+    expect(sliced.extract_index).toBe(-1);
+  });
+
+  it("tool은 기본값 없는 필수 매개변수와 변수 형식을 보고 다른 도구의 매개변수는 버린다", () => {
+    const form = toolToForm({
+      tool: "json_parse",
+      params: {
+        text: { mode: "var", value: "not a selector" },
+        pattern: { mode: "const", value: "x" },
+      },
+    });
+    const result = toolSchema(t, tw, tools).safeParse(form);
+    expect(result.error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "params.text.value_text",
+    ]);
+    const empty = toolSchema(t, tw, tools).safeParse({
+      tool: "json_parse",
+      params: { text: { mode: "template", value_text: " " } },
+    });
+    expect(empty.error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "params.text.value_text",
+    ]);
+    expect(Object.keys(toolFromForm(form, tools).params).sort()).toEqual(["path", "text"]);
+    expect(toolSchema(t, tw, tools).safeParse({ tool: "", params: {} }).success).toBe(false);
+  });
+
+  it("human_input은 필드가 하나 이상이어야 한다", () => {
+    const result = humanInputSchema(t, tw).safeParse({ description: "", fields: [] });
+    expect(result.error!.issues.map((issue) => issue.path.join("."))).toEqual(["fields"]);
   });
 });

@@ -12,7 +12,13 @@ import {
   type ToolCallCompletedData,
 } from "./run-events.gen";
 
-export type { MessageFileData, RunErrorData, UsageTotal } from "./run-events.gen";
+export type {
+  MessageFileData,
+  RunErrorData,
+  UsageTotal,
+  WorkflowFormData,
+  WorkflowFormField,
+} from "./run-events.gen";
 
 export type ToolCallResult = ToolCallCompletedData["status"];
 export type InteractionKind = RunWaitingInputData["kind"];
@@ -67,6 +73,15 @@ export type InteractionInput =
   | { answer: string }
   | { decision: "approve"; session_auto_approve?: boolean }
   | { decision: "reject"; note?: string | null };
+
+// human_input 노드의 폼 응답(워크플로우 런만, M19). values는 필드 이름 → 값이고 파일 칸은 올린 wf 파일 id다.
+export interface FormInput {
+  kind: "form";
+  values: Record<string, unknown>;
+}
+
+// 워크플로우 런의 /input 응답. 에이전트 런(1단계)은 폼이 없어 InteractionInput만 받는다.
+export type WfInteractionInput = InteractionInput | FormInput;
 
 // 런은 언제나 완료 이벤트(에이전트 런 run.completed, 워크플로우 런 workflow.completed)로 끝나고 서버가 그
 // 뒤에 SSE를 닫는다. run.error·workflow.error 뒤에도 완료 이벤트(failed)가 온다.

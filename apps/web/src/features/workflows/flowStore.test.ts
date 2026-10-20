@@ -257,6 +257,49 @@ describe("flowStore", () => {
     ]);
   });
 
+  it("저장 응답에서 answer 노드의 미리 흘리기 표시만 옮기고 저장할 변경으로 치지 않는다", () => {
+    const store = createFlowStore("w1", "chatflow");
+    const base = draft();
+    const answer = {
+      id: "answer_1",
+      type: "answer",
+      version: 1,
+      title: "답변",
+      config: { text: "{{ llm_1.text }}" },
+      position: { x: 300, y: 0 },
+    };
+    store.getState().actions.load({
+      ...base,
+      kind: "chatflow",
+      graph: { ...base.graph, nodes: [...(base.graph.nodes ?? []), answer] },
+    });
+    const before = store.getState();
+    store.getState().actions.updateNode("start", { title: "처음" });
+    const revision = store.getState().revision;
+    const saved = {
+      ...base,
+      kind: "chatflow" as const,
+      updated_at: "2026-10-14T00:00:01Z",
+      issues: [],
+      graph: {
+        ...base.graph,
+        nodes: [...(base.graph.nodes ?? []), { ...answer, ui: { prestream_sources: ["llm_1"] } }],
+      },
+    };
+    store.getState().actions.markSaved(revision, saved);
+    const state = store.getState();
+    expect(isDirty(state)).toBe(false);
+    expect(state.revision).toBe(revision);
+    expect(state.past).toHaveLength(before.past.length + 1);
+    expect(state.graph.nodes.find((node) => node.id === "answer_1")!.ui).toEqual({
+      prestream_sources: ["llm_1"],
+    });
+    // 같은 값이면 그래프를 새로 만들지 않는다(카드가 다시 그려지지 않게).
+    const graph = state.graph;
+    store.getState().actions.markSaved(revision, saved);
+    expect(store.getState().graph).toBe(graph);
+  });
+
   it("저장 응답의 updated_at과 이슈를 받는다", () => {
     const { store, actions } = setup();
     actions.updateNode("start", { title: "처음" });

@@ -8,7 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
-import { nodeRunRequest, uploadWorkflowFile, useNodeTypes } from "@/features/workflows/api";
+import {
+  nodeRunRequest,
+  uploadWorkflowFile,
+  useNodeTypes,
+  useToolSpecs,
+} from "@/features/workflows/api";
 import { useFlow, useFlowActions } from "@/features/workflows/flowStoreContext";
 import { nodeById, referencedVariables, type ReferencedVar } from "@/features/workflows/graph";
 import "@/features/workflows/i18n";
@@ -165,14 +170,16 @@ function SingleRunBody({
   const graph = useFlow((state) => state.graph);
   const conversationVars = useFlow((state) => state.conversationVars);
   const nodeTypes = useNodeTypes();
+  const tools = useToolSpecs();
   const node = nodeById(graph, nodeId);
   const variables = useMemo(
     () =>
       referencedVariables(graph, nodeId, kind, {
         nodeTypes: nodeTypes.data,
+        tools: tools.data,
         conversationVars,
       }),
-    [graph, nodeId, kind, nodeTypes.data, conversationVars],
+    [graph, nodeId, kind, nodeTypes.data, tools.data, conversationVars],
   );
   const storageKey = singleRunStorageKey(workflowId, nodeId);
   const [values, setValues] = useState<Record<string, FieldValue>>(() => loadSaved(storageKey));
