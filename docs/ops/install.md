@@ -26,7 +26,7 @@ cp .env.example .env
 
 비공개 저장소라 처음 받을 때 GitHub 로그인이 필요하다. `.env`는 저장소에 올라가지 않는 파일이다. VS Code 같은 편집기로 열어서 값을 채운다. PowerShell의 `>`로 만들면 UTF-16 파일이 되어 서버가 읽지 못한다. 꼭 채울 것은 `ENCRYPTION_KEY`, `GEMINI_API_KEYS`, `DATA_DIR`이고 나머지는 기본값 그대로 두면 된다. 각 항목의 뜻은 `.env.example`의 주석에 있다.
 
-`ENCRYPTION_KEY`는 에이전트 환경변수의 비밀값을 암호화하는 키다. 아래 명령이 찍는 한 줄을 그대로 붙여 넣는다. 이 키를 잃으면 암호화된 값을 되살릴 수 없으니 `.env`와 별개로 한 군데 더 보관한다([backup-restore.md](backup-restore.md#키-보관과-fingerprint)).
+`ENCRYPTION_KEY`는 에이전트와 워크플로우의 환경변수 중 비밀값을 암호화하는 키다. 아래 명령이 찍는 한 줄을 그대로 붙여 넣는다. 이 키를 잃으면 암호화된 값을 되살릴 수 없으니 `.env`와 별개로 한 군데 더 보관한다([backup-restore.md](backup-restore.md#키-보관과-fingerprint)).
 
 ```bash
 python -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())"
@@ -35,6 +35,19 @@ python -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32))
 `GEMINI_API_KEYS`에는 Gemini API 키를 넣는다. 쉼표로 여러 개를 이으면 앞에서부터 쓰다가 429를 받으면 다음 키로 넘어간다. `DATA_DIR`은 DB, 파일, 작업공간이 쌓이는 폴더이고 `C:\wf-data`처럼 짧은 절대 경로로 둔다. 따옴표는 붙이지 않는다. 작업공간 안의 패키지 경로가 Windows의 260자 제한에 걸리지 않게 하려는 것이라 80자를 넘으면 `doctor`가 경고한다. 비워 두면 저장소의 `data`를 쓴다.
 
 키 없이 화면부터 둘러보고 싶으면 `GEMINI_API_KEYS`는 비워 두고 `LLM_FAKE=true`를 넣는다. 모델 대신 정해진 각본이 답하는 가짜 어댑터라 실제 모델은 부르지 않는다. 실제로 쓸 때는 지운다.
+
+2단계(워크플로우)에서 `.env`에 늘어난 항목이 아래 여섯 개다. 모두 기본값 그대로 두면 되고, 1단계 때 만든 `.env`에 이 줄이 없어도 기본값으로 돈다. 고쳤다면 서버를 다시 띄워야 반영된다.
+
+| 이름 | 기본값 | 뜻 |
+|---|---|---|
+| `RUNNER_MAX_CONCURRENT_WORKFLOW_RUNS` | 1 | 동시에 돌리는 워크플로우 런 수. 에이전트 런(`RUNNER_MAX_CONCURRENT_RUNS`)과 줄이 따로라 채팅 런과 워크플로우 런은 겹쳐 돌 수 있다 |
+| `WF_MAX_PARALLEL_NODES` | 4 | 런 하나에서 동시에 도는 노드 수(1~16). code 노드는 이 값과 상관없이 한 번에 하나만 돈다. PC가 빠듯하면 낮춘다 |
+| `WF_CODE_TIMEOUT_SEC` | 30 | code 노드에 시간 제한을 따로 정하지 않았을 때의 시간 상한(초, 1~60). 노드마다 60초까지 따로 정할 수 있다 |
+| `WF_VARIABLE_POOL_MAX_MB` | 16 | 런 하나가 쥘 수 있는 변수 값(노드 출력, 환경·대화 변수 등)의 합계 상한(MB, 1~256). 넘으면 `variable_pool_limit`으로 실패한다 |
+| `WF_CHECKPOINT_INTERVAL_SEC` | 0 | 도는 중에 런 상태(체크포인트)를 저장하는 간격(초). 0이면 입력 대기로 멈추기 직전과 실패했을 때만 저장한다. 서버를 다시 띄워도 도는 런을 이어 하지 않아서 0으로 둔다 |
+| `ORCHESTRATION_MAX_DEPTH` | 2 | 지휘자 에이전트가 하위 에이전트를 부를 수 있는 깊이(1~3). 지휘자가 0, 그 자식이 1, 손자가 2이고 이 깊이에 닿은 런에는 `call_agent` 도구가 붙지 않는다 |
+
+설치 절차는 그대로다. DSL용 PyYAML과 화면의 캔버스 라이브러리(`@xyflow/react`)가 늘었지만 아래 `uv sync`와 `pnpm install`에 들어 있다. 1단계 위에 2단계 코드를 받았다면 두 명령과 화면 build를 다시 돌린다.
 
 의존성을 받고 화면을 빌드한다. 처음 쓰는 `corepack pnpm`은 pnpm을 내려받으므로 인터넷이 필요하다.
 
@@ -68,7 +81,7 @@ uv run platform serve
 
 ## 백신 검사 제외
 
-작업공간 폴더는 에이전트가 만든 파일과 설치한 패키지로 파일이 많이 생기고 지워지는 곳이다. 백신이나 검색 인덱서가 그 파일을 잡고 있으면 삭제, 복원, 스냅샷이 실패할 수 있어서 `DATA_DIR` 아래 `workspaces`(예: `C:\wf-data\workspaces`)는 검사 제외에 넣어 두는 게 좋다. Windows 보안의 바이러스 및 위협 방지에서 설정 관리 → 제외 항목 추가 또는 제거 → 폴더로 추가한다. 정책 때문에 못 넣는 PC에서도 쓸 수는 있다. 잠겨서 못 지운 작업공간 폴더는 서버가 `.deleted-` 이름으로 바꿔 두었다가 매시 다시 지운다.
+작업공간 폴더는 에이전트가 만든 파일과 설치한 패키지로 파일이 많이 생기고 지워지는 곳이다. 백신이나 검색 인덱서가 그 파일을 잡고 있으면 삭제, 복원, 스냅샷이 실패할 수 있어서 `DATA_DIR` 아래 `workspaces`(예: `C:\wf-data\workspaces`)는 검사 제외에 넣어 두는 게 좋다. Windows 보안의 바이러스 및 위협 방지에서 설정 관리 → 제외 항목 추가 또는 제거 → 폴더로 추가한다. 정책 때문에 못 넣는 PC에서도 쓸 수는 있다. 잠겨서 못 지운 작업공간 폴더는 서버가 `.deleted-` 이름으로 바꿔 두었다가 매시 다시 지운다. 워크플로우의 code 노드가 스크립트를 쓰고 지우는 `wf-workspaces`(예: `C:\wf-data\wf-workspaces`)도 같은 이유로 넣어 두면 좋다.
 
 ## 문제가 생기면
 
