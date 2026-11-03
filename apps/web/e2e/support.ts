@@ -50,8 +50,8 @@ export async function fakeLlm(request: APIRequestContext): Promise<boolean> {
   return models.ok() && Boolean((await models.json()).fake);
 }
 
-// 앞 시험이 대기열에 남긴 런이 다음 시험을 늦추지 않게 워커가 빌 때까지 기다린다. 레인은 에이전트와
-// 워크플로우 둘이다.
+// 앞 시험이 대기열에 남긴 런이 다음 시험을 늦추지 않게 워커가 빌 때까지 기다린다. 레인은 에이전트,
+// 워크플로우, 지식(문서 색인) 셋이다.
 export async function waitRunnerIdle(request: APIRequestContext): Promise<void> {
   await expect
     .poll(
@@ -61,7 +61,9 @@ export async function waitRunnerIdle(request: APIRequestContext): Promise<void> 
           runner.agent.active +
           runner.agent.queued +
           runner.workflow.active +
-          runner.workflow.queued
+          runner.workflow.queued +
+          runner.knowledge.active +
+          runner.knowledge.queued
         );
       },
       { timeout: 30_000 },

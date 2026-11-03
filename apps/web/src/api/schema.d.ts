@@ -1599,6 +1599,545 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/console/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Knowledge Bases
+         * @description 살아 있는 지식 베이스. 문서·청크 수와 대기·색인 중인 문서 수가 붙는다.
+         */
+        get: operations["list_knowledge_bases_api_console_knowledge_get"];
+        put?: never;
+        /**
+         * Create Knowledge Base
+         * @description data_policy.acknowledged가 참이어야 만든다. key_tier=paid는 GEMINI_PAID_API_KEY가 있어야 하고
+         *     없으면 422 paid_key_missing이다. doc_form은 만든 뒤 바꿀 수 없다.
+         */
+        post: operations["create_knowledge_base_api_console_knowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Base */
+        get: operations["get_knowledge_base_api_console_knowledge__kb_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Knowledge Base
+         * @description 소프트 삭제. 문서와 색인은 뒤에서 정리되고 이 KB의 API 키는 바로 폐기된다.
+         */
+        delete: operations["delete_knowledge_base_api_console_knowledge__kb_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Knowledge Base
+         * @description embedding을 바꾸면 confirm_reembed가 참이어야 하고(아니면 409 reembed_confirmation_required)
+         *     모든 문서가 waiting으로 돌아가 벡터를 다시 만든다. economy → high_quality도 같다. 반대 방향은
+         *     422 downgrade_not_allowed다.
+         */
+        patch: operations["patch_knowledge_base_api_console_knowledge__kb_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Metadata Fields */
+        get: operations["list_metadata_fields_api_console_knowledge__kb_id__metadata_get"];
+        put?: never;
+        /**
+         * Create Metadata Field
+         * @description 이름은 [a-z][a-z0-9_]* 40자 이하이고 기본 필드 이름은 쓸 수 없다. 타입은 바꿀 수 없다.
+         */
+        post: operations["create_metadata_field_api_console_knowledge__kb_id__metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/metadata/{field_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Metadata Field
+         * @description 필드와 문서들의 그 값을 함께 지운다.
+         */
+        delete: operations["delete_metadata_field_api_console_knowledge__kb_id__metadata__field_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Metadata Field */
+        patch: operations["rename_metadata_field_api_console_knowledge__kb_id__metadata__field_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/metadata/built-in/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toggle Built In Fields
+         * @description 기본 필드(document_name, uploader, upload_date, last_update_date, source)를 켜면 만들고
+         *     지금 문서들의 값을 채운다. 끄면 필드와 값을 지운다.
+         */
+        post: operations["toggle_built_in_fields_api_console_knowledge__kb_id__metadata_built_in__action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description 지우지 않은 문서(최근 것부터). status는 Dify의 display_status 값이다.
+         */
+        get: operations["list_documents_api_console_knowledge__kb_id__documents_get"];
+        put?: never;
+        /**
+         * Create Documents
+         * @description 파일(multipart files, X-Requested-With: fetch)이나 글(JSON {name, text})로 문서를 만든다.
+         *
+         *     문서는 waiting으로 생기고 한 요청의 문서는 batch 하나로 묶인다. 같은 KB에 내용이 같은 문서가
+         *     있으면 409 duplicate_document(allow_duplicate로 넘긴다). txt·md·csv·html·pdf·docx가 아니면
+         *     415, 파일이 KB_UPLOAD_MAX_MB를 넘으면 413이다.
+         */
+        post: operations["create_documents_api_console_knowledge__kb_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Document
+         * @description 파싱·정리·분할을 요청 안에서 돌려 앞 청크와 개수·추정 토큰·예상 소요(분)를 돌려준다.
+         *
+         *     저장하지 않는다. 예상 소요는 분당 인제스트 몫으로만 나눈 값이라 일일 한도는 넣지 않았다.
+         */
+        post: operations["preview_document_api_console_knowledge__kb_id__documents_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/status/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Document Status
+         * @description enable·disable·archive·unarchive·pause·resume·retry. 맞지 않는 상태의 문서는 skipped에 있다.
+         *
+         *     색인 중인 문서는 enable·disable·archive가 400 document_indexing이고 pause만 된다. 일일 한도로
+         *     끝난 문서의 retry는 태평양 자정 전이면 skipped(retry_after)다.
+         */
+        post: operations["update_document_status_api_console_knowledge__kb_id__documents_status__action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Document
+         * @description 원본에서 처음부터 다시 나눈다. extract_mode=model은 스캔 PDF를 채팅 모델로 읽는다(PDF만,
+         *     쪽 이미지가 채팅 모델로 간다).
+         */
+        post: operations["reindex_document_api_console_knowledge__kb_id__documents__document_id__reindex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Document Metadata
+         * @description 고른 문서들의 메타데이터 값을 한꺼번에 넣는다. value가 null이면 지운다. apply_to_all을 끄면
+         *     그 필드에 이미 값이 있는 문서만 바꾼다. 기본 필드는 고칠 수 없다(400 metadata_built_in).
+         */
+        post: operations["update_document_metadata_api_console_knowledge__kb_id__documents_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document */
+        get: operations["get_document_api_console_knowledge__kb_id__documents__document_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document
+         * @description 바로 돌아오고 청크·색인·원본은 뒤에서 지운다. 되돌릴 수 없다.
+         */
+        delete: operations["delete_document_api_console_knowledge__kb_id__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document
+         * @description 이름 바꾸기. 보관한 문서는 400 document_archived다.
+         */
+        patch: operations["patch_document_api_console_knowledge__kb_id__documents__document_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Segments
+         * @description 위치 순. Parent-child 문서는 청크마다 child_chunks가 붙는다.
+         */
+        get: operations["list_segments_api_console_knowledge__kb_id__documents__document_id__segments_get"];
+        put?: never;
+        /**
+         * Create Segment
+         * @description 문서 끝에 청크를 더한다(Q&A는 answer 필수). 색인 중인 문서는 400 document_indexing이다.
+         */
+        post: operations["create_segment_api_console_knowledge__kb_id__documents__document_id__segments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}/segments/{segment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Segment */
+        get: operations["get_segment_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Segment */
+        delete: operations["delete_segment_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Segment
+         * @description 글을 고치면 그 유닛의 색인이 pending으로 돌아간다. enabled는 색인이 끝난 청크만 바꾼다.
+         */
+        patch: operations["patch_segment_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}/segments/{segment_id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Child Chunks */
+        get: operations["list_child_chunks_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children_get"];
+        put?: never;
+        /**
+         * Create Child Chunk
+         * @description Parent-child 문서의 부모 청크에 자식 청크를 더한다. 다른 모드는 400 not_hierarchical이다.
+         */
+        post: operations["create_child_chunk_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}/segments/{segment_id}/children/{child_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Child Chunk */
+        delete: operations["delete_child_chunk_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children__child_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Child Chunk */
+        patch: operations["patch_child_chunk_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children__child_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retrieve
+         * @description 검색 시험. retrieval_model을 비우면 KB의 검색 설정이고, 저장하지 않는다.
+         *
+         *     records에 결합 내역(fusion: 코사인 원값, 벡터·전문 점수)과 문서 색인 상태가 붙는다. 질의
+         *     임베딩이 실패한 하이브리드는 전문 검색만으로 답하고 warnings에 vector_unavailable이 남는다.
+         */
+        post: operations["retrieve_api_console_knowledge__kb_id__retrieve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/query-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Query Logs
+         * @description 최근 질의부터. KB_QUERY_LOG_DAYS가 0이면 기록이 쌓이지 않는다.
+         */
+        get: operations["list_query_logs_api_console_knowledge__kb_id__query_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/eval/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Eval Cases */
+        get: operations["list_eval_cases_api_console_knowledge__kb_id__eval_cases_get"];
+        put?: never;
+        /**
+         * Create Eval Case
+         * @description 정답은 이 KB의 문서나 청크다. 문서 정답이면 그 문서의 어느 청크든 맞은 것으로 본다.
+         */
+        post: operations["create_eval_case_api_console_knowledge__kb_id__eval_cases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/eval/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Eval Case */
+        delete: operations["delete_eval_case_api_console_knowledge__kb_id__eval_cases__case_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/eval/cases/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Eval Cases
+         * @description CSV 머리글은 question과 expected_document_name 또는 expected_segment_id, 선택 note다.
+         *
+         *     문서 이름이 없거나 형식이 틀린 줄은 넣지 않고 problems에 줄 번호로 남긴다. replace면 지금
+         *     평가셋을 지우고 넣는다.
+         */
+        post: operations["import_eval_cases_api_console_knowledge__kb_id__eval_cases_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/eval/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Eval
+         * @description 평가셋 전체를 그 설정으로 검색해 R@1·R@3·R@5·MRR@10과 질문별 순위를 낸다.
+         *
+         *     save면 결과를 남긴다(KB마다 최근 30개). 질의 임베딩은 LRU에 남아 설정만 바꿔 다시 돌리면 호출이
+         *     없다.
+         */
+        post: operations["run_eval_api_console_knowledge__kb_id__eval_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/eval/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Eval Runs */
+        get: operations["list_eval_runs_api_console_knowledge__kb_id__eval_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/eval/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Eval Run */
+        get: operations["get_eval_run_api_console_knowledge__kb_id__eval_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Api Keys */
+        get: operations["list_api_keys_api_console_knowledge__kb_id__api_keys_get"];
+        put?: never;
+        /**
+         * Create Api Key
+         * @description 이 KB 하나만 보는 키(8.5). 권한은 knowledge뿐이고 키 원문은 이 응답에만 있다.
+         */
+        post: operations["create_api_key_api_console_knowledge__kb_id__api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Api Key */
+        delete: operations["revoke_api_key_api_console_knowledge__kb_id__api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/web/apps/{slug}": {
         parameters: {
             query?: never;
@@ -2421,6 +2960,381 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Datasets
+         * @description 키에 묶인 지식 베이스 하나. 워크스페이스 전체 범위 키는 없다(8.5).
+         */
+        get: operations["list_datasets_api_v1_datasets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset */
+        get: operations["get_dataset_api_v1_datasets__dataset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retrieve
+         * @description 검색(Dify retrieve). retrieval_model은 우리 모양과 Dify 모양을 다 받고, 비우면 KB 설정이다.
+         *
+         *     메타데이터 조건은 metadata_filtering_conditions(또는 Dify처럼 retrieval_model 안)로 준다. 자동
+         *     필터(mode=automatic)는 KB 키로 채팅 호출을 쓰게 되므로 받지 않는다(422).
+         */
+        post: operations["retrieve_api_v1_datasets__dataset_id__retrieve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/document/create-by-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create By Text
+         * @description 글 하나로 문서를 만든다. 색인은 지식 레인이 뒤에서 하고 batch로 상태를 본다.
+         *
+         *     doc_metadata는 이 KB에 있는 필드 이름 → 값이다. 없는 필드면 문서를 만들지 않고 422다.
+         */
+        post: operations["create_by_text_api_v1_datasets__dataset_id__document_create_by_text_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/document/create-by-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create By File
+         * @description multipart file 하나와 선택 칸 data(JSON 옵션)로 문서를 만든다. 형식·크기 제한은 콘솔과 같다
+         *     (txt·md·csv·html·pdf·docx가 아니면 415, KB_UPLOAD_MAX_MB를 넘으면 413).
+         */
+        post: operations["create_by_file_api_v1_datasets__dataset_id__document_create_by_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}/update-by-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update By Text
+         * @description 원본을 새 글로 바꾸고 다시 색인한다. 문서 id·메타데이터는 그대로다.
+         *
+         *     색인 중이면 400 document_indexing, 보관 문서면 400 document_archived, 같은 KB의 다른 문서와
+         *     내용이 같으면 409 duplicate_document다.
+         */
+        post: operations["update_by_text_api_v1_datasets__dataset_id__documents__document_id__update_by_text_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}/update-by-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update By File
+         * @description 원본을 새 파일(multipart file, 선택 칸 data)로 바꾸고 다시 색인한다. 형식·크기 제한과 오류는
+         *     create-by-file과 update-by-text를 합친 것이다.
+         */
+        post: operations["update_by_file_api_v1_datasets__dataset_id__documents__document_id__update_by_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description 지우지 않은 문서(최근 것부터). status는 display_status 값이다.
+         */
+        get: operations["list_documents_api_v1_datasets__dataset_id__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{batch}/indexing-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Indexing Status
+         * @description create-by-* 응답의 batch로 묶인 문서들의 색인 상태와 진행(completed/total_segments).
+         */
+        get: operations["indexing_status_api_v1_datasets__dataset_id__documents__batch__indexing_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/status/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Document Status
+         * @description 문서 켜기·끄기·보관·보관 풀기(Dify 이름). 색인 중인 문서가 있으면 400 document_indexing.
+         *
+         *     상태가 맞지 않아 건너뛴 문서는 skipped에 사유와 함께 남는다.
+         */
+        patch: operations["change_document_status_api_v1_datasets__dataset_id__documents_status__action__patch"];
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document */
+        delete: operations["delete_document_api_v1_datasets__dataset_id__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Segments */
+        get: operations["list_segments_api_v1_datasets__dataset_id__documents__document_id__segments_get"];
+        put?: never;
+        /**
+         * Create Segments
+         * @description 청크를 차례로 더한다(한 번에 1,000개까지). 중간에 실패하면 그 앞까지는 남는다.
+         */
+        post: operations["create_segments_api_v1_datasets__dataset_id__documents__document_id__segments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}/segments/{segment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Segment */
+        get: operations["get_segment_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__get"];
+        put?: never;
+        /**
+         * Update Segment
+         * @description Dify처럼 POST {segment: {...}}로 고친다.
+         */
+        post: operations["update_segment_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__post"];
+        /** Delete Segment */
+        delete: operations["delete_segment_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}/segments/{segment_id}/child_chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Child Chunks */
+        get: operations["list_child_chunks_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks_get"];
+        put?: never;
+        /** Create Child Chunk */
+        post: operations["create_child_chunk_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/{document_id}/segments/{segment_id}/child_chunks/{child_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Child Chunk */
+        delete: operations["delete_child_chunk_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks__child_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Child Chunk */
+        patch: operations["update_child_chunk_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks__child_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Metadata */
+        get: operations["list_metadata_api_v1_datasets__dataset_id__metadata_get"];
+        put?: never;
+        /** Create Metadata */
+        post: operations["create_metadata_api_v1_datasets__dataset_id__metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/metadata/{field_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Metadata */
+        delete: operations["delete_metadata_api_v1_datasets__dataset_id__metadata__field_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Metadata */
+        patch: operations["rename_metadata_api_v1_datasets__dataset_id__metadata__field_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/metadata/built-in/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Toggle Built In */
+        post: operations["toggle_built_in_api_v1_datasets__dataset_id__metadata_built_in__action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/documents/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Document Metadata */
+        post: operations["update_document_metadata_api_v1_datasets__dataset_id__documents_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2798,7 +3712,7 @@ export interface components {
             /** Name */
             name: string;
             /** Scopes */
-            scopes?: ("chat" | "tasks" | "workflow")[] | null;
+            scopes?: ("chat" | "tasks" | "workflow" | "knowledge")[] | null;
             /** Expires At */
             expires_at?: string | null;
         };
@@ -2813,6 +3727,8 @@ export interface components {
             agent_id: string | null;
             /** Workflow Id */
             workflow_id?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id?: string | null;
             /** Name */
             name: string;
             /** Key Prefix */
@@ -2849,6 +3765,8 @@ export interface components {
             agent_id: string | null;
             /** Workflow Id */
             workflow_id?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id?: string | null;
             /** Name */
             name: string;
             /** Key Prefix */
@@ -2930,6 +3848,98 @@ export interface components {
             status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
             pending_interaction?: components["schemas"]["PendingInteractionOut"] | null;
             error?: components["schemas"]["RunErrorOut"] | null;
+        };
+        /** ChildChunkCreate */
+        ChildChunkCreate: {
+            /** Content */
+            content: string;
+        };
+        /** ChildChunkHit */
+        ChildChunkHit: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Content */
+            content: string;
+            /** Position */
+            position: number;
+            /** Score */
+            score: number;
+        };
+        /** ChildChunkList */
+        ChildChunkList: {
+            /** Items */
+            items: components["schemas"]["ChildChunkOut"][];
+        };
+        /** ChildChunkOut */
+        ChildChunkOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /** Position */
+            position: number;
+            /** Unit No */
+            unit_no: number;
+            /** Content */
+            content: string;
+            /** Tokens */
+            tokens: number;
+            /** Index State */
+            index_state: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @enum {string}
+             */
+            created_by: "automatic" | "customized";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ChildChunkPatch */
+        ChildChunkPatch: {
+            /** Content */
+            content: string;
+        };
+        /** ChildChunking */
+        ChildChunking: {
+            /** Separators */
+            separators?: string[];
+            /**
+             * Max Tokens
+             * @default 256
+             */
+            max_tokens: number;
+        };
+        /** CleaningRules */
+        CleaningRules: {
+            /**
+             * Remove Extra Spaces
+             * @default true
+             */
+            remove_extra_spaces: boolean;
+            /**
+             * Remove Urls Emails
+             * @default false
+             */
+            remove_urls_emails: boolean;
         };
         /** ConversationDetail */
         ConversationDetail: {
@@ -3034,6 +4044,326 @@ export interface components {
             /** Value */
             value?: unknown;
         };
+        /** DataPolicy */
+        DataPolicy: {
+            /**
+             * Key Tier
+             * @default free
+             * @enum {string}
+             */
+            key_tier: "free" | "paid";
+            /** Acknowledged At */
+            acknowledged_at?: string | null;
+        };
+        /** DataPolicyIn */
+        DataPolicyIn: {
+            /**
+             * Key Tier
+             * @default free
+             * @enum {string}
+             */
+            key_tier: "free" | "paid";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /** DatasetChildChunkList */
+        DatasetChildChunkList: {
+            /** Data */
+            data: components["schemas"]["ChildChunkOut"][];
+            /** Total */
+            total: number;
+        };
+        /** DatasetChildChunkOut */
+        DatasetChildChunkOut: {
+            data: components["schemas"]["ChildChunkOut"];
+        };
+        /** DatasetDocumentCreated */
+        DatasetDocumentCreated: {
+            document: components["schemas"]["KbDocumentOut"];
+            /** Batch */
+            batch: string;
+        };
+        /** DatasetDocumentList */
+        DatasetDocumentList: {
+            /** Data */
+            data: components["schemas"]["KbDocumentOut"][];
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+        };
+        /** DatasetIndexingStatus */
+        DatasetIndexingStatus: {
+            /** Data */
+            data: components["schemas"]["DatasetIndexingStatusItem"][];
+        };
+        /** DatasetIndexingStatusItem */
+        DatasetIndexingStatusItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Indexing Status
+             * @enum {string}
+             */
+            indexing_status: "waiting" | "parsing" | "cleaning" | "splitting" | "indexing" | "completed" | "error" | "paused";
+            /** Processing Started At */
+            processing_started_at: string | null;
+            /** Parsing Completed At */
+            parsing_completed_at: string | null;
+            /** Cleaning Completed At */
+            cleaning_completed_at: string | null;
+            /** Splitting Completed At */
+            splitting_completed_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Paused At */
+            paused_at: string | null;
+            /** Stopped At */
+            stopped_at: string | null;
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            /** Completed Segments */
+            completed_segments: number;
+            /** Total Segments */
+            total_segments: number;
+        };
+        /** DatasetList */
+        DatasetList: {
+            /** Data */
+            data: components["schemas"]["DatasetOut"][];
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+        };
+        /**
+         * DatasetOut
+         * @description 지식 베이스 하나(Dify datasets 필드명).
+         */
+        DatasetOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Indexing Technique
+             * @enum {string}
+             */
+            indexing_technique: "high_quality" | "economy";
+            /**
+             * Doc Form
+             * @enum {string}
+             */
+            doc_form: "text_model" | "hierarchical_model" | "qa_model";
+            /** Embedding Model */
+            embedding_model: string | null;
+            /** Embedding Model Provider */
+            embedding_model_provider: string | null;
+            retrieval_model: components["schemas"]["RetrievalSettings"];
+            /** Document Count */
+            document_count: number;
+            /** Word Count */
+            word_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DatasetRetrieveRequest
+         * @description Dify retrieve 요청. retrieval_model은 우리 모양과 Dify 모양을 다 받는다.
+         */
+        DatasetRetrieveRequest: {
+            /** Query */
+            query: string;
+            retrieval_model?: components["schemas"]["RetrievalSettings"] | null;
+            metadata_filtering_conditions?: components["schemas"]["MetadataFilter"] | null;
+        };
+        /** DatasetSegmentList */
+        DatasetSegmentList: {
+            /** Data */
+            data: components["schemas"]["SegmentOut"][];
+            /**
+             * Doc Form
+             * @enum {string}
+             */
+            doc_form: "text_model" | "hierarchical_model" | "qa_model";
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+        };
+        /** DatasetSegmentOut */
+        DatasetSegmentOut: {
+            data: components["schemas"]["SegmentOut"];
+            /**
+             * Doc Form
+             * @enum {string}
+             */
+            doc_form: "text_model" | "hierarchical_model" | "qa_model";
+        };
+        /** DatasetSegmentUpdate */
+        DatasetSegmentUpdate: {
+            segment: components["schemas"]["SegmentPatch"];
+        };
+        /** DatasetSegmentsCreate */
+        DatasetSegmentsCreate: {
+            /** Segments */
+            segments: components["schemas"]["SegmentCreate"][];
+        };
+        /** DatasetSegmentsCreated */
+        DatasetSegmentsCreated: {
+            /** Data */
+            data: components["schemas"]["SegmentOut"][];
+            /**
+             * Doc Form
+             * @enum {string}
+             */
+            doc_form: "text_model" | "hierarchical_model" | "qa_model";
+        };
+        /** DatasetStatusChange */
+        DatasetStatusChange: {
+            /** Document Ids */
+            document_ids: string[];
+        };
+        /** DatasetStatusResult */
+        DatasetStatusResult: {
+            /**
+             * Result
+             * @default success
+             * @constant
+             */
+            result: "success";
+            /** Skipped */
+            skipped?: components["schemas"]["DocumentStatusSkip"][];
+        };
+        /** DocumentMetadataList */
+        DocumentMetadataList: {
+            /** Items */
+            items: components["schemas"]["DocumentMetadataOut"][];
+        };
+        /** DocumentMetadataOut */
+        DocumentMetadataOut: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Doc Metadata */
+            doc_metadata: components["schemas"]["DocumentMetadataValue"][];
+        };
+        /** DocumentMetadataUpdate */
+        DocumentMetadataUpdate: {
+            /** Document Ids */
+            document_ids: string[];
+            /** Values */
+            values: components["schemas"]["MetadataValueIn"][];
+            /**
+             * Apply To All
+             * @default false
+             */
+            apply_to_all: boolean;
+        };
+        /** DocumentMetadataValue */
+        DocumentMetadataValue: {
+            /**
+             * Field Id
+             * Format: uuid
+             */
+            field_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "time";
+            /** Built In */
+            built_in: boolean;
+            /** Value */
+            value: string | number | null;
+        };
+        /** DocumentPreview */
+        DocumentPreview: {
+            /** Chunks */
+            chunks: components["schemas"]["PreviewChunk"][];
+            /** Total Chunks */
+            total_chunks: number;
+            /** Total Child Chunks */
+            total_child_chunks: number;
+            /** Tokens */
+            tokens: number;
+            /** Estimated Minutes */
+            estimated_minutes: number;
+            /** Extract */
+            extract: {
+                [key: string]: unknown;
+            };
+            /** Warnings */
+            warnings: string[];
+        };
+        /** DocumentReindex */
+        DocumentReindex: {
+            /** Extract Mode */
+            extract_mode?: ("text" | "model") | null;
+        };
+        /** DocumentStatusResult */
+        DocumentStatusResult: {
+            /** Items */
+            items: components["schemas"]["KbDocumentOut"][];
+            /** Skipped */
+            skipped: components["schemas"]["DocumentStatusSkip"][];
+        };
+        /** DocumentStatusSkip */
+        DocumentStatusSkip: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Retry After */
+            retry_after?: string | null;
+        };
+        /** DocumentStatusUpdate */
+        DocumentStatusUpdate: {
+            /** Document Ids */
+            document_ids: string[];
+        };
         /**
          * DraftUpdate
          * @description PUT .../draft 본문. 초안 전체를 한 번에 바꾼다.
@@ -3119,6 +4449,61 @@ export interface components {
              */
             target_handle: string;
         };
+        /**
+         * EmbeddingSettings
+         * @description knowledge_base.embedding에 저장하는 값. version은 설정을 바꿀 때마다 서버가 올린다.
+         */
+        EmbeddingSettings: {
+            /**
+             * Model
+             * @default gemini-embedding-2
+             * @constant
+             */
+            model: "gemini-embedding-2";
+            /**
+             * Dimensions
+             * @default 768
+             * @enum {integer}
+             */
+            dimensions: 768 | 1536 | 3072;
+            /**
+             * Prefix
+             * @default gemini2
+             * @enum {string}
+             */
+            prefix: "none" | "gemini2";
+            /** Task Type */
+            task_type?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * EmbeddingSettingsIn
+         * @description 색인 설정 중 사용자가 고르는 것. 1차는 gemini-embedding-2(OpenAI 호환 경로)만이다(Z4).
+         */
+        EmbeddingSettingsIn: {
+            /**
+             * Model
+             * @default gemini-embedding-2
+             * @constant
+             */
+            model: "gemini-embedding-2";
+            /**
+             * Dimensions
+             * @default 768
+             * @enum {integer}
+             */
+            dimensions: 768 | 1536 | 3072;
+            /**
+             * Prefix
+             * @default gemini2
+             * @enum {string}
+             */
+            prefix: "none" | "gemini2";
+        };
         /** EnvVarIn */
         EnvVarIn: {
             /** Name */
@@ -3166,6 +4551,153 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** EvalCaseCreate */
+        EvalCaseCreate: {
+            /** Question */
+            question: string;
+            expected: components["schemas"]["EvalExpected"];
+            /** Note */
+            note?: string | null;
+        };
+        /** EvalCaseList */
+        EvalCaseList: {
+            /** Items */
+            items: components["schemas"]["EvalCaseOut"][];
+            /** Total */
+            total: number;
+        };
+        /** EvalCaseOut */
+        EvalCaseOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Question */
+            question: string;
+            expected: components["schemas"]["EvalExpected"];
+            /** Note */
+            note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** EvalCaseResult */
+        EvalCaseResult: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Question */
+            question: string;
+            /** Rank */
+            rank: number | null;
+            /** Top */
+            top: components["schemas"]["EvalHit"][];
+        };
+        /** EvalExpected */
+        EvalExpected: {
+            /** Document Ids */
+            document_ids?: string[];
+            /** Segment Ids */
+            segment_ids?: string[];
+        };
+        /** EvalHit */
+        EvalHit: {
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Score */
+            score: number;
+        };
+        /** EvalImportProblem */
+        EvalImportProblem: {
+            /** Line */
+            line: number;
+            /** Message */
+            message: string;
+        };
+        /** EvalImportResult */
+        EvalImportResult: {
+            /** Created */
+            created: number;
+            /** Problems */
+            problems: components["schemas"]["EvalImportProblem"][];
+            /** Total */
+            total: number;
+        };
+        /** EvalMetrics */
+        EvalMetrics: {
+            /** R1 */
+            r1: number;
+            /** R3 */
+            r3: number;
+            /** R5 */
+            r5: number;
+            /** Mrr10 */
+            mrr10: number;
+            /** Cases */
+            cases: number;
+        };
+        /** EvalRunList */
+        EvalRunList: {
+            /** Items */
+            items: components["schemas"]["EvalRunSummary"][];
+        };
+        /** EvalRunOut */
+        EvalRunOut: {
+            /** Id */
+            id: string | null;
+            settings: components["schemas"]["RetrievalSettings"];
+            metrics: components["schemas"]["EvalMetrics"];
+            /** Cases */
+            cases: components["schemas"]["EvalCaseResult"][];
+            /** Duration Ms */
+            duration_ms: number;
+            /** Warnings */
+            warnings?: components["schemas"]["RetrievalWarning"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** EvalRunRequest */
+        EvalRunRequest: {
+            retrieval_model?: components["schemas"]["RetrievalSettings"] | null;
+            /**
+             * Save
+             * @default true
+             */
+            save: boolean;
+        };
+        /** EvalRunSummary */
+        EvalRunSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            settings: components["schemas"]["RetrievalSettings"];
+            metrics: components["schemas"]["EvalMetrics"];
+            /** Duration Ms */
+            duration_ms: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** FileUploadLimits */
         FileUploadLimits: {
             /** Max Bytes */
@@ -3191,6 +4723,11 @@ export interface components {
              * Format: uuid
              */
             conversation_id: string;
+        };
+        /** FilterModel */
+        FilterModel: {
+            /** Model Id */
+            model_id?: string | null;
         };
         /** FlowApiMessageList */
         FlowApiMessageList: {
@@ -3449,6 +4986,40 @@ export interface components {
             error: components["schemas"]["WfRunErrorOut"] | null;
             pending_interaction: components["schemas"]["WfPendingOut"] | null;
         };
+        /**
+         * FusionDetail
+         * @description 결합 점수의 내역. 검색 시험 화면이 벡터·전문 기여와 코사인 원값을 보여 준다.
+         */
+        FusionDetail: {
+            /** Cosine */
+            cosine?: number | null;
+            /** Vector Score */
+            vector_score?: number | null;
+            /** Keyword Score */
+            keyword_score?: number | null;
+            /** Vector Rank */
+            vector_rank?: number | null;
+            /** Keyword Rank */
+            keyword_rank?: number | null;
+        };
+        /**
+         * GeneralChunking
+         * @description General(text_model) 청크 규칙(6.3). 단위는 로컬 추정 토큰이다.
+         */
+        GeneralChunking: {
+            /** Separators */
+            separators?: string[];
+            /**
+             * Max Tokens
+             * @default 1024
+             */
+            max_tokens: number;
+            /**
+             * Overlap Tokens
+             * @default 50
+             */
+            overlap_tokens: number;
+        };
         /** Graph */
         Graph: {
             /** Nodes */
@@ -3507,6 +5078,238 @@ export interface components {
             edge_id?: string | null;
             /** Field */
             field?: string | null;
+        };
+        /** KbDocumentList */
+        KbDocumentList: {
+            /** Items */
+            items: components["schemas"]["KbDocumentOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Limit */
+            limit: number;
+            /** Has More */
+            has_more: boolean;
+        };
+        /** KbDocumentOut */
+        KbDocumentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kb Id
+             * Format: uuid
+             */
+            kb_id: string;
+            /** Position */
+            position: number;
+            /** Name */
+            name: string;
+            /**
+             * Data Source Type
+             * @enum {string}
+             */
+            data_source_type: "upload_file" | "paste_text" | "workflow" | "api";
+            /** Filename */
+            filename: string;
+            /** Mime */
+            mime: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Indexing Status
+             * @enum {string}
+             */
+            indexing_status: "waiting" | "parsing" | "cleaning" | "splitting" | "indexing" | "completed" | "error" | "paused";
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "queuing" | "indexing" | "paused" | "error" | "available" | "disabled" | "archived";
+            /** Enabled */
+            enabled: boolean;
+            /** Archived */
+            archived: boolean;
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            process_rule: components["schemas"]["ProcessRule"];
+            /** Extract */
+            extract: {
+                [key: string]: unknown;
+            } | null;
+            /** Total Segments */
+            total_segments: number;
+            /** Completed Segments */
+            completed_segments: number;
+            /** Word Count */
+            word_count: number;
+            /** Tokens */
+            tokens: number;
+            /** Hit Count */
+            hit_count: number;
+            /** Batch */
+            batch: string;
+            /** Processing Started At */
+            processing_started_at: string | null;
+            /** Parsing Completed At */
+            parsing_completed_at: string | null;
+            /** Cleaning Completed At */
+            cleaning_completed_at: string | null;
+            /** Splitting Completed At */
+            splitting_completed_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Paused At */
+            paused_at: string | null;
+            /** Stopped At */
+            stopped_at: string | null;
+            /** Doc Metadata */
+            doc_metadata?: components["schemas"]["DocumentMetadataValue"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** KbDocumentPatch */
+        KbDocumentPatch: {
+            /** Name */
+            name?: string | null;
+        };
+        /** KbDocumentsCreated */
+        KbDocumentsCreated: {
+            /** Batch */
+            batch: string;
+            /** Documents */
+            documents: components["schemas"]["KbDocumentOut"][];
+        };
+        /** KnowledgeBaseCreate */
+        KnowledgeBaseCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Doc Form
+             * @default text_model
+             * @enum {string}
+             */
+            doc_form: "text_model" | "hierarchical_model" | "qa_model";
+            /**
+             * Indexing Technique
+             * @default high_quality
+             * @enum {string}
+             */
+            indexing_technique: "high_quality" | "economy";
+            embedding?: components["schemas"]["EmbeddingSettingsIn"] | null;
+            process_rule?: components["schemas"]["ProcessRule"] | null;
+            retrieval_model?: components["schemas"]["RetrievalSettings"] | null;
+            /**
+             * Search While Indexing
+             * @default true
+             */
+            search_while_indexing: boolean;
+            data_policy: components["schemas"]["DataPolicyIn"];
+        };
+        /** KnowledgeBaseList */
+        KnowledgeBaseList: {
+            /** Items */
+            items: components["schemas"]["KnowledgeBaseOut"][];
+        };
+        /** KnowledgeBaseOut */
+        KnowledgeBaseOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Doc Form
+             * @enum {string}
+             */
+            doc_form: "text_model" | "hierarchical_model" | "qa_model";
+            /**
+             * Indexing Technique
+             * @enum {string}
+             */
+            indexing_technique: "high_quality" | "economy";
+            embedding: components["schemas"]["EmbeddingSettings"] | null;
+            process_rule: components["schemas"]["ProcessRule"];
+            retrieval_model: components["schemas"]["RetrievalSettings"];
+            /** Search While Indexing */
+            search_while_indexing: boolean;
+            /** Built In Fields Enabled */
+            built_in_fields_enabled: boolean;
+            data_policy: components["schemas"]["DataPolicy"];
+            /** Document Count */
+            document_count: number;
+            /** Segment Count */
+            segment_count: number;
+            /** Indexing Document Count */
+            indexing_document_count: number;
+            /** Embedded Tokens Estimated */
+            embedded_tokens_estimated: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** KnowledgeBasePatch */
+        KnowledgeBasePatch: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Indexing Technique */
+            indexing_technique?: ("high_quality" | "economy") | null;
+            embedding?: components["schemas"]["EmbeddingSettingsIn"] | null;
+            /**
+             * Confirm Reembed
+             * @default false
+             */
+            confirm_reembed: boolean;
+            process_rule?: components["schemas"]["ProcessRule"] | null;
+            retrieval_model?: components["schemas"]["RetrievalSettings"] | null;
+            /** Search While Indexing */
+            search_while_indexing?: boolean | null;
+            data_policy?: components["schemas"]["DataPolicyIn"] | null;
         };
         /** LlmAttempt */
         LlmAttempt: {
@@ -3587,6 +5390,16 @@ export interface components {
             rate_limited_count: number;
             /** Last 429 At */
             last_429_at?: string | null;
+            /**
+             * Tier
+             * @default free
+             * @enum {string}
+             */
+            tier: "free" | "paid";
+            /** Exhausted By Model */
+            exhausted_by_model?: {
+                [key: string]: string;
+            };
         };
         /** LlmStatus */
         LlmStatus: {
@@ -3608,6 +5421,7 @@ export interface components {
             fallback_models: string[];
             /** Key Cooldown Sec */
             key_cooldown_sec: number;
+            paid_key?: components["schemas"]["LlmKeyStatus"] | null;
         };
         /** LlmTestRequest */
         LlmTestRequest: {
@@ -3725,6 +5539,100 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** MetadataCondition */
+        MetadataCondition: {
+            /** Name */
+            name: string;
+            /**
+             * Comparison Operator
+             * @enum {string}
+             */
+            comparison_operator: "is" | "is not" | "contains" | "not contains" | "start with" | "end with" | "empty" | "not empty" | "in" | "not in" | "=" | "≠" | ">" | "<" | "≥" | "≤" | "before" | "after";
+            /** Value */
+            value?: string | number | (string | number)[] | null;
+        };
+        /** MetadataFieldCreate */
+        MetadataFieldCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "time";
+        };
+        /** MetadataFieldList */
+        MetadataFieldList: {
+            /** Items */
+            items: components["schemas"]["MetadataFieldOut"][];
+            /** Built In Fields Enabled */
+            built_in_fields_enabled: boolean;
+        };
+        /** MetadataFieldOut */
+        MetadataFieldOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "time";
+            /** Built In */
+            built_in: boolean;
+            /** Position */
+            position: number;
+            /** Use Count */
+            use_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** MetadataFieldPatch */
+        MetadataFieldPatch: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * MetadataFilter
+         * @description 메타데이터 필터(7.5). Dify의 metadata_filtering_conditions도 이 모양으로 읽는다.
+         *
+         *     manual은 conditions를 그대로 쓰고, automatic은 모델이 질의에서 조건을 만든다(확장). 자동 필터가
+         *     실패하면 필터 없이 검색하고 경고 filter_ignored를 남긴다.
+         */
+        MetadataFilter: {
+            /**
+             * Mode
+             * @default manual
+             * @enum {string}
+             */
+            mode: "disabled" | "manual" | "automatic";
+            /**
+             * Logical Operator
+             * @default and
+             * @enum {string}
+             */
+            logical_operator: "and" | "or";
+            /** Conditions */
+            conditions?: components["schemas"]["MetadataCondition"][];
+            model?: components["schemas"]["FilterModel"];
+        };
+        /** MetadataValueIn */
+        MetadataValueIn: {
+            /**
+             * Field Id
+             * Format: uuid
+             */
+            field_id: string;
+            /** Value */
+            value: number | string | null;
         };
         /** ModelCapabilityInfo */
         ModelCapabilityInfo: {
@@ -3877,6 +5785,22 @@ export interface components {
              */
             type: "string" | "number" | "boolean" | "object" | "file" | "array[string]" | "array[number]" | "array[boolean]" | "array[object]" | "array[file]" | "array[any]" | "any";
         };
+        /** ParentChunking */
+        ParentChunking: {
+            /**
+             * Mode
+             * @default paragraph
+             * @enum {string}
+             */
+            mode: "paragraph" | "full_doc";
+            /** Separators */
+            separators?: string[];
+            /**
+             * Max Tokens
+             * @default 1024
+             */
+            max_tokens: number;
+        };
         /** PasswordChangeRequest */
         PasswordChangeRequest: {
             /**
@@ -3939,6 +5863,36 @@ export interface components {
              */
             y: number;
         };
+        /** PreviewChildChunk */
+        PreviewChildChunk: {
+            /** Content */
+            content: string;
+            /** Tokens */
+            tokens: number;
+        };
+        /** PreviewChunk */
+        PreviewChunk: {
+            /** Content */
+            content: string;
+            /** Tokens */
+            tokens: number;
+            /** Answer */
+            answer?: string | null;
+            /** Children */
+            children?: components["schemas"]["PreviewChildChunk"][];
+        };
+        /**
+         * ProcessRule
+         * @description 정리·청크 규칙(6.3). 청크 모드(doc_form)에 맞는 칸만 쓰인다.
+         *
+         *     text_model은 general, hierarchical_model은 parent·child를 쓰고 qa_model은 나누지 않는다.
+         */
+        ProcessRule: {
+            cleaning?: components["schemas"]["CleaningRules"];
+            general?: components["schemas"]["GeneralChunking"];
+            parent?: components["schemas"]["ParentChunking"];
+            child?: components["schemas"]["ChildChunking"];
+        };
         /** PublishOut */
         PublishOut: {
             agent: components["schemas"]["AgentOut"];
@@ -3951,6 +5905,69 @@ export interface components {
         PublishRequest: {
             /** Change Note */
             change_note?: string | null;
+        };
+        /** QueryLogList */
+        QueryLogList: {
+            /** Items */
+            items: components["schemas"]["QueryLogOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Limit */
+            limit: number;
+            /** Has More */
+            has_more: boolean;
+        };
+        /** QueryLogOut */
+        QueryLogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "hit_test" | "node" | "tool" | "api" | "eval";
+            /** Query */
+            query: string;
+            /** Settings */
+            settings: {
+                [key: string]: unknown;
+            };
+            /** Results */
+            results: components["schemas"]["QueryLogResult"][];
+            /** Result Count */
+            result_count: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** QueryLogResult */
+        QueryLogResult: {
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /** Score */
+            score: number;
+        };
+        /** RerankSettings */
+        RerankSettings: {
+            /** Model Id */
+            model_id?: string | null;
+            /**
+             * Candidates
+             * @default 10
+             */
+            candidates: number;
         };
         /**
          * ResultSpec
@@ -3974,6 +5991,161 @@ export interface components {
              * @default true
              */
             files: boolean;
+        };
+        /**
+         * RetrievalSettings
+         * @description 검색 설정(7장). KB의 기본값이고 노드·도구·검색 시험이 같은 모양으로 덮어쓴다.
+         */
+        RetrievalSettings: {
+            /**
+             * Search Method
+             * @default hybrid_search
+             * @enum {string}
+             */
+            search_method: "semantic_search" | "full_text_search" | "hybrid_search";
+            /**
+             * Top K
+             * @default 4
+             */
+            top_k: number;
+            /**
+             * Score Threshold Enabled
+             * @default false
+             */
+            score_threshold_enabled: boolean;
+            /**
+             * Score Threshold
+             * @default 0.5
+             */
+            score_threshold: number;
+            /**
+             * Reranking Mode
+             * @default weighted_score
+             * @enum {string}
+             */
+            reranking_mode: "weighted_score" | "rrf" | "llm";
+            weights?: components["schemas"]["RetrievalWeights"];
+            rerank?: components["schemas"]["RerankSettings"];
+        };
+        /** RetrievalWarning */
+        RetrievalWarning: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "partial_index" | "mixed_kb_rrf" | "rerank_failed" | "filter_ignored" | "vector_unavailable" | "query_truncated";
+            /** Message */
+            message: string;
+            /** Kb Ids */
+            kb_ids?: string[];
+            /** Retry After */
+            retry_after?: number | null;
+        };
+        /** RetrievalWeights */
+        RetrievalWeights: {
+            /**
+             * Vector Weight
+             * @default 0.7
+             */
+            vector_weight: number;
+            /**
+             * Keyword Weight
+             * @default 0.3
+             */
+            keyword_weight: number;
+        };
+        /** RetrieveDocument */
+        RetrieveDocument: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Data Source Type */
+            data_source_type: string;
+            /** Name */
+            name: string;
+            /** Doc Metadata */
+            doc_metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Indexing Status
+             * @enum {string}
+             */
+            indexing_status: "waiting" | "parsing" | "cleaning" | "splitting" | "indexing" | "completed" | "error" | "paused";
+        };
+        /** RetrieveQuery */
+        RetrieveQuery: {
+            /** Content */
+            content: string;
+        };
+        /** RetrieveRecord */
+        RetrieveRecord: {
+            segment: components["schemas"]["RetrieveSegment"];
+            /** Child Chunks */
+            child_chunks?: components["schemas"]["ChildChunkHit"][] | null;
+            /** Score */
+            score: number;
+            fusion?: components["schemas"]["FusionDetail"] | null;
+            /** Fusion Score */
+            fusion_score?: number | null;
+        };
+        /**
+         * RetrieveRequest
+         * @description 검색 시험(7.7). 저장하지 않는 임시 설정으로 돈다.
+         */
+        RetrieveRequest: {
+            /** Query */
+            query: string;
+            retrieval_model?: components["schemas"]["RetrievalSettings"] | null;
+            metadata_filter?: components["schemas"]["MetadataFilter"] | null;
+        };
+        /**
+         * RetrieveResponse
+         * @description Dify retrieve 응답 모양(8.5)에 fusion·indexing_status·warnings를 더했다.
+         */
+        RetrieveResponse: {
+            query: components["schemas"]["RetrieveQuery"];
+            /** Records */
+            records: components["schemas"]["RetrieveRecord"][];
+            /** Warnings */
+            warnings?: components["schemas"]["RetrievalWarning"][];
+            /**
+             * Latency Ms
+             * @default 0
+             */
+            latency_ms: number;
+        };
+        /** RetrieveSegment */
+        RetrieveSegment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Content */
+            content: string;
+            /** Answer */
+            answer: string | null;
+            /** Word Count */
+            word_count: number;
+            /** Tokens */
+            tokens: number;
+            /** Hit Count */
+            hit_count: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Status */
+            status: string;
+            document: components["schemas"]["RetrieveDocument"];
         };
         /** RetryPolicy */
         RetryPolicy: {
@@ -4360,6 +6532,96 @@ export interface components {
             memory_limit_mb?: number | null;
             /** Max Processes */
             max_processes?: number | null;
+        };
+        /** SegmentCreate */
+        SegmentCreate: {
+            /** Content */
+            content: string;
+            /** Answer */
+            answer?: string | null;
+        };
+        /** SegmentList */
+        SegmentList: {
+            /** Items */
+            items: components["schemas"]["SegmentOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Limit */
+            limit: number;
+            /** Has More */
+            has_more: boolean;
+        };
+        /** SegmentOut */
+        SegmentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Position */
+            position: number;
+            /** Unit No */
+            unit_no: number | null;
+            /** Content */
+            content: string;
+            /** Answer */
+            answer: string | null;
+            /** Word Count */
+            word_count: number;
+            /** Tokens */
+            tokens: number;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "indexing" | "completed" | "error";
+            /** Index State */
+            index_state: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @enum {string}
+             */
+            created_by: "automatic" | "customized";
+            /** Edited */
+            edited: boolean;
+            /** Hit Count */
+            hit_count: number;
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            /** Child Chunks */
+            child_chunks?: components["schemas"]["ChildChunkOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SegmentPatch */
+        SegmentPatch: {
+            /** Content */
+            content?: string | null;
+            /** Answer */
+            answer?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
         };
         /** SessionCreate */
         SessionCreate: {
@@ -9727,6 +11989,1374 @@ export interface operations {
             };
         };
     };
+    list_knowledge_bases_api_console_knowledge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_knowledge_base_api_console_knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeBaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_knowledge_base_api_console_knowledge__kb_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_knowledge_base_api_console_knowledge__kb_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_knowledge_base_api_console_knowledge__kb_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeBasePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_metadata_fields_api_console_knowledge__kb_id__metadata_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_metadata_field_api_console_knowledge__kb_id__metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataFieldCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_metadata_field_api_console_knowledge__kb_id__metadata__field_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rename_metadata_field_api_console_knowledge__kb_id__metadata__field_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataFieldPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    toggle_built_in_fields_api_console_knowledge__kb_id__metadata_built_in__action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                action: "enable" | "disable";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_documents_api_console_knowledge__kb_id__documents_get: {
+        parameters: {
+            query?: {
+                status?: ("queuing" | "indexing" | "paused" | "error" | "available" | "disabled" | "archived") | null;
+                keyword?: string | null;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbDocumentList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_documents_api_console_knowledge__kb_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    text: string;
+                    process_rule?: Record<string, never>;
+                    allow_duplicate?: boolean;
+                };
+                "multipart/form-data": {
+                    files: string[];
+                    /** @description JSON {process_rule?, allow_duplicate?} */
+                    data?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbDocumentsCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_document_api_console_knowledge__kb_id__documents_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                    process_rule?: Record<string, never>;
+                };
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description JSON {process_rule?} */
+                    data?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPreview"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_document_status_api_console_knowledge__kb_id__documents_status__action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                action: "enable" | "disable" | "archive" | "unarchive" | "pause" | "resume" | "retry";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStatusResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reindex_document_api_console_knowledge__kb_id__documents__document_id__reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentReindex"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbDocumentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_document_metadata_api_console_knowledge__kb_id__documents_metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentMetadataUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentMetadataList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_document_api_console_knowledge__kb_id__documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbDocumentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_document_api_console_knowledge__kb_id__documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_document_api_console_knowledge__kb_id__documents__document_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KbDocumentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KbDocumentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_segments_api_console_knowledge__kb_id__documents__document_id__segments_get: {
+        parameters: {
+            query?: {
+                keyword?: string | null;
+                enabled?: boolean | null;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_segment_api_console_knowledge__kb_id__documents__document_id__segments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_segment_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_segment_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_segment_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_child_chunks_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChildChunkList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_child_chunk_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChildChunkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChildChunkOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_child_chunk_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children__child_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+                child_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_child_chunk_api_console_knowledge__kb_id__documents__document_id__segments__segment_id__children__child_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+                segment_id: string;
+                child_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChildChunkPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChildChunkOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieve_api_console_knowledge__kb_id__retrieve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrieveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrieveResponse"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_query_logs_api_console_knowledge__kb_id__query_logs_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryLogList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_eval_cases_api_console_knowledge__kb_id__eval_cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalCaseList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_eval_case_api_console_knowledge__kb_id__eval_cases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvalCaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalCaseOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_eval_case_api_console_knowledge__kb_id__eval_cases__case_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_eval_cases_api_console_knowledge__kb_id__eval_cases_import_post: {
+        parameters: {
+            query?: {
+                replace?: boolean;
+            };
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    csv: string;
+                    replace?: boolean;
+                };
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalImportResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_eval_api_console_knowledge__kb_id__eval_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvalRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalRunOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_eval_runs_api_console_knowledge__kb_id__eval_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalRunList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_eval_run_api_console_knowledge__kb_id__eval_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalRunOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_api_keys_api_console_knowledge__kb_id__api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_api_key_api_console_knowledge__kb_id__api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revoke_api_key_api_console_knowledge__kb_id__api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_app_api_web_apps__slug__get: {
         parameters: {
             query?: never;
@@ -11459,6 +15089,912 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowRunList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_datasets_api_v1_datasets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_dataset_api_v1_datasets__dataset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retrieve_api_v1_datasets__dataset_id__retrieve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetRetrieveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrieveResponse"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_by_text_api_v1_datasets__dataset_id__document_create_by_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    text: string;
+                    process_rule?: Record<string, never>;
+                    doc_metadata?: Record<string, never>;
+                    allow_duplicate?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDocumentCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_by_file_api_v1_datasets__dataset_id__document_create_by_file_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description DatasetFileOptions JSON */
+                    data?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDocumentCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_by_text_api_v1_datasets__dataset_id__documents__document_id__update_by_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    text: string;
+                    process_rule?: Record<string, never>;
+                    doc_metadata?: Record<string, never>;
+                    allow_duplicate?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDocumentCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_by_file_api_v1_datasets__dataset_id__documents__document_id__update_by_file_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description DatasetFileOptions JSON */
+                    data?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDocumentCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_documents_api_v1_datasets__dataset_id__documents_get: {
+        parameters: {
+            query?: {
+                status?: ("queuing" | "indexing" | "paused" | "error" | "available" | "disabled" | "archived") | null;
+                keyword?: string | null;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDocumentList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    indexing_status_api_v1_datasets__dataset_id__documents__batch__indexing_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                batch: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetIndexingStatus"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    change_document_status_api_v1_datasets__dataset_id__documents_status__action__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                action: "enable" | "disable" | "archive" | "un_archive";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetStatusChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetStatusResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_document_api_v1_datasets__dataset_id__documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_segments_api_v1_datasets__dataset_id__documents__document_id__segments_get: {
+        parameters: {
+            query?: {
+                keyword?: string | null;
+                enabled?: boolean | null;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetSegmentList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_segments_api_v1_datasets__dataset_id__documents__document_id__segments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetSegmentsCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetSegmentsCreated"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_segment_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetSegmentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_segment_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetSegmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetSegmentOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_segment_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_child_chunks_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetChildChunkList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_child_chunk_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChildChunkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetChildChunkOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_child_chunk_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks__child_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+                child_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_child_chunk_api_v1_datasets__dataset_id__documents__document_id__segments__segment_id__child_chunks__child_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                document_id: string;
+                segment_id: string;
+                child_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChildChunkPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetChildChunkOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_metadata_api_v1_datasets__dataset_id__metadata_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_metadata_api_v1_datasets__dataset_id__metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataFieldCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_metadata_api_v1_datasets__dataset_id__metadata__field_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rename_metadata_api_v1_datasets__dataset_id__metadata__field_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataFieldPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    toggle_built_in_api_v1_datasets__dataset_id__metadata_built_in__action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                action: "enable" | "disable";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataFieldList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_document_metadata_api_v1_datasets__dataset_id__documents_metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentMetadataUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentMetadataList"];
                 };
             };
             /** @description 오류 */
