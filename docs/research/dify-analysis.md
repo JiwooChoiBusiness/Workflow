@@ -76,7 +76,7 @@ Dify는 LangGenius가 개발하는 오픈소스 LLM 앱·에이전트 워크플�
 | Chunker | General, Parent-child(작은 자식 청크로 매칭, 큰 부모 청크로 컨텍스트), Q&A Processor |
 | Knowledge Base Node | 인덱스 방식 High Quality(임베딩) 또는 Economical(키워드 10개). 검색은 벡터, 전문, 하이브리드 + 리랭크 |
 
-2026년 추가: 멀티모달 검색(1월), 청크별 요약 인덱스(1.12, 2월), MongoDB Atlas·Voyage AI 네이티브 지원(6월). 로드맵 "New RAG"는 에이전트 기반으로 지식 플랫폼을 재구축하는 과제다.
+멀티모달 검색은 1.11.0(2025-12-11)에 들어왔고, 2026년에는 청크별 요약 인덱스(1.12, 2월)와 MongoDB Atlas·Voyage AI 네이티브 지원(6월)이 추가됐다. 로드맵 "New RAG"는 에이전트 기반으로 지식 플랫폼을 재구축하는 과제다.
 
 ### 3.5 도구, 플러그인, MCP
 

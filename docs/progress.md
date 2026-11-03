@@ -49,4 +49,16 @@
 
 ## 3단계. RAG
 
-아직 시작하지 않았다.
+| 마일스톤 | 한 일 | 확인 | 커밋 |
+|---|---|---|---|
+| 설계 초안 (10-30 ~ 11-02) | 조사 두 갈래(Gemini API, RAG·한국어 검색·Text2SQL)와 실측(키 등급과 임베딩 한도, sqlite-vec·FTS5 지연, KorQuAD와 합성 평가셋으로 한국어 검색 비교, SQLite·DuckDB 읽기 전용 우회), 3단계 설계 v2(`design/phase3-rag.md`), ADR 0007(RAG)·0008(Text2SQL) 제안, 4단계 선택지 문서 v1.1(`design/phase4-options.md`), 조사 기록 두 편(`research/gemini-api-2026-10.md`, `research/rag-text2sql-2026-11.md`) | 설계 검토 1회 반영(결합 공식, 한도 처리, 유료 키 전파, Text2SQL 숨김 열 등). 사용자가 쟁점에 따로 답하지 않고 진행을 지시해(11-02) 각 쟁점의 기본값으로 확정했다 | |
+| M21a 바탕(DB·어댑터) | 429 분류(`errors.classify`, 분당·일일 구분과 `retryDelay`), 키 풀 등급(유료 키 1개)·`hold`·`exhaust`, 채팅의 일일 429는 키를 바꾸지 않고 다음 모델로, 유료 등급은 같은 키로 대기, `OpenAICompatTransport.embed`, 폴백 기본값 3.8 → 3.6, temperature·top_p 게이트, 캐시 단가 기본 10%, 유료 키가 무료 목록에 있으면 기동 거부, 마이그레이션 0007(지식 테이블 8개, API 키 세 번째 대상, 메시지·런의 nullable 열), 지식 베이스·문서·청크·메타데이터 CRUD 서비스와 콘솔 API, 2단계 후속 (1)(2)(3), ADR-0003·0004 한 줄 개정 | 새 테스트 101개 | |
+| M21b 바탕(라이브러리) | `app/knowledge`(index.db: sqlite-vec 0.1.9·64KB 페이지·WAL·FTS 폴백, KB별 vec0 테이블과 DELETE+INSERT upsert, 음절 bigram contentless FTS5, 토큰 추정, 정리, General·Parent-child·Q&A 청크), `app/llm/embeddings.py`(항목·토큰 이중 버킷 리미터와 질의 예약분, 임베딩 캐시, 429·400·5xx 처리), 가짜 임베더, 합성 평가셋 픽스처 | 새 테스트 171개. 합성셋 bigram FTS R@1 0.811, 가짜 임베더 R@3 0.906. 통합 확인: pytest 2,045(건너뜀 2), windows 20, ruff·pyright(Windows·Linux) 0건 | |
+| M22 인제스트 | 지식 레인(세 번째 Supervisor, 큐에서 빼기), 문서 작업 상태 기계(파싱·정리·분할·색인, 묶음 경계에서 일시 정지·재개, 재기동 복구, 삭제 작업), pdf·docx 샌드박스 파싱과 스캔 PDF 모델 읽기, Economical KB, 미리보기·상태 조작·재색인·원본 바꾸기, 매시 정리(`KnowledgeRetention`), index.db 온라인 백업과 `--no-index`, M21 검토 반영(청크 편집의 요청 안 색인, 임베딩 부분 결과 보존, 하루 1,000건 버킷, 기동 때 유닛 번호 맞춤, 자식 청크 인덱스), 시험에서 실제 Gemini 호출 차단 | 새 테스트 약 100개, windows +2. live: 실제 키로 청크 300개 문서 1건 4분 42초, 429 없음 | |
+| M23 검색 | 하이브리드 검색(후보 50 안 min-max 가중합 a=0.7, RRF), 코사인 원값 문턱, 메타데이터 필터(수동·자동), 여러 KB 병합, LLM 재순위, Parent-child 부모 묶기, 부분 색인 검색과 질의 임베딩 실패 때 전문 검색 폴백, 검색 시험·질의 기록·평가(CSV, R@k·MRR), 서비스 API `datasets`(KB 키, 원본 바꾸기 포함), 설계 검토 반영(폴백 범위, 부모 기준 후보 깊이 등 10건) | 새 테스트 152개(live 1). live 평가(문서 48개를 실제로 색인, 질문 53개) R@1·R@3·MRR@10 1.000. 통합 확인: pytest 2,294(건너뜀 2), windows 22, ruff·pyright(Windows·Linux) 0건, 화면 API 타입 재생성 뒤 tsc·eslint·prettier 통과, vitest 299 | |
+
+M24(노드·에이전트 연결)부터는 다음 작업 때 시작한다(사용자 지시 11-02). M22·M23에서 정한 것과 뒤로 미룬 것은 설계 17.4에 있다.
+
+## 4단계. 고도화
+
+선택지 문서(`design/phase4-options.md`)만 있다. 범위는 3단계 논의 뒤 사용자와 정한다.

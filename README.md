@@ -6,24 +6,27 @@ n8n 형식의 LLM 에이전트 & 워크플로우 플랫폼을 혼자 쓰려고 �
 
 2단계(워크플로우)도 끝났다. 캔버스에서 워크플로우와 챗플로우를 편집하고 실행·발행하며(웹앱과 서비스 API 포함), YAML(DSL)로 내보내고 가져온다(Dify DSL은 일부만). 노드는 LLM·조건 분기·반복·코드·HTTP 요청 같은 기본 노드에 더해 루프, 리스트 연산, 문서 추출(pdf·docx 포함), 내장 도구 호출, 사람 입력(폼으로 런을 멈추고 답을 받음)이 있다. 에이전트가 다른 에이전트를 도구로 부르는 지휘자 모드도 들어갔다.
 
-남은 일은 3단계 RAG + Text2SQL(아직 설계 방식 미정)와 2단계에서 미룬 두 가지다. 에이전트 노드의 '대화마다 같은 세션' 옵션은 아직 '실행마다 새 세션'처럼 돌고, 편집기의 실행 탭은 새로 고치면 진행 중이던 런에 다시 붙지 않는다(실행 기록 화면에서는 이어 받는다). 해당 두 가지는 단계가 모두 끝나고 자체 QA 과정을 거칠 예정이다. 마일스톤별 기록은 `docs/progress.md`에 있다.
+남은 일은 3단계 RAG + Text2SQL(구현 중)와 2단계에서 미룬 두 가지다. 에이전트 노드의 '대화마다 같은 세션' 옵션은 아직 '실행마다 새 세션'처럼 돌고, 편집기의 실행 탭은 새로 고치면 진행 중이던 런에 다시 붙지 않는다(실행 기록 화면에서는 이어 받는다). 해당 두 가지는 단계가 모두 끝나고 자체 QA 과정을 거칠 예정이다. 마일스톤별 기록은 `docs/progress.md`에 있다.
 
 - `docs/research/dify-analysis.md` : n8n 중 Dify를 뜯어본 기록(참조용)
 - `docs/decisions/` : 범위, 실행 방식 같은 결정 기록. 2단계는 ADR 0005(워크플로우 엔진)와 0006(지휘자 에이전트)
 - `docs/design/phase1-agent-sandbox.md` : 1단계(에이전트 샌드박스) 설계
 - `docs/design/phase2-workflow.md` : 2단계(워크플로우 엔진과 캔버스) 설계
 - `docs/design/agent-orchestration.md` : 지휘자 에이전트(에이전트를 도구로 부르는 모드) 설계
+- `docs/design/phase3-rag.md` : 3단계(지식 베이스와 Text2SQL) 설계. 결정 요약은 ADR 0007·0008
+- `docs/design/phase4-options.md` : 4단계(고도화) 선택지. 범위는 논의해서 정한다
+- `docs/research/gemini-api-2026-10.md`, `docs/research/rag-text2sql-2026-11.md` : 3·4단계 설계의 근거로 모은 조사와 실측
 - `docs/manual.md` : 사용 설명서. 화면에서 에이전트와 워크플로우를 만들고 발행해 쓰는 과정
 - `docs/progress.md` : 마일스톤별 진행 기록
 - `docs/ops/` : [설치](docs/ops/install.md), [운영](docs/ops/operations.md), [백업과 복구](docs/ops/backup-restore.md), [보안 확인](docs/ops/security.md), [샌드박스 Windows 검증](docs/ops/sandbox-windows-check.md)
 
-순서는 에이전트 샌드박스, 워크플로우 엔진, RAG이고, 그 뒤에 도구 선택지를 넓히는 고도화 단계를 둘 생각이다. 3단계 설계는 아직 시작하지 않았다.
+순서는 에이전트 샌드박스, 워크플로우 엔진, RAG이고, 그 뒤에 도구 선택지를 넓히는 고도화 단계를 둘 생각이다. 3단계는 설계의 기본값으로 구현을 시작했고, 4단계는 선택지 문서만 있다.
 
 `.claude/`에는 Claude Code 작업 설정이 들어 있다. 설계와 구현은 Claude와 같이 하되 결정과 커밋은 내가 한다. 라이선스는 Apache 2.0이다.
 
 ## 구조
 
-- `apps/api/app/` : FastAPI 서버 하나가 API, 러너, 화면 서빙을 다 한다. `agent/`는 에이전트 루프와 도구, `sandbox/`는 세션별 작업공간과 PowerShell 실행·Job Object, `llm/`은 Gemini 어댑터와 키 순환, `workflow/`는 그래프 엔진·노드·DSL 변환, `runner/`는 실행 큐와 재기동 복구, `streaming/`은 이벤트 링버퍼와 SSE, `services/`와 `api/`(console·web·v1)는 그 위의 서비스와 라우터, `db/`는 SQLAlchemy 모델과 리포지토리다.
+- `apps/api/app/` : FastAPI 서버 하나가 API, 러너, 화면 서빙을 다 한다. `agent/`는 에이전트 루프와 도구, `sandbox/`는 세션별 작업공간과 PowerShell 실행·Job Object, `llm/`은 Gemini 어댑터와 키 순환, `workflow/`는 그래프 엔진·노드·DSL 변환, `knowledge/`는 지식 베이스의 청크 분할·색인(sqlite-vec·FTS5)·검색, `runner/`는 실행 큐와 재기동 복구, `streaming/`은 이벤트 링버퍼와 SSE, `services/`와 `api/`(console·web·v1)는 그 위의 서비스와 라우터, `db/`는 SQLAlchemy 모델과 리포지토리다.
 - `apps/api/migrations/` : Alembic 마이그레이션. 서버가 뜰 때 자동으로 적용된다.
 - `apps/api/tests/` : pytest. `unit`, `integration`, `windows`(Windows 전용)와 픽스처.
 - `apps/web/src/` : React 화면. `app/`(라우트와 페이지), `components/`(builder·chat·flow·logs·ui), `features/`(기능별 API 호출과 상태), `api/`(서버 OpenAPI와 이벤트 스키마에서 만든 타입), `locales/ko/`(화면 문구).

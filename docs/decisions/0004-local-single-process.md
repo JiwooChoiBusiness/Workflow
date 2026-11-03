@@ -19,7 +19,7 @@
 - Postgres, Redis는 쓰지 않는다.
 
 ### D3. LLM은 Gemini만
-- Gemini의 OpenAI 호환 엔드포인트를 openai SDK로 호출한다. 키 8개 순환, 모델 폴백 gemini-3.8-flash → 3.7 → 3.6(ADR-0003의 로테이션·폴백 규칙 유지).
+- Gemini의 OpenAI 호환 엔드포인트를 openai SDK로 호출한다. 키 8개 순환, 모델 폴백 gemini-3.8-flash → 3.6(ADR-0003의 로테이션·폴백 규칙 유지. 3.7은 3.8로 라우팅되는 별칭이라 2026-11-02에 기본값에서 뺐다, 3단계 설계 1.12).
 - Anthropic 어댑터와 관련 설정은 삭제한다. 모델 호출 인터페이스는 남기되 구현은 Gemini 하나다.
 
 ### D4. 샌드박스

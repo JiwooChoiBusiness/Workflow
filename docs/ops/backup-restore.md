@@ -7,22 +7,24 @@
 | 항목 | 백업에 | 비고 |
 |---|---|---|
 | `app.db` | 들어감 | SQLite 온라인 백업으로 복사한다. 서버가 떠 있어도 되고 복사본에는 WAL 내용까지 합쳐진다. `-wal`, `-shm` 파일은 남기지 않는다 |
-| `storage\` | 들어감 | 에이전트 첨부, 스킬, 업로드, 세션 결과 파일, 발행 스냅샷, 큰 도구 출력, 워크플로우의 업로드·출력 파일(`wf-files`). 쓰다 만 `*.part`는 뺀다 |
+| `knowledge\index.db` | 들어감(`--no-index`면 뺌) | 지식 베이스의 벡터·전문 색인. `app.db`와 같은 온라인 백업이다. 아래 '지식 색인' 참고 |
+| `storage\` | 들어감 | 에이전트 첨부, 스킬, 업로드, 세션 결과 파일, 발행 스냅샷, 큰 도구 출력, 워크플로우의 업로드·출력 파일(`wf-files`), 지식 베이스 문서 원본(`kb-files`). 쓰다 만 `*.part`는 뺀다 |
 | `allowlist.txt` | 들어감 | `http_request` 허용 목록. `DATA_DIR`의 이 파일만 복사하므로 `HTTP_ALLOWLIST_FILE`로 다른 파일(예: `DATA_DIR` 밖)을 쓰고 있다면 그 파일은 들어가지 않는다. 따로 챙긴다 |
 | `workspaces\` | `--with-workspaces`일 때만 | 설치한 패키지 때문에 클 수 있다. 결과 파일은 이미 `storage\session-files`에 있다. `.deleted-*`는 뺀다 |
 | `cache\`, `logs\` | 안 들어감 | pip 캐시와 로그는 다시 생긴다 |
-| `wf-workspaces\` | 안 들어감 | 워크플로우 런의 임시 폴더라 런이 끝나면 지워진다 |
+| `wf-workspaces\`, `kb-work\` | 안 들어감 | 워크플로우 런과 지식 문서 파싱의 임시 폴더라 끝나면 지워진다 |
 | `.env` | 안 들어감 | 키가 든 파일이라 넣지 않는다 |
 
 2단계의 워크플로우·챗플로우 테이블(`workflow`, `wf_*`)은 `app.db`에, 업로드·출력 파일은 `storage\wf-files`에 있어서 따로 설정하지 않아도 백업에 들어간다.
 
-백업 폴더에는 `manifest.json`이 같이 들어간다. 만든 시각(`created_at`), 원본 데이터 폴더(`source_data_dir`), 스키마 리비전(`alembic_revision`), `--with-workspaces` 여부(`with_workspaces`), 파일 수(`files`)와 바이트 수(`bytes`), 복사한 DB를 `PRAGMA quick_check`로 점검한 결과(`quick_check`), 암호화 키 fingerprint(`encryption_key_fingerprint`)가 적혀 있다. 키 값은 어디에도 들어가지 않는다.
+백업 폴더에는 `manifest.json`이 같이 들어간다. 만든 시각(`created_at`), 원본 데이터 폴더(`source_data_dir`), 스키마 리비전(`alembic_revision`), `--with-workspaces` 여부(`with_workspaces`), 파일 수(`files`)와 바이트 수(`bytes`), 복사한 DB를 `PRAGMA quick_check`로 점검한 결과(`quick_check`), 암호화 키 fingerprint(`encryption_key_fingerprint`), 지식 색인을 넣었는지와 그 스키마 버전·크기(`knowledge_index: {included, schema_version, bytes}`)가 적혀 있다. 키 값은 어디에도 들어가지 않는다.
 
 ## 백업하기
 
 ```bash
 uv run platform backup
 uv run platform backup --with-workspaces
+uv run platform backup --no-index
 uv run platform backup --out D:/wf-backup/20261013
 ```
 
@@ -33,6 +35,14 @@ uv run platform backup --out D:/wf-backup/20261013
 `--keep N`은 기본 위치에 만들 때 쓰는 보존 개수이고 기본값은 5다. 이름이 타임스탬프 꼴이고 `manifest.json`이 든 폴더만 세어서 최근 N개를 남기고 오래된 것을 지운다. 직접 만든 다른 이름의 폴더는 건드리지 않는다. `--out`을 줬을 때는 아무것도 정리하지 않고, `--keep`을 같이 주면 무시한다고 알려 준다.
 
 백업은 암호화하지 않는다. 대화 내용과 파일이 그대로 들어 있으니 외부 드라이브나 클라우드로 복사할 때는 그걸 알고 한다.
+
+## 지식 색인(index.db)
+
+`knowledge\index.db`는 지식 베이스 문서에서 다시 만들 수 있는 파생 데이터지만, 다시 만들려면 모든 청크를 임베딩 API로 다시 보내야 한다. 무료 키는 하루 1,000건이라 1만 청크면 열흘이 걸리므로 기본으로 백업에 넣는다. 확장을 불러오지 않은 연결로 복사해도 복사본에서 벡터 검색이 그대로 된다.
+
+크기는 청크 수와 차원에 비례한다. 768차원 10만 청크에 약 300MB, 3072차원이면 약 1.2GB이고, 백업을 5개 남기면 그 다섯 배다. 디스크가 빠듯하거나 색인을 다시 만들어도 되는 경우(청크가 적거나 유료 키가 있을 때)는 `--no-index`로 뺀다. 그런 백업으로 복구하면 서버가 뜰 때 비어 있는 색인을 보고 모든 문서를 대기열에 다시 넣어 색인한다(로그 `knowledge.index_rebuild`). 전문 검색은 분할 직후부터 되고 벡터 검색은 임베딩이 다 찰 때까지 일부만 된다.
+
+`app.db`와 `index.db`는 늘 같은 시점의 것을 함께 쓴다. `app.db`만 옛 백업으로 되돌리면 지운 줄 알았던 청크의 번호가 새 청크에 다시 쓰일 수 있어서, 서버는 뜰 때 번호를 `index.db`의 가장 큰 번호 위로 올리고(`knowledge.unit_counter_raised`) 매시 정리가 어긋난 행을 지우고 빠진 행을 다시 색인한다. 그래도 그동안 검색 결과가 비거나 줄 수 있으니 되돌릴 때는 백업 폴더째(두 파일을 함께) 쓴다. 임베딩 설정(차원·모델)이 다른 두 파일이 만나면 서버가 설정 불일치를 보고 그 KB의 벡터 테이블을 다시 만든다(`knowledge.index_mismatch`).
 
 ## 서버가 떠 있을 때
 
