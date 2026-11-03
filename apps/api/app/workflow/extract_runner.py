@@ -1,13 +1,14 @@
 # pyright: strict
-"""document_extractor의 pdf·docx 추출(2단계 설계 2.4, 8장, 11.1 Q8).
+"""document_extractor와 지식 베이스 인제스트의 pdf·docx 추출(2단계 설계 2.4, 8장, 3단계 6.2).
 
-pypdf·python-docx는 서버 의존성에 넣지 않고 샌드박스 파이썬(두 번째 로컬 백엔드의 런 작업 폴더)에서
-돌린다. 서버 프로세스는 파서를 불러오지 않고 결과 JSON만 읽으므로 추출해도 RSS가 늘지 않는다.
+pypdf·python-docx는 서버 의존성에 넣지 않고 샌드박스 파이썬(워크플로우 런 작업 폴더나 지식 작업
+폴더)에서 돌린다. 서버 프로세스는 파서를 불러오지 않고 결과 JSON만 읽으므로 추출해도 RSS가 늘지
+않는다.
 
-파서는 처음 쓸 때 설치한다. 런 작업 폴더에서 백엔드의 pip exec(1단계와 같은 pip --target 경로,
-pip 캐시, Job Object)로 받은 .packages를 DATA_DIR/cache/wf-extract/<스펙 해시>/로 옮겨 두고, 그 뒤
-추출 스크립트는 그 폴더를 sys.path에 붙여 쓴다. 같은 프로세스 안의 동시 설치는 잠금으로 하나만
-돌고, 옮기기를 마친 폴더에만 표시 파일을 둬서 받다 만 폴더를 쓰지 않는다.
+패키지는 처음 쓸 때 설치한다(ensure_packages). 작업 폴더에서 백엔드의 pip exec(1단계와 같은 pip
+--target 경로, pip 캐시, Job Object)로 받은 .packages를 캐시 폴더의 <스펙 해시>/로 옮겨 두고, 그 뒤
+스크립트는 그 폴더를 sys.path에 붙여 쓴다. 같은 프로세스 안의 동시 설치는 잠금으로 하나만 돌고,
+옮기기를 마친 폴더에만 표시 파일을 둬서 받다 만 폴더를 쓰지 않는다.
 """
 
 import asyncio
@@ -150,9 +151,13 @@ def _install_lock(target: Path) -> asyncio.Lock:
     return per_loop.setdefault(str(target), asyncio.Lock())
 
 
+def package_dir(cache_dir: Path, specs: tuple[str, ...], prefix: str = "parsers") -> Path:
+    digest = hashlib.sha256("\n".join(specs).encode("utf-8")).hexdigest()[:12]
+    return cache_dir / f"{prefix}-{digest}"
+
+
 def parser_dir(cache_dir: Path) -> Path:
-    digest = hashlib.sha256("\n".join(PARSER_SPECS).encode("utf-8")).hexdigest()[:12]
-    return cache_dir / f"parsers-{digest}"
+    return package_dir(cache_dir, PARSER_SPECS)
 
 
 def _ready(target: Path) -> bool:
@@ -164,14 +169,14 @@ def _clear(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
-def _promote(staging: Path, target: Path) -> None:
-    """런 폴더에 받은 패키지를 캐시로 옮긴다. 다 옮긴 뒤에만 표시 파일이 생긴다."""
+def _promote(staging: Path, target: Path, specs: tuple[str, ...]) -> None:
+    """작업 폴더에 받은 패키지를 캐시로 옮긴다. 다 옮긴 뒤에만 표시 파일이 생긴다."""
     if not staging.is_dir():
         raise ExtractError("parser_install_failed", "pip이 끝났는데 받은 패키지가 없다")
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(f"{target.name}.partial-{uuid.uuid4().hex[:8]}")
     shutil.move(str(staging), str(partial))
-    (partial / READY_MARKER).write_text("\n".join(PARSER_SPECS) + "\n", encoding="utf-8")
+    (partial / READY_MARKER).write_text("\n".join(specs) + "\n", encoding="utf-8")
     # 표시 없이 남은 폴더(옮기다 죽은 흔적)는 지우고 바꾼다.
     _clear(target)
     os.replace(partial, target)
@@ -210,11 +215,18 @@ def _last_line(text: str) -> str:
     return lines[-1][:300] if lines else ""
 
 
-async def ensure_parsers(
-    sandbox: SandboxBackend, handle: WorkspaceHandle, cache_dir: Path, *, exec_id: str
+async def ensure_packages(
+    sandbox: SandboxBackend,
+    handle: WorkspaceHandle,
+    specs: tuple[str, ...],
+    cache_dir: Path,
+    *,
+    exec_id: str,
+    label: str,
+    prefix: str = "parsers",
 ) -> Path:
-    """pypdf·python-docx가 설치된 폴더. 없으면 이 런 폴더에서 받아 캐시로 옮긴다."""
-    target = parser_dir(cache_dir)
+    """specs가 설치된 캐시 폴더. 없으면 이 작업 폴더에서 받아 캐시로 옮긴다. label은 오류 문구용."""
+    target = package_dir(cache_dir, specs, prefix)
     if await asyncio.to_thread(_ready, target):
         return target
     async with _install_lock(target):
@@ -225,7 +237,7 @@ async def ensure_parsers(
         spec = ExecSpec(
             exec_id=exec_id,
             kind="pip",
-            packages=list(PARSER_SPECS),
+            packages=list(specs),
             env=dict(PIP_ENV),
             timeout_sec=INSTALL_TIMEOUT_SEC,
             memory_limit_mb=INSTALL_MEMORY_MB,
@@ -243,12 +255,21 @@ async def ensure_parsers(
             await asyncio.to_thread(_clear, staging)
             raise ExtractError(
                 "parser_install_failed",
-                f"pdf·docx 파서({', '.join(PARSER_SPECS)})를 설치하지 못했다. 인터넷 연결과 "
+                f"{label}({', '.join(specs)})를 설치하지 못했다. 인터넷 연결과 "
                 f"DATA_DIR 경로 길이(Windows 260자)를 확인한다: {reason}",
                 retryable=True,
             )
-        await asyncio.to_thread(_promote, staging, target)
+        await asyncio.to_thread(_promote, staging, target, specs)
     return target
+
+
+async def ensure_parsers(
+    sandbox: SandboxBackend, handle: WorkspaceHandle, cache_dir: Path, *, exec_id: str
+) -> Path:
+    """pypdf·python-docx가 설치된 폴더. 없으면 이 작업 폴더에서 받아 캐시로 옮긴다."""
+    return await ensure_packages(
+        sandbox, handle, PARSER_SPECS, cache_dir, exec_id=exec_id, label="pdf·docx 파서"
+    )
 
 
 def _parse_output(raw: str) -> dict[str, Any] | None:
@@ -257,6 +278,50 @@ def _parse_output(raw: str) -> dict[str, Any] | None:
     except ValueError:
         return None
     return cast(dict[str, Any], payload) if isinstance(payload, dict) else None
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptResult:
+    # 스크립트가 남긴 JSON. 결과 없이 끝났으면 None이고 detail에 마지막 stderr 줄이 있다.
+    payload: dict[str, Any] | None
+    timed_out: bool
+    detail: str
+
+
+async def run_script(
+    sandbox: SandboxBackend,
+    handle: WorkspaceHandle,
+    *,
+    exec_id: str,
+    script: str,
+    output: str,
+    output_limit: int,
+    timeout_sec: int = EXTRACT_TIMEOUT_SEC,
+    memory_mb: int = EXTRACT_MEMORY_MB,
+) -> ScriptResult:
+    """작업 폴더에서 파이썬 스크립트를 돌리고 .run/<output>의 JSON을 읽는다(SandboxError는 그대로).
+
+    결과를 표준 출력이 아니라 파일로 받는 것은 출력 인코딩·버퍼와 무관하게 큰 글을 옮기려는 것이다.
+    """
+    spec = ExecSpec(
+        exec_id=exec_id,
+        kind="python",
+        script=script,
+        timeout_sec=timeout_sec,
+        memory_limit_mb=memory_mb,
+        max_processes=EXTRACT_MAX_PROCESSES,
+    )
+    run = await _run(sandbox, handle, spec)
+    if run.timed_out:
+        return ScriptResult(None, True, "")
+    payload: dict[str, Any] | None = None
+    try:
+        content = await sandbox.read_file(handle, f"{RUN_DIR}/{output}", 0, output_limit)
+        if content.encoding == "utf-8" and not content.truncated:
+            payload = _parse_output(content.content)
+    except SandboxError:
+        payload = None
+    return ScriptResult(payload, False, _last_line(run.stderr) or f"종료 코드 {run.exit_code}")
 
 
 async def extract_document(
@@ -274,34 +339,25 @@ async def extract_document(
     script = EXTRACT_TEMPLATE.format(
         lib=str(lib), path=path, kind=kind, budget=max(budget, 0), output=output
     )
-    spec = ExecSpec(
-        exec_id=exec_id,
-        kind="python",
-        script=script,
-        timeout_sec=EXTRACT_TIMEOUT_SEC,
-        memory_limit_mb=EXTRACT_MEMORY_MB,
-        max_processes=EXTRACT_MAX_PROCESSES,
-    )
     try:
-        run = await _run(sandbox, handle, spec)
+        # JSON으로 바꾸면 줄바꿈·따옴표가 두 글자가 되어 글보다 커질 수 있다.
+        result = await run_script(
+            sandbox,
+            handle,
+            exec_id=exec_id,
+            script=script,
+            output=output,
+            output_limit=max(budget, 0) * 2 + 64 * 1024,
+        )
     except SandboxError as exc:
         raise ExtractError(exc.code, exc.message) from None
-    if run.timed_out:
+    if result.timed_out:
         raise ExtractError(
             "extract_timeout", f"{EXTRACT_TIMEOUT_SEC}초 안에 글을 꺼내지 못했다", retryable=True
         )
-    payload: dict[str, Any] | None = None
-    try:
-        # JSON으로 바꾸면 줄바꿈·따옴표가 두 글자가 되어 글보다 커질 수 있다.
-        limit = max(budget, 0) * 2 + 64 * 1024
-        content = await sandbox.read_file(handle, f"{RUN_DIR}/{output}", 0, limit)
-        if content.encoding == "utf-8" and not content.truncated:
-            payload = _parse_output(content.content)
-    except SandboxError:
-        payload = None
+    payload = result.payload
     if payload is None:
-        detail = _last_line(run.stderr) or f"종료 코드 {run.exit_code}"
-        raise ExtractError("extract_crashed", f"추출 프로세스가 결과 없이 끝났다: {detail}")
+        raise ExtractError("extract_crashed", f"추출 프로세스가 결과 없이 끝났다: {result.detail}")
     if payload.get("ok") is not True:
         failure = str(payload.get("kind") or "parse")
         message = str(payload.get("error") or "글을 꺼내지 못했다")

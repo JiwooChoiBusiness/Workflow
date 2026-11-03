@@ -27,5 +27,5 @@ class ModelPrice(BaseModel):
 
     input_per_mtok: float = Field(ge=0)
     output_per_mtok: float = Field(ge=0)
-    # 없으면 입력 단가의 25%로 계산한다(설계 4.3).
+    # 없으면 입력 단가의 10%로 계산한다(app/llm/pricing.py).
     cached_input_per_mtok: float | None = Field(default=None, ge=0)

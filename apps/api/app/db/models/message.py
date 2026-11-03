@@ -28,3 +28,5 @@ class Message(TimestampMixin, Base):
     stop_reason: Mapped[str | None] = mapped_column(String)
     files: Mapped[list[str]] = mapped_column(JSONValue, default=list)
     usage: Mapped[dict[str, Any] | None] = mapped_column(JSONValue)
+    # 에이전트 도구(search_knowledge) 결과의 인용을 모은 것(3단계 8.4).
+    retriever_resources: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONValue)

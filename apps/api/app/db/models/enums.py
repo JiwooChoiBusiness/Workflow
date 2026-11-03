@@ -101,3 +101,59 @@ class WfConversationSource(StrEnum):
     PREVIEW = "preview"
     WEBAPP = "webapp"
     API = "api"
+
+
+class KbDocForm(StrEnum):
+    # 청크 모드(3단계 설계 4.1, 6.3). KB를 만든 뒤 바꾸지 않는다.
+    TEXT = "text_model"
+    HIERARCHICAL = "hierarchical_model"
+    QA = "qa_model"
+
+
+class KbIndexingTechnique(StrEnum):
+    HIGH_QUALITY = "high_quality"
+    ECONOMY = "economy"
+
+
+class KbDataSourceType(StrEnum):
+    UPLOAD_FILE = "upload_file"
+    PASTE_TEXT = "paste_text"
+    WORKFLOW = "workflow"
+    API = "api"
+
+
+class KbIndexingStatus(StrEnum):
+    WAITING = "waiting"
+    PARSING = "parsing"
+    CLEANING = "cleaning"
+    SPLITTING = "splitting"
+    INDEXING = "indexing"
+    COMPLETED = "completed"
+    ERROR = "error"
+    PAUSED = "paused"
+
+
+class KbSegmentStatus(StrEnum):
+    WAITING = "waiting"
+    INDEXING = "indexing"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+class KbCreatedBy(StrEnum):
+    AUTOMATIC = "automatic"
+    CUSTOMIZED = "customized"
+
+
+class KbMetadataType(StrEnum):
+    STRING = "string"
+    NUMBER = "number"
+    TIME = "time"
+
+
+class KbQuerySource(StrEnum):
+    HIT_TEST = "hit_test"
+    NODE = "node"
+    TOOL = "tool"
+    API = "api"
+    EVAL = "eval"

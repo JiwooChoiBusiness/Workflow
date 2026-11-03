@@ -18,11 +18,12 @@ from typing import Any, cast
 import pytest
 
 from app.config import Settings
+from app.knowledge.ingest.parse import decode_text, file_kind
 from app.sandbox.base import ExecEvent, ExecExited, ExecOutput, ExecSpec, WorkspaceHandle
 from app.sandbox.local_workspace import LocalWorkspaceBackend
 from app.workflow.extract_runner import READY_MARKER, ExtractError, ensure_parsers, parser_dir
 from app.workflow.graph import validate
-from app.workflow.nodes.document_extractor import TEXT_BUDGET, decode_text, file_kind
+from app.workflow.nodes.document_extractor import TEXT_BUDGET
 from app.workflow.ports import FilePortError, NodeSettings
 
 Node = Callable[..., dict[str, Any]]

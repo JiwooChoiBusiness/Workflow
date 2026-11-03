@@ -29,9 +29,11 @@ def test_default_scopes_follow_the_target() -> None:
     assert default_scopes(KeyTarget.agent(target)) == ["chat", "tasks"]
     assert default_scopes(KeyTarget.workflow(target)) == ["workflow"]
     assert default_scopes(KeyTarget.workflow(target), chatflow=True) == ["chat"]
+    assert default_scopes(KeyTarget.knowledge(target)) == ["knowledge"]
     assert allowed_scopes("agent") == {"chat", "tasks"}
     assert allowed_scopes("workflow") == {"workflow"}
     assert allowed_scopes("chatflow") == {"chat"}
+    assert allowed_scopes("knowledge") == {"knowledge"}
 
 
 def test_rows_and_authenticated_keys_point_at_their_target() -> None:
@@ -62,7 +64,36 @@ def test_rows_and_authenticated_keys_point_at_their_target() -> None:
     assert target_columns(KeyTarget.workflow(workflow_id)) == {
         "agent_id": None,
         "workflow_id": workflow_id,
+        "knowledge_base_id": None,
     }
+
+
+def test_knowledge_base_keys_are_a_third_target() -> None:
+    # 3단계 8.5: 지식 베이스 키는 그 KB 하나만 본다(서비스 API 경로는 M23).
+    kb_id = uuid.uuid4()
+    row = ApiKey(
+        id=uuid.uuid4(), knowledge_base_id=kb_id, name="k", key_prefix="sk-wf-", key_hash="h3"
+    )
+    key = AuthenticatedApiKey(
+        key_id=row.id,
+        workspace_id=uuid.uuid4(),
+        agent_id=None,
+        scopes=("knowledge",),
+        knowledge_base_id=kb_id,
+    )
+
+    assert key_target(row) == KeyTarget.knowledge(kb_id) == key.target
+    assert KeyTarget.knowledge(kb_id) != KeyTarget.workflow(kb_id)
+    assert key.api_target == api_target(KeyTarget.knowledge(kb_id)) == "knowledge"
+    assert target_columns(KeyTarget.knowledge(kb_id)) == {
+        "agent_id": None,
+        "workflow_id": None,
+        "knowledge_base_id": kb_id,
+    }
+    # 에이전트·워크플로우 경로를 부르면 대상이 맞지 않는다는 400이 난다.
+    error = wrong_target(key.api_target, "agent")
+    assert error.details == {"key_target": "knowledge", "expected": ["agent"]}
+    assert "지식 베이스" in error.message
 
 
 def test_a_row_without_a_target_is_rejected() -> None:

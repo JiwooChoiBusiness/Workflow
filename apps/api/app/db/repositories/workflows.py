@@ -5,7 +5,7 @@ from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_, select
 
 from app.db.models import Run, WfFile, WfNodeRun, WfRun, WfRunEvent, WfVersion, Workflow
 from app.db.models.enums import RunStatus, WfFileKind, WfNodeRunStatus, WfRunTrigger
@@ -414,19 +414,29 @@ class WfFileRepository(WorkspaceScopedRepository[WfFile]):
             return []
         return await self._scalars(self._select().where(WfFile.id.in_(list(file_ids))))
 
-    async def outputs_ended_before(self, cutoff: datetime, *, limit: int) -> list[WfFile]:
-        """런이 끝난 지 보존 기간이 지난 출력 파일(2단계 4.4)."""
-        return await self._scalars(
+    async def run_files_ended_before(
+        self, cutoff: datetime, *, after: uuid.UUID | None, limit: int
+    ) -> list[WfFile]:
+        """런이 끝난 지 보존 기간이 지난 출력 파일과 그 런에 묶인 업로드(2단계 4.4).
+
+        대화 메시지에도 붙은 업로드는 대화를 따라가므로 뺀다. id 순으로 after 다음부터.
+        """
+        statement = (
             self._select()
             .join(WfRun, WfRun.id == WfFile.wf_run_id)
             .where(
                 WfRun.workspace_id == self.workspace_id,
-                WfFile.kind == WfFileKind.OUTPUT,
+                or_(
+                    WfFile.kind == WfFileKind.OUTPUT,
+                    and_(WfFile.kind == WfFileKind.UPLOAD, WfFile.conversation_id.is_(None)),
+                ),
                 WfRun.ended_at.is_not(None),
                 WfRun.ended_at < cutoff,
             )
-            .limit(limit)
         )
+        if after is not None:
+            statement = statement.where(WfFile.id > after)
+        return await self._scalars(statement.order_by(WfFile.id).limit(limit))
 
     async def list_for_runs(self, wf_run_ids: Collection[uuid.UUID]) -> list[WfFile]:
         if not wf_run_ids:
@@ -436,12 +446,17 @@ class WfFileRepository(WorkspaceScopedRepository[WfFile]):
     async def uploads_for_conversations(
         self, conversation_ids: Collection[uuid.UUID]
     ) -> list[WfFile]:
+        """대화 메시지에 붙은 업로드와 그 대화의 런에 묶인 업로드(시작 입력·폼 파일 칸)."""
         if not conversation_ids:
             return []
+        ids = list(conversation_ids)
+        runs = select(WfRun.id).where(
+            WfRun.workspace_id == self.workspace_id, WfRun.conversation_id.in_(ids)
+        )
         return await self._scalars(
             self._select().where(
                 WfFile.kind == WfFileKind.UPLOAD,
-                WfFile.conversation_id.in_(list(conversation_ids)),
+                or_(WfFile.conversation_id.in_(ids), WfFile.wf_run_id.in_(runs)),
             )
         )
 

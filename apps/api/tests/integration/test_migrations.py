@@ -25,9 +25,9 @@ from app.main import create_app
 from app.security.tokens import hash_token
 from app.services.api_keys import ApiKeyService
 
-HEAD = "0006"
+HEAD = "0007"
 
-# 1단계 설계 5.1과 2단계 설계 4.1(0003·0006)의 테이블 전부.
+# 1단계 설계 5.1, 2단계 설계 4.1(0003·0006), 3단계 설계 4.1(0007)의 테이블 전부.
 TABLES = {
     "workspace",
     "account",
@@ -53,6 +53,16 @@ TABLES = {
     "wf_file",
     "wf_conversation",
     "wf_message",
+    "knowledge_base",
+    "kb_document",
+    "kb_segment",
+    "kb_child_chunk",
+    "kb_metadata_field",
+    "kb_document_metadata",
+    "kb_eval_case",
+    "kb_eval_run",
+    "kb_query_log",
+    "kb_counter",
 }
 
 

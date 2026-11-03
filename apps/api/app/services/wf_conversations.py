@@ -56,7 +56,7 @@ from app.schemas.wf_conversation import (
 from app.services.access import FlowScope, scoped_conversation
 from app.services.errors import ServiceError, not_found
 from app.services.runs import TITLE_CHARS
-from app.services.workflow_files import WorkflowFileService, wf_file_out
+from app.services.workflow_files import WorkflowFileService, bind_run_uploads, wf_file_out
 from app.services.workflow_runs import (
     WorkflowRunService,
     enqueue,
@@ -319,7 +319,10 @@ class WfConversationService:
             return conversation_out(chat)
 
     async def delete(self, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
-        """돌던 런을 멈추고 지운다. 행·메시지·런은 로그로 남고 붙인 업로드는 지운다(4.4)."""
+        """돌던 런을 멈추고 지운다. 행·메시지·런은 로그로 남는다(4.4).
+
+        메시지에 붙인 업로드와 이 대화의 런에 묶인 업로드(시작 입력·폼 파일 칸)는 지운다.
+        """
         async with self._db.read() as session:
             chat = await scoped_conversation(session, workspace_id, conversation_id, None)
             active = await WfRunRepository(session, workspace_id).active_for_conversation(chat.id)
@@ -535,6 +538,9 @@ class WfConversationService:
                 # 메시지에 붙인 업로드는 대화를 지울 때 함께 지운다(4.4).
                 for row in await WfFileRepository(session, workspace_id).get_many(attached):
                     row.conversation_id = chat.id
+            # 시작 입력(start 파일 필드)으로 쓴 업로드는 이 런에 묶어 런 보존 규칙을 따르게 한다.
+            # 메시지에도 붙인 파일은 위에서 대화에 묶였으므로 그대로 둔다.
+            await bind_run_uploads(session, run, inputs)
             chat.message_count += 2
             chat.last_message_at = now
             if not chat.title:

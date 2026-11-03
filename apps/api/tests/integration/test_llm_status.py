@@ -5,6 +5,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
+from pydantic import SecretStr
 
 from app.config import Settings
 from app.llm import make_adapter
@@ -111,6 +112,8 @@ def idle_key(index: int, last4: str) -> dict[str, Any]:
         "failure_count": 0,
         "rate_limited_count": 0,
         "last_429_at": None,
+        "tier": "free",
+        "exhausted_by_model": {},
     }
 
 
@@ -123,6 +126,7 @@ async def test_status_shows_only_index_and_last4(
     body = response.json()
     assert body["key_count"] == 3
     assert body["keys"] == [idle_key(0, "k000"), idle_key(1, "k001"), idle_key(2, "k002")]
+    assert body["paid_key"] is None
     assert body["fallback_models"] == settings.gemini_model_fallback
     assert body["base_url"] == settings.gemini_openai_base_url
     assert body["fake"] is False
@@ -148,6 +152,35 @@ async def test_status_reports_key_pool_cooldown_and_counts(
     assert (keys[1]["rate_limited_count"], keys[1]["failure_count"]) == (2, 2)
     assert keys[1]["last_429_at"] is not None
     assert (keys[2]["disabled"], keys[2]["failure_count"]) == (True, 1)
+
+
+async def test_status_shows_the_paid_key_and_models_blocked_for_the_day(
+    logged_in: AsyncClient, app: FastAPI, settings: Settings
+) -> None:
+    # 유료 키는 마지막 4자리만, 일일 한도로 쉬는 모델은 풀리는 시각과 함께 보인다(M21 검토 2-6).
+    paid = "paid-" + "7" * 26 + "zz99"
+    with_paid = settings.model_copy(update={"gemini_paid_api_key": SecretStr(paid)})
+    fake = FakeGemini(with_paid, lambda index: models_response())
+    adapter = GeminiAdapter(
+        api_keys=with_paid.gemini_api_keys,
+        paid_api_keys=[paid],
+        model_fallback=with_paid.gemini_model_fallback,
+        transport=FakeChat(fake.keys, None),
+    )
+    app.state.llm_status = LlmStatusService(with_paid, adapter, transport=httpx.MockTransport(fake))
+    adapter.key_pool.exhaust(0, "gemini-3.8-flash", 3600)
+    adapter.key_pool.mark_success(3)
+
+    response = await logged_in.get("/api/console/llm")
+
+    body = response.json()
+    assert paid not in response.text
+    assert body["key_count"] == 3 and len(body["keys"]) == 3
+    assert list(body["keys"][0]["exhausted_by_model"]) == ["gemini-3.8-flash"]
+    assert body["keys"][0]["tier"] == "free"
+    assert body["paid_key"]["tier"] == "paid"
+    assert (body["paid_key"]["index"], body["paid_key"]["last4"]) == (3, "zz99")
+    assert body["paid_key"]["success_count"] == 1
 
 
 async def test_connection_test_lists_models_and_generates(
@@ -313,13 +346,7 @@ async def test_models_puts_fallback_first_and_caches(
             "live": True,
             "capabilities": GEMINI_3_FLASH_CAPS,
         },
-        {
-            "id": "gemini-3.7-flash",
-            "fallback_index": 1,
-            "live": False,
-            "capabilities": GEMINI_3_FLASH_CAPS,
-        },
-        {"id": "gemini-3.6-flash", "fallback_index": 2, "live": False, "capabilities": minimal},
+        {"id": "gemini-3.6-flash", "fallback_index": 1, "live": False, "capabilities": minimal},
         {"id": "gemini-2.5-pro", "fallback_index": None, "live": True, "capabilities": None},
         {"id": "text-embedding-004", "fallback_index": None, "live": True, "capabilities": None},
     ]

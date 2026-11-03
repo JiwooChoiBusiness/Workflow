@@ -148,6 +148,8 @@ def test_disk_check_reports_the_folders_that_grow(tmp_path: Path) -> None:
         (("wf-workspaces", "r1", "b.bin"), 1024),
         (("storage", "wf-files", "w1", "c.bin"), 2 * 2**20),
         (("cache", "wf-extract", "parsers-1", "d.bin"), 10),
+        (("knowledge", "index.db"), 5 * 2**20),
+        (("storage", "kb-files", "w1", "e.bin"), 2048),
     ):
         path = tmp_path.joinpath(*parts)
         path.parent.mkdir(parents=True)
@@ -157,7 +159,8 @@ def test_disk_check_reports_the_folders_that_grow(tmp_path: Path) -> None:
 
     assert check.ok and check.name == "디스크"
     assert check.detail == (
-        "작업공간 3MB, pip 캐시 0B, 워크플로우 런 폴더 1KB, 워크플로우 파일 2MB, 문서 추출 파서 10B"
+        "작업공간 3MB, pip 캐시 0B, 워크플로우 런 폴더 1KB, 워크플로우 파일 2MB,"
+        " 문서 추출 파서 10B, 지식 색인 5MB, 지식 작업 폴더 0B, 지식 원본 2KB"
     )
 
 

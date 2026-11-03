@@ -10,6 +10,9 @@ parent_run_id를 따라 뿌리 런까지 올라가 뿌리 런의 세션이 범�
 챗플로우 대화(wf_conversation)와 워크플로우 런(wf_run)은 FlowScope로 본다(2단계 6.2, 6.3). 웹앱은
 webapp 대화·런이고 워크플로우가 발행되어 webapp_enabled여야 한다. 서비스 API는 그 키로 만든 api
 대화·런이고, user를 주면 그 외부 사용자의 것만이다.
+
+지식 베이스 키(3단계 8.5)는 DatasetScope로 본다. 키에 묶인 KB 하나뿐이고 다른 KB의 id는 없는 것과
+같다(404).
 """
 
 import uuid
@@ -173,3 +176,15 @@ async def scoped_wf_run(
     ):
         raise not_found("워크플로우 런")
     return run
+
+
+@dataclass(frozen=True)
+class DatasetScope:
+    knowledge_base_id: uuid.UUID
+
+
+def dataset_in_scope(scope: DatasetScope | None, kb_id: uuid.UUID) -> uuid.UUID:
+    """범위 안의 KB id. 키가 다른 KB에 묶여 있으면 404."""
+    if scope is not None and kb_id != scope.knowledge_base_id:
+        raise not_found("지식 베이스")
+    return kb_id

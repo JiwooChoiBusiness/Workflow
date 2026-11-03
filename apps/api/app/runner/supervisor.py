@@ -49,7 +49,7 @@ class Supervisor:
         grace_sec: float = 20,
         name: str = "agent",
     ) -> None:
-        # 레인 이름(agent, workflow). 로그에서 두 인스턴스를 가르는 데만 쓴다(2단계 3.6).
+        # 레인 이름(agent, workflow, knowledge). 로그에서 인스턴스를 가르는 데만 쓴다(2단계 3.6).
         self.name = name
         self._run_fn = run_fn
         self._max_concurrent = max_concurrent
@@ -57,6 +57,9 @@ class Supervisor:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         # 대기 순서. run.queued{position}과 /healthz의 queued에 쓴다.
         self._waiting: list[str] = []
+        # dequeue로 뺀 런 → asyncio.Queue에 남은 그 런의 옛 항목 수. Queue에서 직접 지울 수 없어
+        # _work가 꺼낼 때 버린다. 수를 세는 것은 뺀 뒤 다시 넣은 런이 두 번 돌지 않게 하려는 것이다.
+        self._dequeued: dict[str, int] = {}
         self._cancels: dict[str, CancelSignal] = {}
         self._workers: list[asyncio.Task[None]] = []
         # 워커 번호별 실행 중인 run_id. 종료할 때 쉬는 워커와 일하는 워커를 가른다.
@@ -90,6 +93,22 @@ class Supervisor:
 
     def is_running(self, run_id: str) -> bool:
         return run_id in self._current
+
+    def running_keys(self) -> list[str]:
+        return [run_id for run_id in self._current if run_id is not None]
+
+    def dequeue(self, run_id: str) -> bool:
+        """큐에서 기다리는 런 하나를 뺀다. 실행 중이거나 큐에 없으면 False(지식 레인의 pause).
+
+        _waiting에서만 지우면 _work가 Queue에서 꺼낸 id를 그대로 실행하므로 따로 표시해 둔다.
+        """
+        if run_id not in self._waiting:
+            return False
+        self._waiting.remove(run_id)
+        self._dequeued[run_id] = self._dequeued.get(run_id, 0) + 1
+        if run_id not in self._waiting and not self.is_running(run_id):
+            self._cancels.pop(run_id, None)
+        return True
 
     def add_shutdown_hook(self, hook: ShutdownHook) -> None:
         self._hooks.append(hook)
@@ -136,6 +155,14 @@ class Supervisor:
         # 종료가 시작되면 지금 런만 마치고 빠진다. 빈 큐에서 기다리면 유예 시간을 다 쓰게 된다.
         while not self.shutting_down:
             run_id = await self._queue.get()
+            skipped = self._dequeued.get(run_id, 0)
+            if skipped:
+                # dequeue로 뺀 옛 항목이다. 다시 넣은 항목은 그 뒤에 남아 있어 그때 돈다.
+                if skipped == 1:
+                    del self._dequeued[run_id]
+                else:
+                    self._dequeued[run_id] = skipped - 1
+                continue
             if run_id in self._waiting:
                 self._waiting.remove(run_id)
             if self.shutting_down:

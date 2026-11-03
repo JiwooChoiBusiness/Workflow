@@ -72,6 +72,7 @@ class Seed:
         trigger: str = "preview",
         state: dict[str, Any] | None = None,
         inputs: dict[str, Any] | None = None,
+        conversation_id: uuid.UUID | None = None,
     ) -> uuid.UUID:
         run_id = new_id()
         async with self.db.write() as session:
@@ -88,6 +89,7 @@ class Seed:
                     inputs=inputs or {},
                     graph_hash="0" * 64,
                     ended_at=ended,
+                    conversation_id=conversation_id,
                 )
             )
             await session.flush()
@@ -143,7 +145,11 @@ class Seed:
         return file_id, key
 
     async def upload(
-        self, *, age: timedelta, conversation_id: uuid.UUID | None = None
+        self,
+        *,
+        age: timedelta,
+        conversation_id: uuid.UUID | None = None,
+        run_id: uuid.UUID | None = None,
     ) -> tuple[uuid.UUID, str]:
         file_id = new_id()
         key = f"wf-files/{self.workspace_id}/{file_id}"
@@ -158,6 +164,7 @@ class Seed:
                     kind="upload",
                     workflow_id=self.workflow_id,
                     conversation_id=conversation_id,
+                    wf_run_id=run_id,
                     filename="in.txt",
                     mime="text/plain",
                     size_bytes=1,
@@ -377,3 +384,59 @@ async def test_loose_uploads_go_after_a_week_unless_something_still_reads_them(
     assert not seed.storage.local_path(finished_key).exists()
     assert unused not in left and earlier_turn not in left and deleted_chat not in left
     assert await retention.purge_loose_uploads() == 0
+
+
+async def test_uploads_bound_to_old_runs_follow_the_output_rule(
+    parts: tuple[Seed, WorkflowRetention, Path],
+) -> None:
+    # 2단계 후속 (3): 런에 묶인 업로드도 출력 파일처럼 런이 끝나고 90일 뒤 지운다. 대화 메시지에
+    # 붙었거나 대화의 다음 턴이 다시 읽을 파일은 남긴다.
+    seed, retention, _ = parts
+    old = await seed.run("succeeded", ended=NOW - timedelta(days=91))
+    recent = await seed.run("succeeded", ended=NOW - timedelta(days=10))
+    stale, stale_key = await seed.upload(age=timedelta(days=95), run_id=old)
+    attached, _ = await seed.upload(age=timedelta(days=95), run_id=old, conversation_id=new_id())
+    reused, _ = await seed.upload(age=timedelta(days=95), run_id=old)
+    young, _ = await seed.upload(age=timedelta(days=12), run_id=recent)
+    output, _ = await seed.output_file(old)
+    await seed.conversation([{"doc": ref(reused)}])
+    small = WorkflowRetention(
+        seed.db,
+        storage=seed.storage,
+        backend=retention._backend,  # pyright: ignore[reportPrivateUsage]
+        retention_days=90,
+        clock=lambda: NOW,
+        batch_size=1,
+    )
+
+    assert await small.purge_output_files() == 2
+
+    async with seed.db.read() as session:
+        left = set((await session.scalars(select(WfFile.id))).all())
+    assert left == {attached, reused, young}
+    assert stale not in left and output not in left
+    assert not seed.storage.local_path(stale_key).exists()
+    assert await retention.purge_output_files() == 0
+
+
+async def test_deleted_conversations_lose_the_uploads_bound_to_their_runs(
+    parts: tuple[Seed, WorkflowRetention, Path],
+) -> None:
+    # 대화를 지울 때 바로 지우지 못하고 남은 것을 매시 정리가 본다. 폼 파일 칸·시작 입력처럼 런에
+    # 묶인 업로드도 대화를 따라간다(2단계 후속 (2)).
+    seed, retention, _ = parts
+    gone = await seed.conversation([{}], deleted=True)
+    alive = await seed.conversation([{}])
+    gone_run = await seed.run("succeeded", ended=NOW, conversation_id=gone)
+    alive_run = await seed.run("succeeded", ended=NOW, conversation_id=alive)
+    attached, _ = await seed.upload(age=timedelta(days=1), conversation_id=gone)
+    form_file, form_key = await seed.upload(age=timedelta(days=1), run_id=gone_run)
+    kept, _ = await seed.upload(age=timedelta(days=1), run_id=alive_run)
+
+    assert await retention.purge_conversation_uploads() == 2
+
+    async with seed.db.read() as session:
+        left = set((await session.scalars(select(WfFile.id))).all())
+    assert left == {kept}
+    assert attached not in left and form_file not in left
+    assert not seed.storage.local_path(form_key).exists()

@@ -4,6 +4,14 @@ from app.db.models.agent import Agent
 from app.db.models.agent_file import AgentFile
 from app.db.models.agent_version import AgentVersion
 from app.db.models.api_key import ApiKey
+from app.db.models.kb_child_chunk import KbChildChunk
+from app.db.models.kb_counter import KbCounter
+from app.db.models.kb_document import KbDocument
+from app.db.models.kb_eval import KbEvalCase, KbEvalRun
+from app.db.models.kb_metadata import KbDocumentMetadata, KbMetadataField
+from app.db.models.kb_query_log import KbQueryLog
+from app.db.models.kb_segment import KbSegment
+from app.db.models.knowledge_base import KnowledgeBase
 from app.db.models.login_session import LoginSession
 from app.db.models.message import Message
 from app.db.models.run import Run
@@ -31,6 +39,16 @@ __all__ = [
     "AgentVersion",
     "ApiKey",
     "ChatSession",
+    "KbChildChunk",
+    "KbCounter",
+    "KbDocument",
+    "KbDocumentMetadata",
+    "KbEvalCase",
+    "KbEvalRun",
+    "KbMetadataField",
+    "KbQueryLog",
+    "KbSegment",
+    "KnowledgeBase",
     "LoginSession",
     "Message",
     "Run",

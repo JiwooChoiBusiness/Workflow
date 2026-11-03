@@ -16,6 +16,9 @@ class ModelCapabilities(BaseModel):
     supports_tools: bool = True
     supports_reasoning_effort: bool = True
     supports_images: bool = True
+    # temperature·top_p를 보내도 되는 모델. Gemini 3.6부터는 무시되고 다음 세대는 400이라
+    # 기본은 False다(4단계 설계 2절).
+    supports_sampling_params: bool = False
     reasoning_efforts: tuple[ReasoningEffort, ...] = REASONING_EFFORTS
     # False면 능력표에 없는 모델이라 기본값을 돌려준 것이다.
     known: bool = False
@@ -38,6 +41,8 @@ _GEMINI_3_FLASH = ModelCapabilities(
 
 CATALOG: dict[str, ModelCapabilities] = {
     "gemini-3.8-flash": _GEMINI_3_FLASH.model_copy(update={"model_id": "gemini-3.8-flash"}),
+    # 3.8로 라우팅되는 별칭이라 기본 폴백에서는 뺐다(3단계 설계 1.12). .env의
+    # GEMINI_MODEL_FALLBACK에 직접 넣으면 그대로 쓰인다.
     "gemini-3.7-flash": _GEMINI_3_FLASH.model_copy(update={"model_id": "gemini-3.7-flash"}),
     "gemini-3.6-flash": _GEMINI_3_FLASH.model_copy(
         update={"model_id": "gemini-3.6-flash", "reasoning_efforts": REASONING_EFFORTS}

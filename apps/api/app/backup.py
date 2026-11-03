@@ -23,6 +23,10 @@ DEFAULT_ROOT = REPO_ROOT / "backups"
 DEFAULT_KEEP = 5
 MANIFEST_NAME = "manifest.json"
 DB_NAME = "app.db"
+# 지식 색인(3단계 4.5). 다시 만들 수 있는 파생 데이터지만 다시 만들려면 임베딩 호출(시간·일일
+# 한도)이 들어 기본으로 넣는다. --no-index면 빼고, 복구 뒤 서버가 비어 있는 index.db를 보고
+# 모든 문서를 다시 색인한다.
+INDEX_PARTS = ("knowledge", "index.db")
 ALLOWLIST_NAME = "allowlist.txt"
 PART_SUFFIX = ".part"
 # app/sandbox/local_workspace.py의 DELETED_PREFIX. 샌드박스 모듈을 끌어오지 않으려고 따로 둔다.
@@ -82,6 +86,7 @@ def create_backup(
     with_workspaces: bool = False,
     keep: int = DEFAULT_KEEP,
     now: datetime | None = None,
+    with_index: bool = True,
 ) -> BackupResult:
     if keep < 1:
         raise BackupError("--keep은 1 이상이어야 한다")
@@ -111,6 +116,9 @@ def create_backup(
     try:
         quick_check, revision = _copy_database(database, part / DB_NAME)
         tally.add(part / DB_NAME)
+        index = _copy_index(source.joinpath(*INDEX_PARTS), part.joinpath(*INDEX_PARTS), with_index)
+        if index["included"]:
+            tally.add(part.joinpath(*INDEX_PARTS))
         if (source / ALLOWLIST_NAME).is_file():
             shutil.copy2(source / ALLOWLIST_NAME, part / ALLOWLIST_NAME)
             tally.add(part / ALLOWLIST_NAME)
@@ -125,6 +133,7 @@ def create_backup(
             "bytes": tally.bytes,
             "quick_check": quick_check,
             "encryption_key_fingerprint": sysinfo.encryption_key_fingerprint(settings),
+            "knowledge_index": index,
         }
         (part / MANIFEST_NAME).write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -191,6 +200,40 @@ def _copy_database(source: Path, dest: Path) -> tuple[str, str | None]:
     if messages == ["ok"]:
         return "ok", revision
     return "; ".join(messages)[:QUICK_CHECK_MAX_CHARS], revision
+
+
+def _copy_index(source: Path, dest: Path, wanted: bool) -> dict[str, Any]:
+    """index.db를 app.db와 같은 온라인 백업으로 복사한다(3단계 4.5).
+
+    sqlite-vec 확장을 불러오지 않은 연결이어도 페이지를 그대로 옮기므로 복사본에서 KNN이 된다
+    [실측]. 64KB 페이지 크기도 복사본에 그대로 간다.
+    """
+    info: dict[str, Any] = {"included": False, "schema_version": None, "bytes": 0}
+    if not wanted or not source.is_file():
+        return info
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    reader = sqlite3.connect(source, timeout=BUSY_TIMEOUT_SEC)
+    try:
+        writer = sqlite3.connect(dest)
+        try:
+            reader.backup(writer, pages=-1)
+            try:
+                row = writer.execute(
+                    "SELECT value FROM meta WHERE key = 'schema_version'"
+                ).fetchone()
+            except sqlite3.OperationalError:
+                row = None
+            writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            writer.close()
+    finally:
+        reader.close()
+    info.update(
+        included=True,
+        schema_version=int(row[0]) if row is not None and str(row[0]).isdigit() else None,
+        bytes=dest.stat().st_size,
+    )
+    return info
 
 
 def _alembic_revision(conn: sqlite3.Connection) -> str | None:

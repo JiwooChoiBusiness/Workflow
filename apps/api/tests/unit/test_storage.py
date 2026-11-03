@@ -10,6 +10,7 @@ from app.storage.base import (
     StorageLimitExceeded,
     agent_file_key,
     check_key,
+    kb_file_key,
     session_file_key,
     skill_package_key,
 )
@@ -84,6 +85,8 @@ def test_keys_have_fixed_shapes() -> None:
     assert agent_file_key(workspace_id, item_id) == f"agent-files/{workspace_id}/{item_id}"
     assert skill_package_key(workspace_id, item_id) == f"skills/{workspace_id}/{item_id}.zip"
     assert check_key(agent_file_key(workspace_id, item_id))[0] == "agent-files"
+    assert kb_file_key(workspace_id, item_id) == f"kb-files/{workspace_id}/{item_id}"
+    assert check_key(kb_file_key(workspace_id, item_id))[0] == "kb-files"
 
 
 def test_session_file_key_is_run_and_relative_path() -> None:

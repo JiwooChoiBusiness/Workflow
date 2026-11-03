@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Collection, Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import sysinfo
 from app.auth.session_store import SessionStore
 from app.db.engine import Checkpoint, Database
-from app.db.models.enums import RunStatus
+from app.db.models.enums import RunStatus, WfFileKind
 from app.db.repositories.agent_files import AgentFileRepository
 from app.db.repositories.agent_versions import AgentVersionRepository
 from app.db.repositories.session_files import SessionFileRepository
@@ -33,6 +33,9 @@ from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.schemas.workspace import WorkspaceSettings
 from app.services.workflow_files import collect_file_refs
 from app.storage.base import StorageBackend, StorageError
+
+if TYPE_CHECKING:
+    from app.services.knowledge_index_executor import KnowledgeMaintenance
 
 log = structlog.get_logger("app.housekeeping")
 
@@ -273,10 +276,11 @@ class WorkflowRetention:
     """워크플로우 보존 정리(2단계 4.4).
 
     보존 기간이 지난 런의 이벤트(iteration 하위 노드 런의 입출력도 비운다), 실패 런의 체크포인트,
-    단일 노드 실행 런, 출력 파일, 런 작업 폴더(DATA_DIR/wf-workspaces/<wf_run_id>), 지운 챗플로우
-    대화에 붙어 남은 업로드, 런·대화를 가리키지 않는 오래된 업로드를 지운다. 대기 중인 런의
-    체크포인트는 재개에 필요해 건드리지 않는다. 대기는 자식 런의 입력 대기 상한에서 끝나고, 자식이
-    없는 폼 대기(human_input)는 forms가 같은 상한으로 끝낸다. 대화·메시지 행은 로그로 남긴다.
+    단일 노드 실행 런, 출력 파일과 런에 묶인 업로드, 런 작업 폴더
+    (DATA_DIR/wf-workspaces/<wf_run_id>), 지운 챗플로우 대화에 붙어 남은 업로드, 런·대화를 가리키지
+    않는 오래된 업로드를 지운다. 대기 중인 런의 체크포인트는 재개에 필요해 건드리지 않는다. 대기는
+    자식 런의 입력 대기 상한에서 끝나고, 자식이 없는 폼 대기(human_input)는 forms가 같은 상한으로
+    끝낸다. 대화·메시지 행은 로그로 남긴다.
     """
 
     def __init__(
@@ -385,19 +389,35 @@ class WorkflowRetention:
         return purged
 
     async def purge_output_files(self) -> int:
+        """런이 끝난 지 90일이 지난 출력 파일과 그 런에 묶인 업로드(입력 파일).
+
+        업로드는 끝나지 않은 런이나 지우지 않은 대화의 다음 턴이 다시 읽으면 남긴다
+        (purge_loose_uploads와 같은 기준).
+        """
         cutoff = self._clock() - WF_OUTPUT_FILE_KEEP
         removed = 0
         for workspace_id, _ in await self._workspaces():
+            after: uuid.UUID | None = None
             while True:
                 async with self._db.write() as session:
                     files = WfFileRepository(session, workspace_id)
-                    rows = await files.outputs_ended_before(cutoff, limit=self._batch)
-                    await files.delete_many([row.id for row in rows])
+                    rows = await files.run_files_ended_before(
+                        cutoff, after=after, limit=self._batch
+                    )
+                    owners = {row.workflow_id for row in rows if row.kind == WfFileKind.UPLOAD}
+                    used = await _uploads_in_use(session, workspace_id, owners) if owners else set()
+                    stale = [
+                        row
+                        for row in rows
+                        if row.kind == WfFileKind.OUTPUT or str(row.id) not in used
+                    ]
+                    await files.delete_many([row.id for row in stale])
                 # 행을 먼저 지운다. 파일 삭제가 실패해도 가리키는 행 없는 파일만 남는다.
-                await self._delete_keys(row.storage_key for row in rows)
-                removed += len(rows)
+                await self._delete_keys(row.storage_key for row in stale)
+                removed += len(stale)
                 if len(rows) < self._batch:
                     break
+                after = rows[-1].id
         return removed
 
     async def purge_conversation_uploads(self) -> int:
@@ -473,6 +493,33 @@ class WorkflowRetention:
         return removed
 
 
+class KnowledgeRetention:
+    """지식 베이스 보존 정리(3단계 설계 4.5, 5.4).
+
+    kb-work 작업 폴더, index.db 고아·설정 불일치, 임베딩 캐시(30일·5만 행), 질의 기록
+    (KB_QUERY_LOG_DAYS), 평가 실행(KB마다 30개), 지운 KB·문서, 행 없는 원본 파일(7일), index.db
+    체크포인트. 일은 app/services/knowledge_index_executor.py의 KnowledgeMaintenance가 한다.
+    """
+
+    def __init__(self, maintenance: "KnowledgeMaintenance") -> None:
+        self._maintenance = maintenance
+
+    def jobs(self) -> list[tuple[str, Callable[[], Awaitable[Any]]]]:
+        maintenance = self._maintenance
+        return [
+            ("kb_work", maintenance.purge_work_dirs),
+            ("kb_deleted", maintenance.purge_deleted),
+            # 설정 불일치를 먼저 맞춰야 고아 정리가 새로 만든 빈 테이블을 기준으로 센다.
+            ("kb_mismatch", lambda: maintenance.reconcile(skip_busy=True)),
+            ("kb_orphans", maintenance.purge_orphans),
+            ("kb_embed_cache", maintenance.purge_cache),
+            ("kb_query_logs", maintenance.purge_query_logs),
+            ("kb_eval_runs", maintenance.trim_eval_runs),
+            ("kb_files", maintenance.purge_loose_files),
+            ("kb_index_wal_frames", maintenance.checkpoint),
+        ]
+
+
 async def _uploads_in_use(
     session: AsyncSession, workspace_id: uuid.UUID, workflow_ids: Collection[uuid.UUID | None]
 ) -> set[str]:
@@ -503,12 +550,14 @@ class Housekeeping:
         runs: RunJobs | None = None,
         retention: Retention | None = None,
         workflows: WorkflowRetention | None = None,
+        knowledge: KnowledgeRetention | None = None,
     ) -> None:
         self._db = db
         self._sessions = SessionStore(db)
         self._runs = runs
         self._retention = retention
         self._workflows = workflows
+        self._knowledge = knowledge
         self._backend = backend
         self._budget_mb = memory_budget_mb
         self._interval_sec = interval_sec
@@ -581,6 +630,11 @@ class Housekeeping:
             for name, job in self._workflows.jobs():
                 summary[f"purged_{name}"] = await _attempt(
                     job, "housekeeping.workflow_retention_failed", job=name
+                )
+        if self._knowledge is not None:
+            for name, job in self._knowledge.jobs():
+                summary[name] = await _attempt(
+                    job, "housekeeping.knowledge_retention_failed", job=name
                 )
         summary["purged_workspaces"] = await _attempt(
             self._backend.purge_deleted, "housekeeping.workspaces_failed"

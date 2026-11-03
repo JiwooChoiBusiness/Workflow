@@ -48,8 +48,12 @@ def test_unknown_model_gets_conservative_defaults() -> None:
 
 def test_default_fallback_models_are_all_in_the_catalog() -> None:
     fallback = Settings().gemini_model_fallback
+    catalog = [caps.model_id for caps in list_capabilities()]
 
-    assert [caps.model_id for caps in list_capabilities()] == fallback
+    # 3.7은 3.8로 라우팅되는 별칭이라 기본 폴백에서 뺐고 능력표에는 남긴다(3단계 1.12).
+    assert fallback == ["gemini-3.8-flash", "gemini-3.6-flash"]
+    assert catalog == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+    assert not any(caps.supports_sampling_params for caps in list_capabilities())
 
 
 @pytest.mark.parametrize(

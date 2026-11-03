@@ -21,16 +21,24 @@ class LlmKeyStatus(BaseModel):
     failure_count: int = 0
     rate_limited_count: int = 0
     last_429_at: datetime | None = None
+    # free는 GEMINI_API_KEYS, paid는 GEMINI_PAID_API_KEY(3단계 Z1, 14.4).
+    tier: Literal["free", "paid"] = "free"
+    # 일일 한도 429로 쉬는 모델 → 풀리는 시각(다음 태평양 자정). 그 등급의 키 하나라도 막히면
+    # 그 모델은 다른 키로도 보내지 않는다(Z2).
+    exhausted_by_model: dict[str, datetime] = Field(default_factory=dict[str, datetime])
 
 
 class LlmStatus(BaseModel):
     provider: Literal["gemini"] = "gemini"
     fake: bool
     base_url: str
+    # 무료 키(GEMINI_API_KEYS) 수. keys도 무료 키뿐이고 유료 키는 paid_key에 따로 있다.
     key_count: int
     keys: list[LlmKeyStatus]
     fallback_models: list[str]
     key_cooldown_sec: int
+    # 유료 키가 없으면 null.
+    paid_key: LlmKeyStatus | None = None
 
 
 class LlmTestRequest(BaseModel):

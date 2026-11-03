@@ -50,7 +50,7 @@ def _doctor() -> int:
     return 0 if all(check.ok for check in checks) else 1
 
 
-def _backup(out: str | None, with_workspaces: bool, keep: int | None) -> int:
+def _backup(out: str | None, with_workspaces: bool, keep: int | None, no_index: bool) -> int:
     import sqlite3
 
     from app import backup
@@ -69,6 +69,7 @@ def _backup(out: str | None, with_workspaces: bool, keep: int | None) -> int:
             out=None if out is None else Path(out),
             with_workspaces=with_workspaces,
             keep=backup.DEFAULT_KEEP if keep is None else keep,
+            with_index=not no_index,
         )
     except backup.BackupError as exc:
         print(f"backup: {exc}", file=sys.stderr)
@@ -84,6 +85,11 @@ def _backup(out: str | None, with_workspaces: bool, keep: int | None) -> int:
         f"backup: 스키마 {manifest['alembic_revision'] or '없음'},"
         f" 암호화 키 fingerprint {manifest['encryption_key_fingerprint'] or '없음'}"
     )
+    index = manifest["knowledge_index"]
+    if index["included"]:
+        print(f"backup: 지식 색인 index.db {format_size(index['bytes'])} 포함")
+    elif no_index:
+        print("backup: 지식 색인은 뺐다. 복구 뒤 서버가 모든 문서를 다시 색인한다(임베딩 호출)")
     if result.links_skipped:
         print(f"backup: 링크·정션 {result.links_skipped}개는 따라가지 않았다")
     if result.vanished:
@@ -248,6 +254,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="N",
         help="backups/에 남길 백업 수(기본 5). --out을 주면 정리하지 않는다",
     )
+    backup.add_argument(
+        "--no-index",
+        action="store_true",
+        help="지식 색인(knowledge/index.db)을 빼고 복사한다. 복구 뒤 모든 문서를 다시 색인한다",
+    )
     # 인자(--help 포함)는 scripts/memcheck.py가 그대로 받는다.
     commands.add_parser(
         "memcheck",
@@ -276,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return _doctor()
     if args.command == "backup":
-        return _backup(args.out, args.with_workspaces, args.keep)
+        return _backup(args.out, args.with_workspaces, args.keep, args.no_index)
     if args.command == "migrate":
         return _migrate()
     return _reset_password(from_stdin=args.password_stdin)

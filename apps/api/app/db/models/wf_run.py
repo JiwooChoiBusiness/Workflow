@@ -50,6 +50,8 @@ class WfRun(TimestampMixin, Base):
     limits: Mapped[dict[str, Any]] = mapped_column(JSONValue, default=dict)
     # 런을 만들 때의 wf_version.graph_hash. 초안이 바뀐 뒤에는 대기 중이던 런을 잇지 않는다.
     graph_hash: Mapped[str] = mapped_column(String(64))
+    # 런에서 검색된 지식 인용(RetrieverResource 목록, 3단계 8.3).
+    retriever_resources: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONValue)
     queued_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None]
     ended_at: Mapped[datetime | None]

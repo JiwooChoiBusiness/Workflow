@@ -5,16 +5,43 @@
 
 워크플로우 키는 같은 경로를 쓰되 대상에 맞는 모양(Flow*)으로 답한다. 챗플로우 대화는
 wf_conversation, 메시지는 wf_message이고 블록 대신 text다.
+
+지식 베이스 키는 datasets 경로만 쓴다(3단계 8.5). 목록은 Dify처럼 {data, has_more, limit, total,
+page}로 감싼다.
 """
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    StringConstraints,
+    model_validator,
+)
 
 from app.schemas.common import ApprovalMode, RunLimits
 from app.schemas.events import UsageTotal, WorkflowKind
+from app.schemas.knowledge import (
+    ChildChunkOut,
+    DocForm,
+    DocumentName,
+    DocumentStatusSkip,
+    IndexingStatus,
+    IndexingTechnique,
+    KbDocumentOut,
+    ProcessRule,
+    RetrievalSettings,
+    SegmentCreate,
+    SegmentOut,
+    SegmentPatch,
+)
+from app.schemas.retrieval import MetadataFilter, QueryText
 from app.schemas.run import PendingInteractionOut, RunErrorOut, RunOut, RunStatus
 from app.schemas.session import (
     MAX_MESSAGE_CHARS,
@@ -313,3 +340,227 @@ class FlowParametersOut(BaseModel):
     # 챗플로우 웹앱 설정(settings.webapp)의 시작 문구와 추천 질문.
     opening_statement: str | None = None
     suggested_questions: list[str] = Field(default_factory=list[str])
+
+
+class DatasetOut(BaseModel):
+    """지식 베이스 하나(Dify datasets 필드명)."""
+
+    id: uuid.UUID
+    name: str
+    description: str
+    indexing_technique: IndexingTechnique
+    doc_form: DocForm
+    # economy면 null.
+    embedding_model: str | None
+    embedding_model_provider: str | None
+    retrieval_model: RetrievalSettings
+    document_count: int
+    # 지우지 않은 문서의 글자 수 합.
+    word_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DatasetList(BaseModel):
+    data: list[DatasetOut]
+    has_more: bool
+    limit: int
+    total: int
+    page: int
+
+
+DocMetadataValues = Annotated[
+    dict[str, StrictInt | StrictFloat | StrictStr | None], Field(max_length=50)
+]
+
+
+class DatasetTextCreate(BaseModel):
+    # Dify 요청의 indexing_technique·doc_form·embedding_model은 KB 설정을 따르므로 받기만 한다.
+    model_config = ConfigDict(extra="ignore")
+
+    name: DocumentName
+    text: Annotated[str, StringConstraints(min_length=1)]
+    # 비우면 KB의 규칙.
+    process_rule: ProcessRule | None = None
+    # 메타데이터 필드 이름 → 값. 필드는 KB에 먼저 있어야 한다.
+    doc_metadata: DocMetadataValues | None = None
+    allow_duplicate: bool = False
+
+
+class DatasetFileOptions(BaseModel):
+    """create-by-file 멀티파트의 data 칸(JSON 글)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    process_rule: ProcessRule | None = None
+    doc_metadata: DocMetadataValues | None = None
+    allow_duplicate: bool = False
+
+
+class DatasetTextUpdate(BaseModel):
+    """update-by-text. 원본을 새 글로 바꾸고 다시 색인한다. 이름을 비우면 지금 이름 그대로다."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: DocumentName | None = None
+    text: Annotated[str, StringConstraints(min_length=1)]
+    process_rule: ProcessRule | None = None
+    allow_duplicate: bool = False
+
+
+class DatasetFileUpdateOptions(BaseModel):
+    """update-by-file 멀티파트의 data 칸(JSON 글)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: DocumentName | None = None
+    process_rule: ProcessRule | None = None
+    allow_duplicate: bool = False
+
+
+class DatasetDocumentCreated(BaseModel):
+    # update-by-*도 같은 모양이다. batch는 문서가 처음 들어온 묶음 그대로다.
+    document: KbDocumentOut
+    batch: str
+
+
+class DatasetDocumentList(BaseModel):
+    data: list[KbDocumentOut]
+    has_more: bool
+    limit: int
+    total: int
+    page: int
+
+
+class DatasetIndexingStatusItem(BaseModel):
+    id: uuid.UUID
+    indexing_status: IndexingStatus
+    processing_started_at: datetime | None
+    parsing_completed_at: datetime | None
+    cleaning_completed_at: datetime | None
+    splitting_completed_at: datetime | None
+    completed_at: datetime | None
+    paused_at: datetime | None
+    stopped_at: datetime | None
+    # {code, message, retryable, retry_after}.
+    error: dict[str, Any] | None
+    completed_segments: int
+    total_segments: int
+
+
+class DatasetIndexingStatus(BaseModel):
+    data: list[DatasetIndexingStatusItem]
+
+
+class DatasetStatusChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+
+class DatasetStatusResult(BaseModel):
+    result: Literal["success"] = "success"
+    # 맞지 않는 상태라 건너뛴 문서와 사유.
+    skipped: list[DocumentStatusSkip] = Field(default_factory=list[DocumentStatusSkip])
+
+
+class DatasetSegmentList(BaseModel):
+    data: list[SegmentOut]
+    doc_form: DocForm
+    has_more: bool
+    limit: int
+    total: int
+    page: int
+
+
+class DatasetSegmentsCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segments: list[SegmentCreate] = Field(min_length=1, max_length=1000)
+
+
+class DatasetSegmentsCreated(BaseModel):
+    data: list[SegmentOut]
+    doc_form: DocForm
+
+
+class DatasetSegmentOut(BaseModel):
+    data: SegmentOut
+    doc_form: DocForm
+
+
+class DatasetSegmentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segment: SegmentPatch
+
+
+class DatasetChildChunkList(BaseModel):
+    data: list[ChildChunkOut]
+    total: int
+
+
+class DatasetChildChunkOut(BaseModel):
+    data: ChildChunkOut
+
+
+def dify_retrieval(raw: dict[str, Any]) -> dict[str, Any]:
+    """Dify의 retrieval_model을 우리 모양으로. 우리 모양이면 그대로 둔다.
+
+    reranking_model(재순위 모델)은 reranking_enable이 true일 때만 우리 LLM 재순위로 읽는다. KB
+    키 하나로 채팅 호출을 쓰는 길이라 명시했을 때만 연다. weights.vector_setting·keyword_setting은
+    vector_weight·keyword_weight로, keyword_search는 전문 검색으로, score_threshold null은 문턱
+    끔으로 읽는다. 쓰지 않는 칸(weight_type, 임베딩 이름 등)은 버린다.
+    """
+    keys = ("search_method", "top_k", "score_threshold_enabled", "score_threshold", "rerank")
+    out = {key: raw[key] for key in keys if raw.get(key) is not None}
+    if out.get("search_method") == "keyword_search":
+        out["search_method"] = "full_text_search"
+    if "score_threshold" in raw and raw["score_threshold"] is None:
+        out["score_threshold_enabled"] = False
+    mode = raw.get("reranking_mode")
+    if mode == "reranking_model":
+        mode = "llm" if raw.get("reranking_enable") is True else None
+    if mode is not None:
+        out["reranking_mode"] = mode
+    weights = raw.get("weights")
+    if isinstance(weights, dict):
+        found = cast(dict[str, Any], weights)
+        vector = found.get("vector_setting")
+        keyword = found.get("keyword_setting")
+        if isinstance(vector, dict) or isinstance(keyword, dict):
+            vector_weight = cast(dict[str, Any], vector or {}).get("vector_weight")
+            keyword_weight = cast(dict[str, Any], keyword or {}).get("keyword_weight")
+            out["weights"] = {
+                "vector_weight": 0.7 if vector_weight is None else vector_weight,
+                "keyword_weight": 0.3 if keyword_weight is None else keyword_weight,
+            }
+        else:
+            out["weights"] = found
+    return out
+
+
+class DatasetRetrieveRequest(BaseModel):
+    """Dify retrieve 요청. retrieval_model은 우리 모양과 Dify 모양을 다 받는다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: QueryText
+    retrieval_model: RetrievalSettings | None = None
+    metadata_filtering_conditions: MetadataFilter | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_dify(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        data = dict(cast(dict[str, Any], value))
+        raw = data.get("retrieval_model")
+        if isinstance(raw, dict):
+            model = dict(cast(dict[str, Any], raw))
+            # Dify는 메타데이터 조건을 retrieval_model 안에 둔다.
+            conditions = model.pop("metadata_filtering_conditions", None)
+            if conditions is not None and data.get("metadata_filtering_conditions") is None:
+                data["metadata_filtering_conditions"] = conditions
+            data["retrieval_model"] = dify_retrieval(model)
+        return data

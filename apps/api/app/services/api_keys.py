@@ -3,8 +3,8 @@
 원문은 생성 응답에 한 번만 나가고 DB에는 sha256과 앞 12자만 남는다. 폐기·만료·대상 삭제는
 authenticate가 바로 반영한다. HTTP 인증 의존성(Bearer → 401)은 app/auth/dependencies.py에 있다.
 
-키는 대상(KeyTarget) 하나에 묶인다. 에이전트 키와 워크플로우 키(workflow·chatflow)가 있고, 행에서
-대상을 읽고 대상별 권한을 정하는 일은 app/services/api_key_target.py가 한다.
+키는 대상(KeyTarget) 하나에 묶인다. 에이전트 키, 워크플로우 키(workflow·chatflow), 지식 베이스
+키가 있고, 행에서 대상을 읽고 대상별 권한을 정하는 일은 app/services/api_key_target.py가 한다.
 """
 
 import uuid
@@ -20,6 +20,7 @@ from app.db.models import ApiKey
 from app.db.models.enums import WorkflowKind
 from app.db.repositories.agents import AgentRepository
 from app.db.repositories.api_keys import ApiKeyRepository
+from app.db.repositories.knowledge import KnowledgeBaseRepository
 from app.db.repositories.workflows import WorkflowRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
@@ -62,9 +63,12 @@ class AuthenticatedApiKey:
     workflow_id: uuid.UUID | None = None
     # 워크플로우 키가 가리키는 워크플로우의 kind(workflow·chatflow).
     flow_kind: str | None = None
+    knowledge_base_id: uuid.UUID | None = None
 
     @property
     def target(self) -> KeyTarget:
+        if self.knowledge_base_id is not None:
+            return KeyTarget.knowledge(self.knowledge_base_id)
         if self.workflow_id is not None:
             return KeyTarget.workflow(self.workflow_id)
         if self.agent_id is None:
@@ -81,6 +85,7 @@ def _out(key: ApiKey) -> ApiKeyOut:
         id=key.id,
         agent_id=key.agent_id,
         workflow_id=key.workflow_id,
+        knowledge_base_id=key.knowledge_base_id,
         name=key.name,
         key_prefix=key.key_prefix,
         scopes=list(key.scopes),
@@ -104,6 +109,10 @@ class ApiKeyService:
             if await AgentRepository(session, workspace_id).get_active(target.id) is None:
                 raise not_found("에이전트")
             return None
+        if target.kind == "knowledge":
+            if await KnowledgeBaseRepository(session, workspace_id).get_active(target.id) is None:
+                raise not_found("지식 베이스")
+            return None
         workflow = await WorkflowRepository(session, workspace_id).get_active(target.id)
         if workflow is None:
             raise not_found("워크플로우")
@@ -112,6 +121,8 @@ class ApiKeyService:
     async def _keys_of(self, keys: ApiKeyRepository, target: KeyTarget) -> list[ApiKey]:
         if target.kind == "agent":
             return await keys.list_for_agent(target.id)
+        if target.kind == "knowledge":
+            return await keys.list_for_knowledge_base(target.id)
         return await keys.list_for_workflow(target.id)
 
     async def _key_of(
@@ -119,6 +130,8 @@ class ApiKeyService:
     ) -> ApiKey | None:
         if target.kind == "agent":
             return await keys.get_for_agent(target.id, key_id)
+        if target.kind == "knowledge":
+            return await keys.get_for_knowledge_base(target.id, key_id)
         return await keys.get_for_workflow(target.id, key_id)
 
     async def list_keys(self, workspace_id: uuid.UUID, agent_id: uuid.UUID) -> ApiKeyList:
@@ -214,6 +227,7 @@ class ApiKeyService:
             scopes=tuple(key.scopes),
             workflow_id=key.workflow_id,
             flow_kind=kind,
+            knowledge_base_id=key.knowledge_base_id,
         )
 
 

@@ -5,8 +5,9 @@ from pydantic import BaseModel, Field
 
 from app.llm.types import Usage
 
-# 가격표에 캐시 입력 단가가 없으면 입력 단가의 25%로 본다(설계 4.3).
-DEFAULT_CACHED_INPUT_RATIO = 0.25
+# 가격표에 캐시 입력 단가가 없으면 입력 단가의 10%로 본다. 3.8 Flash의 실제 단가가 0.075/0.75다
+# (3단계 설계 1.12).
+DEFAULT_CACHED_INPUT_RATIO = 0.10
 
 
 class ModelPrice(BaseModel):

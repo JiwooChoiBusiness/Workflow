@@ -278,7 +278,7 @@ def test_make_adapter_follows_llm_fake_setting() -> None:
     assert isinstance(fake, FakeAdapter)
     assert isinstance(gemini, GeminiAdapter)
     assert len(gemini.key_pool) == 2
-    assert gemini.model_fallback == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+    assert gemini.model_fallback == ["gemini-3.8-flash", "gemini-3.6-flash"]
 
 
 async def test_make_adapter_loads_llm_fake_script(tmp_path: Path) -> None:

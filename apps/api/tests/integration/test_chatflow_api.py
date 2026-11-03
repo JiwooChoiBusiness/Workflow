@@ -655,3 +655,75 @@ async def test_webapp_chat_runs_the_published_version_inside_its_scope(
     deleted = await logged_in.delete(f"/api/web/wf-conversations/{cid}", headers=FETCH)
     assert deleted.status_code == 204
     assert (await logged_in.get(f"/api/web/wf-conversations/{cid}")).status_code == 404
+
+
+async def test_start_file_inputs_are_bound_to_the_turn_and_go_with_the_conversation(
+    logged_in: AsyncClient, app: FastAPI, script: Any
+) -> None:
+    # 2단계 후속 (1)(2): 시작 입력으로 쓴 업로드는 그 턴의 런에 묶이고, 대화를 지우면 메시지에 붙인
+    # 업로드와 함께 지워진다.
+    workflow = await chatflow(
+        logged_in,
+        {
+            "nodes": [
+                node("start", "start", {"fields": [{"name": "doc", "type": "file"}]}),
+                node(
+                    "answer_1",
+                    "answer",
+                    {"text": "{{ start.doc.filename }} / {{ sys.files | length }}"},
+                    300,
+                ),
+            ],
+            "edges": edges("start>answer_1"),
+        },
+        name="시작 파일",
+    )
+    cid = await preview(logged_in, workflow["id"])
+
+    async def upload(name: str) -> str:
+        response = await logged_in.post(
+            f"/api/console/workflows/{workflow['id']}/files",
+            files={"file": (name, f"{name} 내용".encode(), "text/plain")},
+            headers=FETCH,
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    input_only, both = await upload("입력.txt"), await upload("둘 다.txt")
+
+    first = await logged_in.post(
+        f"/api/console/wf-conversations/{cid}/messages",
+        json={"text": "a", "inputs": {"doc": input_only}, "response_mode": "blocking"},
+    )
+    second = await logged_in.post(
+        f"/api/console/wf-conversations/{cid}/messages",
+        json={
+            "text": "b",
+            "inputs": {"doc": both},
+            "files": [both],
+            "response_mode": "blocking",
+        },
+    )
+
+    assert first.json()["answer"] == "입력.txt / 0"
+    assert second.json()["answer"] == "둘 다.txt / 1"
+    db = app.state.db
+    async with db.read() as session:
+        bound = await session.get(WfFile, uuid.UUID(input_only))
+        attached = await session.get(WfFile, uuid.UUID(both))
+    assert bound is not None and attached is not None
+    assert str(bound.wf_run_id) == first.json()["run"]["id"]
+    assert bound.conversation_id is None
+    # 메시지에도 붙인 파일은 대화를 따라간다(런에는 묶지 않는다).
+    assert (str(attached.conversation_id), attached.wf_run_id) == (cid, None)
+
+    deleted = await logged_in.delete(f"/api/console/wf-conversations/{cid}", headers=FETCH)
+
+    assert deleted.status_code == 204
+    async with db.read() as session:
+        workspace = await WorkspaceRepository(session).get_default()
+        assert workspace is not None
+        for file_id in (input_only, both):
+            assert await session.get(WfFile, uuid.UUID(file_id)) is None
+    for file_id in (input_only, both):
+        assert await app.state.storage.size(wf_file_key(workspace.id, uuid.UUID(file_id))) is None

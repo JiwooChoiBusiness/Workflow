@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     runner_max_concurrent_runs: int = Field(default=1, ge=1)
     # 워크플로우 레인(두 번째 Supervisor)의 동시 런. 에이전트 레인과 따로 센다(2단계 3.6).
     runner_max_concurrent_workflow_runs: int = Field(default=1, ge=1)
+    # 지식 레인(세 번째 Supervisor)의 동시 색인 작업(3단계 6.5).
+    runner_max_concurrent_index_jobs: int = Field(default=1, ge=1)
     shutdown_grace_sec: float = Field(default=20, ge=0)
     waiting_input_ttl_hours: int = Field(default=24, ge=1)
     run_event_retention_days: int = Field(default=90, ge=1)
@@ -55,8 +57,13 @@ class Settings(BaseSettings):
     keep_run_scripts: bool = False
 
     gemini_api_keys: Annotated[list[SecretStr], NoDecode] = Field(default_factory=list)
+    # 결제를 연결한 새 프로젝트의 키 하나(3단계 Z1, 14.4). 무료 키 목록에 같은 값이 있으면 기동을
+    # 거부한다(app/main.py).
+    gemini_paid_api_key: SecretStr | None = None
+    # gemini-3.7-flash는 3.8로 라우팅되는 별칭이라 폴백 단계로 뜻이 없어 기본값에서 뺐다
+    # (3단계 설계 1.12).
     gemini_model_fallback: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+        default_factory=lambda: ["gemini-3.8-flash", "gemini-3.6-flash"]
     )
     gemini_openai_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_key_cooldown_sec: int = Field(default=60, ge=0)
@@ -75,6 +82,29 @@ class Settings(BaseSettings):
     # 지휘자 에이전트가 하위 에이전트를 부를 수 있는 깊이(지휘자 0, 자식 1, 손자 2). 이 깊이에 닿은
     # 런에는 call_agent가 붙지 않는다(오케스트레이션 3.9).
     orchestration_max_depth: int = Field(default=2, ge=1, le=3)
+
+    # 지식 베이스(3단계 설계 6.6, 7장, 5.2). 임베딩 리미터의 분당 항목 수는 무료 등급 실제
+    # 어댑터에서 100이 상한이고(리미터가 자른다) 가짜 어댑터에서는 그대로 쓴다. TPM은 0이면 끈다.
+    kb_embed_rpm: int = Field(default=90, ge=1)
+    kb_embed_rpm_paid: int = Field(default=90, ge=1)
+    kb_embed_tpm: int = Field(default=0, ge=0)
+    kb_embed_tpm_paid: int = Field(default=0, ge=0)
+    # 분당 항목 중 검색 질의·청크 단건 편집(사람이 기다리는 요청) 몫.
+    kb_embed_reserve: int = Field(default=10, ge=0)
+    # 태평양 자정부터 센 하루 항목 수(0이면 세지 않는다). 무료는 프로젝트당 하루 1,000건이라
+    # 키를 몇 개 넣어도 이 값을 넘기지 않는다. 유료 Tier 1 값은 아직 재지 않아 기본은 끔이다.
+    kb_embed_rpd: int = Field(default=1000, ge=0)
+    kb_embed_rpd_paid: int = Field(default=0, ge=0)
+    kb_upload_max_mb: int = Field(default=50, ge=1)
+    kb_doc_max_text_mb: int = Field(default=8, ge=1)
+    kb_top_k_max: int = Field(default=20, ge=1)
+    kb_search_candidates: int = Field(default=50, ge=1)
+    kb_embed_cache_days: int = Field(default=30, ge=0)
+    # 0이면 검색 질의를 기록하지 않는다.
+    kb_query_log_days: int = Field(default=90, ge=0)
+    # index.db 연결마다 SQLite 페이지 캐시(KB). 연결이 셋이라 세 배를 쓴다.
+    kb_index_cache_kb: int = Field(default=8000, ge=1)
+    kb_bit_candidates_threshold: int = Field(default=200_000, ge=1)
 
     e2b_api_key: SecretStr | None = None
     e2b_template: str | None = None
@@ -102,8 +132,22 @@ class Settings(BaseSettings):
 
     def secret_values(self) -> list[str]:
         # 로그 마스킹이 형식과 관계없이 그대로 지울 값들.
-        secrets = [*self.gemini_api_keys, self.encryption_key, self.e2b_api_key]
+        secrets = [
+            *self.gemini_api_keys,
+            self.gemini_paid_api_key,
+            self.encryption_key,
+            self.e2b_api_key,
+        ]
         return [s.get_secret_value() for s in secrets if s is not None and s.get_secret_value()]
+
+    def paid_key_in_free_pool(self) -> bool:
+        """유료 키가 GEMINI_API_KEYS에도 있는지. 결제한 키가 무료 순환에 섞이면 모두 과금된다."""
+        if self.gemini_paid_api_key is None:
+            return False
+        paid = self.gemini_paid_api_key.get_secret_value().strip()
+        return bool(paid) and any(
+            key.get_secret_value().strip() == paid for key in self.gemini_api_keys
+        )
 
 
 @lru_cache

@@ -31,11 +31,17 @@ def test_env_example_parses() -> None:
     assert settings.approval_mode_default == "all_shell"
     assert settings.keep_run_scripts is False
     assert settings.gemini_api_keys == []
-    assert settings.gemini_model_fallback == [
-        "gemini-3.8-flash",
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-    ]
+    assert settings.gemini_paid_api_key is None
+    # 3.7은 3.8로 라우팅되는 별칭이라 기본 폴백에서 뺐다(3단계 1.12).
+    assert settings.gemini_model_fallback == ["gemini-3.8-flash", "gemini-3.6-flash"]
+    assert settings.runner_max_concurrent_index_jobs == 1
+    assert (settings.kb_embed_rpm, settings.kb_embed_reserve, settings.kb_embed_tpm) == (90, 10, 0)
+    assert (settings.kb_embed_rpm_paid, settings.kb_embed_tpm_paid) == (90, 0)
+    assert (settings.kb_upload_max_mb, settings.kb_doc_max_text_mb) == (50, 8)
+    assert (settings.kb_top_k_max, settings.kb_search_candidates) == (20, 50)
+    assert (settings.kb_embed_cache_days, settings.kb_query_log_days) == (30, 90)
+    assert settings.kb_index_cache_kb == 8000
+    assert settings.kb_bit_candidates_threshold == 200_000
     assert settings.llm_fake is False
     assert settings.llm_fake_script is None
     assert settings.llm_fake_delay_sec == 0
@@ -77,12 +83,30 @@ def test_relative_paths_are_anchored_to_repo_root(monkeypatch: pytest.MonkeyPatc
 
 def test_secret_values_collects_every_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEYS", "key-a,key-b")
+    monkeypatch.setenv("GEMINI_PAID_API_KEY", "paid-value")
     monkeypatch.setenv("ENCRYPTION_KEY", "enc-value")
     monkeypatch.setenv("E2B_API_KEY", "e2b-value")
 
     settings = load_settings(None)
 
-    assert settings.secret_values() == ["key-a", "key-b", "enc-value", "e2b-value"]
+    assert settings.secret_values() == ["key-a", "key-b", "paid-value", "enc-value", "e2b-value"]
+
+
+def test_paid_key_in_the_free_pool_is_detected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEYS", "key-a,key-b")
+    monkeypatch.setenv("GEMINI_PAID_API_KEY", "key-b")
+    clashing = load_settings(None)
+    monkeypatch.setenv("GEMINI_PAID_API_KEY", "paid-value")
+    separate = load_settings(None)
+    monkeypatch.delenv("GEMINI_PAID_API_KEY")
+    monkeypatch.setenv("GEMINI_PAID_API_KEY", "")
+    empty = load_settings(None)
+
+    assert clashing.paid_key_in_free_pool()
+    assert not separate.paid_key_in_free_pool()
+    # 빈 값은 설정하지 않은 것과 같다(env_ignore_empty).
+    assert empty.gemini_paid_api_key is None
+    assert not empty.paid_key_in_free_pool()
 
 
 def test_absolute_data_dir_is_kept(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

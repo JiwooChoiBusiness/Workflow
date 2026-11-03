@@ -351,11 +351,12 @@ def test_thought_signature_helper() -> None:
     assert thought_signature({"extra_content": {"google": {}}}) is None
 
 
-def test_cost_assumes_cached_input_at_quarter_price_by_default() -> None:
+def test_cost_assumes_cached_input_at_a_tenth_of_the_price_by_default() -> None:
     usage = Usage(input_tokens=1_000_000, cached_input_tokens=400_000, output_tokens=100_000)
     price = ModelPrice(input_per_mtok=1.0, output_per_mtok=4.0)
 
-    assert compute_cost(usage, price) == pytest.approx(0.6 + 0.1 + 0.4)
+    # 3.8 Flash의 실제 캐시 단가가 입력 단가의 10%다(0.075/0.75).
+    assert compute_cost(usage, price) == pytest.approx(0.6 + 0.04 + 0.4)
     explicit = ModelPrice(input_per_mtok=1.0, output_per_mtok=4.0, cached_input_per_mtok=0.5)
     assert compute_cost(usage, explicit) == pytest.approx(0.6 + 0.2 + 0.4)
 

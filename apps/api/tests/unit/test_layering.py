@@ -74,8 +74,22 @@ def test_workflow_does_not_know_http_or_db(path: Path) -> None:
     assert sorted(agent - set(forbidden(agent, ("app.agent.task_service",)))) == []
 
 
+# 지식 라이브러리(index.db, 청크, 임베딩 바탕)도 DB·HTTP 계층을 모른다. app.db와의 접착은
+# app.services가 한다(3단계 설계 18장). app.llm·app.sandbox·app.workflow.extract_runner는
+# 쓸 수 있다.
+@pytest.mark.parametrize(
+    "path", files_under("knowledge"), ids=lambda path: path.relative_to(APP).as_posix()
+)
+def test_knowledge_does_not_know_http_or_db(path: Path) -> None:
+    modules = imported_modules(path)
+
+    assert forbidden(modules, ("app.api", "app.auth", "app.db", "app.services")) == []
+
+
 def test_the_rule_sees_real_imports() -> None:
     # 규칙이 아무것도 못 잡는 상태(경로 오타 등)가 아님을 확인한다.
     assert files_under("agent") and files_under("streaming") and files_under("workflow")
+    assert files_under("knowledge")
     assert "app.db.engine" in imported_modules(APP / "streaming" / "event_bus.py")
     assert "app.agent.task_service" in imported_modules(APP / "workflow" / "ports.py")
+    assert "app.knowledge.index_db" in imported_modules(APP / "knowledge" / "vector_index.py")

@@ -24,11 +24,12 @@ async def healthz(request: Request) -> dict[str, Any]:
         "status": "ok" if db_ok else "error",
         "rss_mb": None if rss is None else round(rss / 2**20, 1),
         "uptime_sec": int(time.monotonic() - state.started_at),
-        # 레인 둘(2단계 3.6). 에이전트 레인은 채팅·과업·agent 노드의 자식 런을, 워크플로우 레인은
-        # 워크플로우 런을 돌린다.
+        # 레인 셋(2단계 3.6, 3단계 6.5). 에이전트 레인은 채팅·과업·agent 노드의 자식 런을,
+        # 워크플로우 레인은 워크플로우 런을, 지식 레인은 지식 베이스 문서의 색인·삭제 작업을 돌린다.
         "runner": {
             "agent": _lane(state.supervisor.stats()),
             "workflow": _lane(state.workflow_supervisor.stats()),
+            "knowledge": _lane(state.knowledge_supervisor.stats()),
             "shutting_down": coordinator.shutting_down,
         },
         "db": "ok" if db_ok else "error",

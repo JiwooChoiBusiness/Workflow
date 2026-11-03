@@ -28,6 +28,10 @@ DISK_FOLDERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("wf_workspaces_mb", "워크플로우 런 폴더", ("wf-workspaces",)),
     ("wf_files_mb", "워크플로우 파일", ("storage", "wf-files")),
     ("wf_extract_mb", "문서 추출 파서", ("cache", "wf-extract")),
+    # 3단계 4.5. index.db는 10만 청크(768차원)에 약 300MB다. kb-work는 작업이 끝나면 지운다.
+    ("knowledge_mb", "지식 색인", ("knowledge",)),
+    ("kb_work_mb", "지식 작업 폴더", ("kb-work",)),
+    ("kb_files_mb", "지식 원본", ("storage", "kb-files")),
 )
 
 

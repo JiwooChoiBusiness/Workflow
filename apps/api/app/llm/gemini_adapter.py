@@ -6,13 +6,16 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import structlog
 from pydantic import SecretStr
 
 from app.llm.catalog import ModelCapabilities, get_capabilities, resolve_reasoning_effort
-from app.llm.key_pool import KeyPool, KeyStatus
+from app.llm.errors import ErrorClass, classify, daily_block_seconds
+from app.llm.errors import TransportError as TransportError
+from app.llm.key_pool import KeyPool, KeyStatus, KeyTier
 from app.llm.token_estimate import estimate_request, estimate_text
 from app.llm.types import (
     ERR_MODEL_AUTH,
@@ -44,11 +47,19 @@ if TYPE_CHECKING:
     import openai
 
     from app.config import Settings
+    from app.llm.embeddings import EmbeddingTransport
 
 log = structlog.get_logger("app.llm")
 
 DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 RETRY_DELAY_SEC = 2.0
+# 유료 키는 하나뿐이라 429에서 다른 키로 갈 수 없다. retryDelay만큼 기다려 같은 키로 이만큼
+# 다시 보낸 뒤 다음 모델로 간다. retryDelay가 없으면 기본값을 쓰고, 너무 길면 상한까지만 기다린다.
+PAID_RATE_LIMIT_RETRIES = 3
+PAID_RATE_LIMIT_WAIT_SEC = 30.0
+PAID_RATE_LIMIT_MAX_WAIT_SEC = 60.0
+# OpenAI 호환 /embeddings가 한 요청에 받는 입력 수(2026-11-02 실측).
+MAX_EMBED_INPUTS = 100
 
 # 2026-10-13 라이브 확인. 사고 서명은 스트림 청크의
 #   choices[0].delta.tool_calls[i].extra_content.google.thought_signature
@@ -127,20 +138,6 @@ def _received_extra(call: Mapping[str, Any]) -> dict[str, Any]:
     return {} if extra == _skip_signature_extra() else extra
 
 
-class TransportError(Exception):
-    def __init__(
-        self,
-        message: str,
-        *,
-        status: int | None = None,
-        kind: Literal["http", "connection", "timeout", "stream"] = "http",
-    ) -> None:
-        super().__init__(message)
-        self.message = message
-        self.status = status
-        self.kind = kind
-
-
 class ChatTransport(Protocol):
     def stream_chat(
         self, *, api_key: str, body: Mapping[str, Any]
@@ -177,7 +174,10 @@ def _transport_error(exc: "openai.APIError") -> TransportError:
 
     if isinstance(exc, openai.APIStatusError):
         return TransportError(
-            _error_text(exc.body, exc.message), status=exc.status_code, kind="http"
+            _error_text(exc.body, exc.message),
+            status=exc.status_code,
+            kind="http",
+            payload=_error_payload(exc.body),
         )
     if isinstance(exc, openai.APITimeoutError):
         return TransportError("모델 API 요청 시간이 초과됐다", kind="timeout")
@@ -190,7 +190,32 @@ def _transport_error(exc: "openai.APIError") -> TransportError:
         _error_text(exc.body, exc.message),
         status=code if isinstance(code, int) else None,
         kind="stream",
+        payload=payload,
     )
+
+
+def _embedding_vectors(response: object, count: int) -> list[list[float]]:
+    items = _as_list((_as_dict(response) or {}).get("data"))
+    if len(items) != count:
+        raise TransportError(
+            f"임베딩 응답의 항목 수({len(items)})가 입력 수({count})와 다르다", kind="stream"
+        )
+    entries = [_as_dict(item) or {} for item in items]
+    # 응답은 입력 순서대로 오지만 index가 있으면 그것을 믿는다.
+    if all(isinstance(entry.get("index"), int) for entry in entries):
+        entries.sort(key=lambda entry: cast(int, entry["index"]))
+    vectors: list[list[float]] = []
+    for entry in entries:
+        values = entry.get("embedding")
+        if not isinstance(values, list) or not values:
+            raise TransportError("임베딩 응답에 벡터가 없다", kind="stream")
+        vector: list[float] = []
+        for value in cast(list[object], values):
+            if not isinstance(value, int | float) or isinstance(value, bool):
+                raise TransportError("임베딩 벡터에 숫자가 아닌 값이 있다", kind="stream")
+            vector.append(float(value))
+        vectors.append(vector)
+    return vectors
 
 
 class OpenAICompatTransport:
@@ -264,6 +289,31 @@ class OpenAICompatTransport:
             raise _transport_error(exc) from exc
         # 호환 레이어는 "models/gemini-3.8-flash"처럼 접두어를 붙여 준다.
         return [model.id.removeprefix("models/") for model in page.data]
+
+    async def embed(
+        self, *, api_key: str, model: str, inputs: Sequence[str], dimensions: int | None
+    ) -> list[list[float]]:
+        """OpenAI 호환 /embeddings. 입력 순서대로 벡터를 돌려준다(3단계 설계 6.6).
+
+        응답에 usage가 없다(2026-11-02 실측). 사용량은 부르는 쪽이 추정한다.
+        """
+        if len(inputs) > MAX_EMBED_INPUTS:
+            raise ValueError(f"임베딩 입력은 한 번에 {MAX_EMBED_INPUTS}개까지다: {len(inputs)}")
+        if not inputs:
+            return []
+        import openai
+
+        client = self._get_client().with_options(api_key=api_key)
+        body: dict[str, Any] = {"model": model, "input": list(inputs)}
+        if dimensions is not None:
+            body["dimensions"] = dimensions
+        try:
+            # embeddings.create()는 encoding_format=base64를 덧붙이는데 호환 레이어는 모르는 필드를
+            # 400으로 거부한다. 보낼 필드를 직접 정하려고 post를 쓴다.
+            response = await client.post("/embeddings", cast_to=object, body=body)
+        except openai.APIError as exc:
+            raise _transport_error(exc) from exc
+        return _embedding_vectors(response, len(inputs))
 
     async def aclose(self) -> None:
         if self._client is not None:
@@ -475,10 +525,13 @@ def build_request_body(
         "max_completion_tokens": max_tokens,
     }
     params = req.params
-    if params.temperature is not None:
-        body["temperature"] = params.temperature
-    if params.top_p is not None:
-        body["top_p"] = params.top_p
+    # Gemini 3.6부터 temperature·top_p는 무시되고 다음 세대는 400이다(4단계 설계 2절). 능력표가
+    # 허용하는 모델에만 보낸다.
+    if caps.supports_sampling_params:
+        if params.temperature is not None:
+            body["temperature"] = params.temperature
+        if params.top_p is not None:
+            body["top_p"] = params.top_p
     if req.tools and caps.supports_tools:
         # strict는 보내지 않는다. 입력 검증은 루프가 jsonschema로 한다(설계 T10).
         body["tools"] = [
@@ -667,17 +720,26 @@ class StreamNormalizer:
         )
 
 
-def _classify(error: TransportError) -> Literal["rate_limited", "transient", "auth", "invalid"]:
-    status = error.status
-    if status is None:
-        return "transient"
-    if status == 429:
-        return "rate_limited"
-    if status >= 500:
-        return "transient"
-    if status in (401, 403):
-        return "auth"
-    return "invalid"
+def _paid_wait(retry_after: float | None) -> float:
+    wait = PAID_RATE_LIMIT_WAIT_SEC if retry_after is None else retry_after
+    return min(max(wait, 0.0), PAID_RATE_LIMIT_MAX_WAIT_SEC)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _log_fallback(
+    models: Sequence[str], position: int, failures: Sequence[str], context: Mapping[str, Any]
+) -> None:
+    if position + 1 < len(models):
+        log.warning(
+            "llm.model_fallback",
+            from_model=models[position],
+            to_model=models[position + 1],
+            reason=failures[-1][:300],
+            **context,
+        )
 
 
 def _is_signature_error(message: str) -> bool:
@@ -724,14 +786,19 @@ class GeminiAdapter:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         clock: Callable[[], float] = time.monotonic,
         retry_delay_sec: float = RETRY_DELAY_SEC,
+        paid_api_keys: Sequence[SecretStr | str] = (),
+        now: Callable[[], datetime] = _utcnow,
     ) -> None:
         self.base_url = base_url
-        self._pool = KeyPool(api_keys, cooldown_sec=key_cooldown_sec, clock=clock)
+        self._pool = KeyPool(
+            api_keys, cooldown_sec=key_cooldown_sec, clock=clock, now=now, paid_keys=paid_api_keys
+        )
         self._fallback = list(dict.fromkeys(model for model in model_fallback if model))
         self._transport: ChatTransport = (
             transport if transport is not None else OpenAICompatTransport(base_url)
         )
         self._sleep = sleep
+        self._now = now
         self._retry_delay_sec = retry_delay_sec
         # 직전 응답의 실제 입력 토큰 / 휴리스틱 추정치.
         # 한국어처럼 문자당 토큰이 많은 입력에서 휴리스틱이 작게 나오는 것을 보정한다.
@@ -739,11 +806,13 @@ class GeminiAdapter:
 
     @classmethod
     def from_settings(cls, settings: "Settings") -> "GeminiAdapter":
+        paid = settings.gemini_paid_api_key
         return cls(
             api_keys=settings.gemini_api_keys,
             model_fallback=settings.gemini_model_fallback,
             base_url=settings.gemini_openai_base_url,
             key_cooldown_sec=settings.gemini_key_cooldown_sec,
+            paid_api_keys=[paid] if paid is not None else [],
         )
 
     @property
@@ -753,6 +822,14 @@ class GeminiAdapter:
     @property
     def key_pool(self) -> KeyPool:
         return self._pool
+
+    @property
+    def embedding_transport(self) -> "EmbeddingTransport | None":
+        # 임베딩 클라이언트가 채팅과 같은 SDK 클라이언트(연결)를 쓴다(3단계 설계 6.6). 시험에서
+        # 넣은 채팅 전용 전송에는 embed가 없다.
+        if callable(getattr(self._transport, "embed", None)):
+            return cast("EmbeddingTransport", self._transport)
+        return None
 
     def key_status(self) -> list[KeyStatus]:
         return self._pool.status()
@@ -774,7 +851,7 @@ class GeminiAdapter:
         await self._transport.aclose()
 
     async def list_models(self) -> list[str]:
-        if not len(self._pool):
+        if not self._pool.count("free"):
             raise LLMError(ERR_MODEL_AUTH, "GEMINI_API_KEYS가 비어 있다")
         last_error = "모든 키가 429를 받았다"
         auth_message = ALL_KEYS_DISABLED
@@ -784,7 +861,7 @@ class GeminiAdapter:
             try:
                 return await self._transport.list_models(api_key=self._pool.secret(index))
             except TransportError as err:
-                kind = _classify(err)
+                kind = classify(err).kind
                 last_error = self._pool.redact(err.message)
                 if kind == "rate_limited":
                     continue
@@ -809,10 +886,9 @@ class GeminiAdapter:
                 retryable=False,
             )
             return
-        if not len(self._pool):
-            yield ErrorEvent(
-                code=ERR_MODEL_AUTH, message="GEMINI_API_KEYS가 비어 있다", retryable=False
-            )
+        if not self._pool.count(req.tier):
+            setting = "GEMINI_API_KEYS" if req.tier == "free" else "GEMINI_PAID_API_KEY"
+            yield ErrorEvent(code=ERR_MODEL_AUTH, message=f"{setting}가 비어 있다", retryable=False)
             return
 
         start = 0
@@ -891,11 +967,17 @@ class GeminiAdapter:
         strip_text: bool,
         context: Mapping[str, Any],
     ) -> AsyncGenerator[ModelEvent, None]:
+        tier = req.tier
         failures: list[str] = []
         # 키가 모두 빠졌을 때의 오류. 이번 요청에서 401·403을 받았으면 마지막 응답을 덧붙인다.
         auth_status: int | None = None
         auth_message = ALL_KEYS_DISABLED
         for position, model in enumerate(models):
+            if self._pool.any_exhausted(model, tier):
+                # 같은 모델의 다른 키로 가면 하루 총량이 키 수만큼 늘어난다(3단계 설계 Z2).
+                failures.append(f"{model}: 오늘의 일일 한도를 다 써서 건너뛴다")
+                _log_fallback(models, position, failures, context)
+                continue
             caps = get_capabilities(model)
             limit = min(max_tokens or req.params.max_output_tokens, caps.max_output_tokens)
             body = build_request_body(
@@ -904,10 +986,12 @@ class GeminiAdapter:
             tried: set[int] = set()
             key_index: int | None = None
             transient_retried = False
+            # 유료 등급에서 같은 키로 기다린 횟수(429·5xx·다른 요청의 hold 모두).
+            paid_waits = 0
             while True:
                 if key_index is None:
-                    key_index = self._pool.pick(model, exclude=tried)
-                    if key_index is None and self._pool.all_disabled():
+                    key_index = self._pool.pick(model, exclude=tried, tier=tier)
+                    if key_index is None and self._pool.all_disabled(tier):
                         # 키 문제라 다른 모델로 가도 같다.
                         attempt.error = ErrorEvent(
                             code=ERR_MODEL_AUTH,
@@ -917,6 +1001,15 @@ class GeminiAdapter:
                             status=auth_status,
                         )
                         return
+                    can_wait = tier == "paid" and paid_waits < PAID_RATE_LIMIT_RETRIES
+                    if key_index is None and can_wait:
+                        # 동시에 돈 다른 유료 요청이 키를 hold해 둔 동안이다. 바로 다음 모델로 가지
+                        # 않고 가장 짧은 대기만큼 기다려 다시 고른다(3단계 설계 14.4).
+                        held = self._shortest_hold(model, tier, tried)
+                        if held is not None:
+                            paid_waits += 1
+                            await self._sleep(held)
+                            continue
                     if key_index is None:
                         failures.append(f"{model}: 모든 키가 429 또는 쿨다운 중")
                         break
@@ -935,10 +1028,12 @@ class GeminiAdapter:
                     if normalizer.finish_reason is None:
                         raise TransportError("finish_reason 없이 스트림이 끝났다", kind="stream")
                 except TransportError as err:
-                    kind = _classify(err)
+                    verdict = classify(err)
+                    kind = verdict.kind
                     message = self._pool.redact(err.message)
+                    wait = 0.0
                     if kind == "rate_limited":
-                        self._pool.mark_rate_limited(key_index, model)
+                        wait = self._note_rate_limit(key_index, model, tier, verdict)
                     elif kind == "auth":
                         self._pool.mark_auth_failed(key_index)
                     else:
@@ -947,8 +1042,11 @@ class GeminiAdapter:
                         "llm.attempt_failed",
                         model=model,
                         key_index=key_index,
+                        tier=tier,
                         status=err.status,
                         kind=err.kind,
+                        quota_scope=verdict.scope,
+                        retry_after=verdict.retry_after,
                         error=message[:300],
                         **context,
                     )
@@ -968,10 +1066,36 @@ class GeminiAdapter:
                         )
                         auth_status = err.status
                         auth_message = f"{ALL_KEYS_DISABLED}. 마지막 응답: {message}"
-                    if kind in ("rate_limited", "auth"):
                         tried.add(key_index)
                         key_index = None
                         continue
+                    if kind == "rate_limited":
+                        if verdict.scope == "day":
+                            # 일일 한도는 같은 모델의 다른 키로 순환하지 않고 다음 모델로 간다.
+                            failures.append(f"{model}: 일일 한도 {message[:200]}")
+                            break
+                        if tier == "paid":
+                            # 유료 키는 하나라 같은 키로 기다렸다 다시 보낸다. 무료 키로 넘어가지
+                            # 않는다(3단계 설계 14.4).
+                            if paid_waits < PAID_RATE_LIMIT_RETRIES:
+                                paid_waits += 1
+                                await self._sleep(wait)
+                                continue
+                            failures.append(f"{model}: 429 {message[:200]}")
+                            break
+                        tried.add(key_index)
+                        key_index = None
+                        continue
+                    if kind == "transient" and tier == "paid":
+                        # 5xx도 429처럼 같은 키로 기다려 다시 보낸다(임베딩과 같은 규칙, 6.6).
+                        if paid_waits < PAID_RATE_LIMIT_RETRIES:
+                            paid_waits += 1
+                            wait = _paid_wait(verdict.retry_after)
+                            self._pool.hold(key_index, model, wait)
+                            await self._sleep(wait)
+                            continue
+                        failures.append(f"{model}: {err.status or err.kind} {message[:200]}")
+                        break
                     if kind == "transient":
                         if not transient_retried:
                             # 5xx·연결 오류는 같은 키로 한 번 더, 그래도 안 되면 다음 모델.
@@ -994,20 +1118,47 @@ class GeminiAdapter:
                     yield event
                 attempt.normalizer = normalizer
                 return
-            if position + 1 < len(models):
-                log.warning(
-                    "llm.model_fallback",
-                    from_model=model,
-                    to_model=models[position + 1],
-                    reason=failures[-1][:300],
-                    **context,
-                )
+            _log_fallback(models, position, failures, context)
         attempt.error = ErrorEvent(
             code=ERR_MODEL_UNAVAILABLE,
             message="모든 모델이 실패했다: " + "; ".join(failures),
             retryable=True,
             model=models[-1] if models else None,
         )
+
+    def _shortest_hold(self, model: str, tier: KeyTier, tried: set[int]) -> float | None:
+        waits = [
+            status.cooldown_remaining[model]
+            for status in self._pool.status()
+            if status.tier == tier
+            and status.index not in tried
+            and not status.disabled
+            and model in status.cooldown_remaining
+        ]
+        if not waits:
+            return None
+        return min(max(min(waits), 0.0) + 0.1, PAID_RATE_LIMIT_MAX_WAIT_SEC)
+
+    def _note_rate_limit(self, index: int, model: str, tier: KeyTier, verdict: ErrorClass) -> float:
+        """429를 키 풀에 적고 같은 키로 다시 보내기 전에 기다릴 초를 돌려준다(0이면 안 보낸다)."""
+        if verdict.scope == "day":
+            seconds = daily_block_seconds(verdict.retry_after, self._now())
+            if verdict.retry_after is not None and verdict.retry_after < seconds:
+                log.info(
+                    "llm.daily_limit_until_reset",
+                    model=model,
+                    retry_after=verdict.retry_after,
+                    blocked_sec=round(seconds),
+                )
+            self._pool.exhaust(index, model, seconds)
+            return 0.0
+        if tier == "paid":
+            wait = _paid_wait(verdict.retry_after)
+            self._pool.mark_failure(index)
+            self._pool.hold(index, model, wait)
+            return wait
+        self._pool.mark_rate_limited(index, model)
+        return 0.0
 
     def _message_end(
         self, req: ChatRequest, attempt: _Attempt, normalizer: StreamNormalizer, model: str

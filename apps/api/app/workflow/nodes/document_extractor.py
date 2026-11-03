@@ -11,18 +11,16 @@ pdf·docx는 extract_runner가 샌드박스 파이썬으로 읽는다(서버 RSS
 """
 
 import asyncio
-import codecs
 import shutil
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from app.knowledge.ingest.parse import SUFFIXES, FileKind, cut_utf8, file_kind, read_text_file
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.schemas.workflow import Issue
 from app.workflow.extract_runner import ExtractError, ensure_parsers, extract_document
-from app.workflow.html_text import html_to_text
 from app.workflow.nodes.base import (
     GraphView,
     NodeContext,
@@ -35,7 +33,6 @@ from app.workflow.nodes.base import (
 from app.workflow.ports import FilePortError
 from app.workflow.variables import MAX_STRING_BYTES, is_file
 
-FileKind = Literal["pdf", "docx", "text", "markdown", "csv", "html"]
 MAX_FILES = 20
 MAX_FILE_BYTES = 50 * 1024 * 1024
 # 여러 파일의 머리글이 들어갈 자리를 남긴다.
@@ -46,37 +43,6 @@ TEXT_READ_BYTES = MAX_STRING_BYTES + 512 * 1024
 HTML_READ_BYTES = 4 * 1024 * 1024
 STAGE_DIR = ".tmp/extract"
 ACCEPTED_TYPES = frozenset({"file", "array[file]", "array[any]", "any"})
-_EXTENSIONS: dict[str, FileKind] = {
-    "pdf": "pdf",
-    "docx": "docx",
-    "txt": "text",
-    "text": "text",
-    "log": "text",
-    "md": "markdown",
-    "markdown": "markdown",
-    "csv": "csv",
-    "tsv": "csv",
-    "html": "html",
-    "htm": "html",
-    "xhtml": "html",
-}
-_MIMES: dict[str, FileKind] = {
-    "application/pdf": "pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "text/html": "html",
-    "application/xhtml+xml": "html",
-    "text/markdown": "markdown",
-    "text/csv": "csv",
-    "text/plain": "text",
-}
-_SUFFIXES: dict[FileKind, str] = {
-    "pdf": ".pdf",
-    "docx": ".docx",
-    "text": ".txt",
-    "markdown": ".md",
-    "csv": ".csv",
-    "html": ".html",
-}
 
 
 class DocumentExtractorConfig(BaseModel):
@@ -84,17 +50,6 @@ class DocumentExtractorConfig(BaseModel):
 
     # file 또는 array[file] 변수.
     file_var: str
-
-
-def file_kind(ref: Mapping[str, Any]) -> FileKind | None:
-    name = str(ref.get("filename") or "")
-    stem, dot, extension = name.rpartition(".")
-    if dot and stem and extension.lower() in _EXTENSIONS:
-        return _EXTENSIONS[extension.lower()]
-    mime = str(ref.get("mime") or "").split(";", 1)[0].strip().lower()
-    if mime in _MIMES:
-        return _MIMES[mime]
-    return "text" if mime.startswith("text/") else None
 
 
 def _file_refs(value: object) -> list[dict[str, Any]] | None:
@@ -109,36 +64,8 @@ def _file_refs(value: object) -> list[dict[str, Any]] | None:
     return None
 
 
-def decode_text(data: bytes, *, complete: bool) -> str:
-    """UTF-8(BOM 포함), 안 되면 cp949로 푼다. 읽다 만 끝 글자는 버린다."""
-    for encoding in ("utf-8-sig", "cp949"):
-        decoder = codecs.getincrementaldecoder(encoding)(errors="strict")
-        try:
-            return decoder.decode(data, final=complete)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="replace")
-
-
-def cut_utf8(text: str, limit: int) -> tuple[str, bool]:
-    data = text.encode("utf-8")
-    if len(data) <= limit:
-        return text, False
-    return data[: max(limit, 0)].decode("utf-8", errors="ignore"), True
-
-
-def read_text_file(path: Path, kind: FileKind, budget: int) -> tuple[str, bool]:
-    """(글, 잘렸는지). 파일 앞부분만 읽는다."""
-    limit = HTML_READ_BYTES if kind == "html" else TEXT_READ_BYTES
-    size = path.stat().st_size
-    with path.open("rb") as file:
-        data = file.read(limit)
-    complete = len(data) >= size
-    text = decode_text(data, complete=complete)
-    if kind == "html":
-        text = html_to_text(text).text
-    text, cut = cut_utf8(text, budget)
-    return text, cut or not complete
+def _read_limit(kind: FileKind) -> int:
+    return HTML_READ_BYTES if kind == "html" else TEXT_READ_BYTES
 
 
 def _clear(path: Path) -> None:
@@ -219,7 +146,7 @@ class DocumentExtractorRunner(NodeRunner[DocumentExtractorConfig]):
         try:
             for index, (ref, kind) in enumerate(zip(refs, kinds, strict=True)):
                 name = str(ref.get("filename") or f"파일 {index + 1}")
-                relative = f"{stage}/{index}{_SUFFIXES[kind]}"
+                relative = f"{stage}/{index}{SUFFIXES[kind]}"
                 size = await files.copy_to(ref, handle.root / relative, max_bytes=MAX_FILE_BYTES)
                 pages: int | None = None
                 if kind in ("pdf", "docx"):
@@ -237,7 +164,11 @@ class DocumentExtractorRunner(NodeRunner[DocumentExtractorConfig]):
                     text, cut, pages = extracted.text, extracted.truncated, extracted.pages
                 else:
                     text, cut = await asyncio.to_thread(
-                        read_text_file, handle.root / relative, kind, left
+                        read_text_file,
+                        handle.root / relative,
+                        kind,
+                        left,
+                        read_limit=_read_limit(kind),
                     )
                 left -= len(text.encode("utf-8"))
                 texts.append(text)

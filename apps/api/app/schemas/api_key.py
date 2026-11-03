@@ -4,8 +4,9 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
-# 에이전트 키는 chat·tasks, 워크플로우 키는 workflow, 챗플로우 키는 chat만 받는다(2단계 4.1).
-ApiKeyScope = Literal["chat", "tasks", "workflow"]
+# 에이전트 키는 chat·tasks, 워크플로우 키는 workflow, 챗플로우 키는 chat, 지식 베이스 키는
+# knowledge만 받는다(2단계 4.1, 3단계 8.5).
+ApiKeyScope = Literal["chat", "tasks", "workflow", "knowledge"]
 
 
 class ApiKeyCreate(BaseModel):
@@ -20,9 +21,11 @@ class ApiKeyCreate(BaseModel):
 
 class ApiKeyOut(BaseModel):
     id: uuid.UUID
-    # 키가 묶인 대상. 에이전트 키는 agent_id, 워크플로우 키는 workflow_id만 있다.
+    # 키가 묶인 대상. 에이전트 키는 agent_id, 워크플로우 키는 workflow_id, 지식 베이스 키는
+    # knowledge_base_id만 있다.
     agent_id: uuid.UUID | None
     workflow_id: uuid.UUID | None = None
+    knowledge_base_id: uuid.UUID | None = None
     name: str
     # 목록에서 키를 알아보는 앞부분(sk-wf-로 시작하는 12자). 원문은 생성 응답에만 있다.
     key_prefix: str

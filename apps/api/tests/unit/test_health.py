@@ -19,10 +19,11 @@ from app.db.engine import Database
 from app.housekeeping import Housekeeping
 from app.llm.gemini_adapter import GeminiAdapter
 from app.logsetup import configure_logging
-from app.main import create_app
+from app.main import StartupCheckError, create_app
 from app.runner import recovery
 from app.sandbox import E2B_NOT_IMPLEMENTED, allowlist
 from app.sandbox.local_workspace import LocalWorkspaceBackend
+from app.services.knowledge_runtime import KnowledgeRuntime
 
 BASE_URL = "http://127.0.0.1:8500"
 
@@ -65,6 +66,7 @@ async def test_healthz_reports_process_state(settings: Settings) -> None:
     assert body["runner"] == {
         "agent": {"active": 0, "queued": 0},
         "workflow": {"active": 0, "queued": 0},
+        "knowledge": {"active": 0, "queued": 0},
         "shutting_down": False,
     }
 
@@ -176,13 +178,15 @@ async def test_shutdown_stops_housekeeping_then_closes_sandbox_llm_and_db(
         LocalWorkspaceBackend, "aclose", spy("sandbox", LocalWorkspaceBackend.aclose)
     )
     monkeypatch.setattr(GeminiAdapter, "aclose", spy("llm", GeminiAdapter.aclose))
+    monkeypatch.setattr(KnowledgeRuntime, "close", spy("index", KnowledgeRuntime.close))
     monkeypatch.setattr(Database, "close", spy("db", Database.close))
 
     async with running(create_app(settings)):
         pass
 
-    # 샌드박스 백엔드는 둘이다(에이전트 작업공간, 워크플로우 런 작업 폴더).
-    assert calls == ["housekeeping", "sandbox", "sandbox", "llm", "db"]
+    # 샌드박스 백엔드는 셋이다(에이전트 작업공간, 워크플로우 런 작업 폴더, 지식 작업 폴더).
+    # index.db는 레인이 다 멈춘 뒤 app.db보다 먼저 닫는다.
+    assert calls == ["housekeeping", "sandbox", "sandbox", "sandbox", "llm", "index", "db"]
 
 
 async def test_e2b_backend_stops_startup(settings: Settings) -> None:
@@ -192,6 +196,44 @@ async def test_e2b_backend_stops_startup(settings: Settings) -> None:
     with pytest.raises(NotImplementedError, match=E2B_NOT_IMPLEMENTED):
         async with app.router.lifespan_context(app):
             pass
+
+
+async def test_paid_key_in_the_free_pool_stops_startup(settings: Settings) -> None:
+    # 결제한 키가 무료 순환에 섞이면 무료로 여긴 호출까지 과금되므로 기동을 멈춘다(3단계 14.4).
+    paid = "paid-key-" + "7" * 24
+    clashing = settings.model_copy(
+        update={
+            "gemini_api_keys": [SecretStr("free-key-" + "1" * 24), SecretStr(paid)],
+            "gemini_paid_api_key": SecretStr(paid),
+        }
+    )
+    app = create_app(clashing)
+
+    with pytest.raises(StartupCheckError, match="GEMINI_PAID_API_KEY"):
+        async with app.router.lifespan_context(app):
+            pass
+
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    text = (settings.data_dir / "logs" / "app.log").read_text(encoding="utf-8")
+    assert "paid_key_in_free_pool" in text
+    assert paid not in text
+    # 기동이 멈췄으니 DB도 만들지 않았다.
+    assert not (settings.data_dir / "app.db").exists()
+
+
+async def test_a_separate_paid_key_starts_normally(settings: Settings) -> None:
+    separate = settings.model_copy(
+        update={
+            "gemini_api_keys": [SecretStr("free-key-" + "1" * 24)],
+            "gemini_paid_api_key": SecretStr("paid-key-" + "7" * 24),
+        }
+    )
+
+    async with running(create_app(separate)) as client:
+        response = await client.get("/healthz")
+
+    assert response.status_code == 200
 
 
 def test_create_app_masks_configured_keys_in_the_log_file(settings: Settings) -> None:

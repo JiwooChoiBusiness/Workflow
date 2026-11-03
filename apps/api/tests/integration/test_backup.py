@@ -48,6 +48,7 @@ MANIFEST_KEYS = {
     "bytes",
     "quick_check",
     "encryption_key_fingerprint",
+    "knowledge_index",
 }
 # 실행할 때 만든 가짜 키. 백업 어디에도 나오면 안 된다.
 ENCRYPTION_KEY = base64.b64encode(secrets.token_bytes(32)).decode()
@@ -140,12 +141,17 @@ async def test_backup_of_a_running_server_restores_agents_sessions_and_files(
     assert manifest["with_workspaces"] is False
     assert manifest["source_data_dir"] == str(settings.data_dir)
     assert manifest["encryption_key_fingerprint"] == sysinfo.encryption_key_fingerprint(settings)
+    # 서버가 연 지식 색인(index.db)도 온라인 백업으로 들어간다(3단계 4.5).
+    index = manifest["knowledge_index"]
+    assert index["included"] is True and index["schema_version"] == 1
     files = backup_files(out)
+    assert index["bytes"] == len(files["knowledge/index.db"])
     del files["manifest.json"]
     assert (manifest["files"], manifest["bytes"]) == (len(files), sum(map(len, files.values())))
     # 서버가 떠 있는 동안 만든 복사본도 -wal·-shm 없이 파일 하나다.
-    assert {"app.db", "allowlist.txt"} <= set(files)
+    assert {"app.db", "allowlist.txt", "knowledge/index.db"} <= set(files)
     assert not any(name.startswith("app.db-") for name in files)
+    assert not any(name.startswith("knowledge/index.db-") for name in files)
     assert not any(name.endswith(".part") for name in files)
     top = {name.split("/", 1)[0] for name in files}
     assert top.isdisjoint({"logs", "cache", "workspaces"})

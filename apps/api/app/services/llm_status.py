@@ -2,7 +2,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import structlog
@@ -45,6 +45,8 @@ _NEXT_KEY = frozenset(
 )
 _MESSAGE_MAX = 300
 _REPLY_MAX = 200
+# KeyPool과 같은 기준. 이보다 짧은 키는 마지막 4자리도 보여 주지 않는다.
+_MIN_LEN_FOR_LAST4 = 12
 # 연결 테스트의 생성 호출. 사고 수준과 출력 상한을 낮춰 짧게 끝낸다(설계 12.2).
 TEST_PROMPT = "연결 확인입니다. '확인'이라고만 답하세요."
 TEST_PARAMS = ModelParams(max_output_tokens=256, reasoning_effort="low")
@@ -111,25 +113,49 @@ class LlmStatusService:
             else {}
         )
         now = utcnow()
+        paid = settings.gemini_paid_api_key
+        paid_key = None
+        if paid is not None and paid.get_secret_value():
+            # 유료 키는 KeyPool에서 무료 키 뒤의 index를 받는다.
+            secret = paid.get_secret_value()
+            paid_key = self._key_status(
+                self.key_count,
+                pool.get(self.key_count),
+                now,
+                last4=secret[-4:] if len(secret) >= _MIN_LEN_FOR_LAST4 else "",
+                tier="paid",
+            )
         return LlmStatus(
             fake=settings.llm_fake,
             base_url=settings.gemini_openai_base_url,
             key_count=self.key_count,
-            keys=[self._key_status(i, pool.get(i), now) for i in range(self.key_count)],
+            keys=[
+                self._key_status(i, pool.get(i), now, last4=self._last4(i))
+                for i in range(self.key_count)
+            ],
             fallback_models=list(settings.gemini_model_fallback),
             key_cooldown_sec=settings.gemini_key_cooldown_sec,
+            paid_key=paid_key,
         )
 
-    def _key_status(self, index: int, entry: KeyStatus | None, now: datetime) -> LlmKeyStatus:
+    def _key_status(
+        self,
+        index: int,
+        entry: KeyStatus | None,
+        now: datetime,
+        *,
+        last4: str,
+        tier: Literal["free", "paid"] = "free",
+    ) -> LlmKeyStatus:
         if entry is None:
-            return LlmKeyStatus(index=index, last4=self._last4(index))
+            return LlmKeyStatus(index=index, last4=last4, tier=tier)
         cooldown = {
             model: now + timedelta(seconds=remaining)
             for model, remaining in entry.cooldown_remaining.items()
         }
         return LlmKeyStatus(
             index=index,
-            last4=self._last4(index),
+            last4=last4,
             cooldown_until=max(cooldown.values(), default=None),
             cooldown_by_model=cooldown,
             disabled=entry.disabled,
@@ -137,6 +163,11 @@ class LlmStatusService:
             failure_count=entry.failure_count,
             rate_limited_count=entry.rate_limited_count,
             last_429_at=entry.last_429_at,
+            tier=tier,
+            exhausted_by_model={
+                model: now + timedelta(seconds=remaining)
+                for model, remaining in entry.exhausted_remaining.items()
+            },
         )
 
     async def test(self, key_index: int | None = None) -> LlmTestResult:

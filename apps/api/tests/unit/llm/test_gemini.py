@@ -286,7 +286,8 @@ def test_request_body_shape() -> None:
     assert body["stream"] is True
     assert body["stream_options"] == {"include_usage": True}
     assert body["max_completion_tokens"] == 900
-    assert body["temperature"] == 0.2
+    # 지금 능력표의 모델은 모두 temperature·top_p를 무시하므로 보내지 않는다.
+    assert "temperature" not in body
     assert "top_p" not in body
     assert body["tools"] == [
         {
@@ -327,6 +328,20 @@ def test_request_body_forced_tool_minimal_effort_and_no_tools() -> None:
     assert "tool_choice" not in plain_body
     assert "reasoning_effort" not in plain_body
     assert "temperature" not in plain_body
+
+
+def test_sampling_params_are_sent_only_when_the_model_supports_them() -> None:
+    req = user_request(params=ModelParams(temperature=0.2, top_p=0.9))
+    known = get_capabilities("gemini-3.6-flash")
+    sampling = known.model_copy(update={"supports_sampling_params": True})
+
+    ignored = build_request_body(req, model="gemini-3.6-flash", caps=known, max_tokens=10)
+    sent = build_request_body(req, model="gemini-3.6-flash", caps=sampling, max_tokens=10)
+
+    assert not known.supports_sampling_params
+    assert not get_capabilities("gemini-unknown").supports_sampling_params
+    assert "temperature" not in ignored and "top_p" not in ignored
+    assert (sent["temperature"], sent["top_p"]) == (0.2, 0.9)
 
 
 async def test_max_output_tokens_is_capped_at_model_limit() -> None:
@@ -821,3 +836,101 @@ async def test_sdk_transport_lists_models_without_prefix() -> None:
     transport = sdk_transport(handler)
 
     assert await transport.list_models(api_key=KEYS[0]) == ["gemini-3.8-flash", "gemini-3.6-flash"]
+
+
+def embedding_response(vectors: list[list[float]], *, order: list[int] | None = None) -> object:
+    indexes = order if order is not None else list(range(len(vectors)))
+    return {
+        "object": "list",
+        "data": [
+            {"object": "embedding", "index": index, "embedding": vectors[index]}
+            for index in indexes
+        ],
+        "model": "gemini-embedding-2",
+    }
+
+
+async def test_sdk_transport_embeds_in_input_order_with_only_known_fields() -> None:
+    seen: list[httpx2.Request] = []
+    vectors = [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        # 순서가 뒤섞여 와도 index를 따른다.
+        return httpx2.Response(200, json=embedding_response(vectors, order=[2, 0, 1]))
+
+    transport = sdk_transport(handler)
+
+    got = await transport.embed(
+        api_key=KEYS[1], model="gemini-embedding-2", inputs=["가", "나", "다"], dimensions=768
+    )
+    plain = await transport.embed(
+        api_key=KEYS[0], model="gemini-embedding-2", inputs=["가", "나", "다"], dimensions=None
+    )
+    await transport.aclose()
+
+    assert got == plain == vectors
+    assert seen[0].url.path == "/v1beta/openai/embeddings"
+    assert seen[0].headers["authorization"] == f"Bearer {KEYS[1]}"
+    # 호환 레이어는 모르는 필드(encoding_format 등)를 400으로 거부한다.
+    assert json.loads(seen[0].content) == {
+        "model": "gemini-embedding-2",
+        "input": ["가", "나", "다"],
+        "dimensions": 768,
+    }
+    assert json.loads(seen[1].content) == {
+        "model": "gemini-embedding-2",
+        "input": ["가", "나", "다"],
+    }
+
+
+async def test_sdk_transport_embed_limits_and_empty_input() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise AssertionError("호출하면 안 된다")
+
+    transport = sdk_transport(handler)
+
+    assert await transport.embed(api_key=KEYS[0], model="m", inputs=[], dimensions=768) == []
+    with pytest.raises(ValueError):
+        await transport.embed(api_key=KEYS[0], model="m", inputs=["x"] * 101, dimensions=768)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"data": [{"index": 0, "embedding": [0.1]}]},
+        {"data": [{"index": 0, "embedding": []}, {"index": 1, "embedding": [0.2]}]},
+        {"data": [{"index": 0, "embedding": "AAAA"}, {"index": 1, "embedding": [0.2]}]},
+        {"data": [{"index": 0, "embedding": [True]}, {"index": 1, "embedding": [0.2]}]},
+        {"object": "list"},
+    ],
+)
+async def test_sdk_transport_rejects_malformed_embedding_responses(body: object) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=body)
+
+    transport = sdk_transport(handler)
+
+    with pytest.raises(TransportError) as caught:
+        await transport.embed(api_key=KEYS[0], model="m", inputs=["a", "b"], dimensions=None)
+
+    assert (caught.value.kind, caught.value.status) == ("stream", None)
+
+
+@pytest.mark.parametrize("status", [400, 429, 503])
+async def test_sdk_transport_embed_errors_are_not_retried_by_the_sdk(status: int) -> None:
+    requests: list[httpx2.Request] = []
+    error = {"code": status, "message": "nope", "status": "X", "details": []}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        return httpx2.Response(status, json=[{"error": error}])
+
+    transport = sdk_transport(handler)
+
+    with pytest.raises(TransportError) as caught:
+        await transport.embed(api_key=KEYS[0], model="m", inputs=["a"], dimensions=768)
+
+    assert (caught.value.status, caught.value.kind, caught.value.payload) == (status, "http", error)
+    assert caught.value.message == "X: nope"
+    assert len(requests) == 1

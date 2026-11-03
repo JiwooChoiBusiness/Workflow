@@ -83,6 +83,9 @@ class ChatRequest(BaseModel):
     params: ModelParams = Field(default_factory=ModelParams)
     # run_id 등 로깅용. 프로바이더에 보내지 않는다.
     metadata: dict[str, Any] = Field(default_factory=dict[str, Any])
+    # 이 호출에 쓸 키 등급(3단계 설계 14.4). paid면 GEMINI_PAID_API_KEY만 쓰고 무료 키로 넘어가지
+    # 않는다. 프로바이더에 보내지 않는다.
+    tier: Literal["free", "paid"] = "free"
 
 
 class Usage(BaseModel):

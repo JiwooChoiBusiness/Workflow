@@ -272,7 +272,7 @@ async def test_model_id_without_live_list_allows_only_fallback(
     assert problem_types(unknown) == {"model.model_id": "model_not_available"}
     ctx = unknown.json()["error"]["details"][0]["ctx"]
     assert ctx == {"allowed": settings.gemini_model_fallback, "live_list": False}
-    fallback = await save(logged_in, agent["id"], body_from(draft, model=model("gemini-3.7-flash")))
+    fallback = await save(logged_in, agent["id"], body_from(draft, model=model("gemini-3.6-flash")))
     assert fallback.status_code == 200
     draft = fallback.json()
     explicit = await save(

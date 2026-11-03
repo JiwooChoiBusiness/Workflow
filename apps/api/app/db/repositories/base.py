@@ -12,8 +12,9 @@ from sqlalchemy.sql.elements import BooleanClauseList
 
 from app.db.base import Base
 
-# workspace_id가 없는 전역 테이블. 이 셋만 GlobalRepository로 다룰 수 있다.
-GLOBAL_TABLES = frozenset({"workspace", "account", "login_session"})
+# workspace_id가 없는 전역 테이블. 이것들만 GlobalRepository로 다룰 수 있다. kb_counter는
+# index.db rowid로 쓰는 전역 번호라 워크스페이스에 속하지 않는다(3단계 4.1).
+GLOBAL_TABLES = frozenset({"workspace", "account", "login_session", "kb_counter"})
 
 
 class UnscopedQueryError(RuntimeError):

@@ -34,3 +34,5 @@ class WfMessage(TimestampMixin, Base):
     usage: Mapped[dict[str, Any] | None] = mapped_column(JSONValue)
     # assistant 행만. 런 상태를 따라간다.
     status: Mapped[str | None] = mapped_column(String)
+    # assistant 행의 지식 인용(RetrieverResource 목록, 3단계 8.3).
+    retriever_resources: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONValue)

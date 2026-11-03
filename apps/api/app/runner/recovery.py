@@ -20,13 +20,15 @@ KILL_ON_JOB_CLOSE로 이미 함께 죽었다.
 잡는다.
 """
 
+import uuid
 from typing import Any
 
 import structlog
 
 from app.db.engine import Database
 from app.db.models import Run
-from app.db.models.enums import RunStatus, WorkspaceInstanceStatus
+from app.db.models.enums import KbIndexingStatus, RunStatus, WorkspaceInstanceStatus
+from app.db.repositories.knowledge import KbDocumentRepository, KnowledgeBaseRepository
 from app.db.repositories.runs import RunRepository
 from app.db.repositories.workflows import WfNodeRunRepository, WfRunRepository
 from app.db.repositories.workspace_instances import WorkspaceInstanceRepository
@@ -41,6 +43,7 @@ from app.services.child_runs import (
     claim_parent,
     orphan_runs,
 )
+from app.services.knowledge_index_executor import KnowledgeLane
 from app.services.workflow_runs import (
     close_waiting_nodes,
     pending_of,
@@ -223,4 +226,46 @@ async def recover(db: Database, supervisor: Supervisor, bus: EventBus) -> dict[s
     }
     if any(result.values()):
         log.warning("runner.recovered", **result)
+    return result
+
+
+async def recover_knowledge(db: Database, lane: KnowledgeLane) -> dict[str, int]:
+    """지식 레인 복구(3단계 설계 6.5). 2단계 복구 뒤에 돌고 런과는 상관이 없다.
+
+    큐는 메모리에만 있고 진실은 kb_document다. 진행 중이던 문서는 waiting으로 돌리고 대기 문서와
+    함께 만든 순으로 다시 넣는다. 분할을 마치지 않은 문서는 작업이 시작할 때 부분 결과를 지우고
+    처음부터, 마친 문서는 indexing부터 끝난 유닛을 건너뛰며 잇는다(같은 청크의 임베딩은 같은 벡터라
+    멱등이다). 지운 문서의 delete 작업을 먼저 넣는다. 금방 끝나고 몇 시간짜리 인제스트 뒤로 밀리지
+    않게 하려는 것이다. 지운 KB의 문서는 집지 않는다. 매시 정리가 KB째로 지운다.
+    """
+    now = utcnow()
+    reset = 0
+    resume: list[tuple[uuid.UUID, uuid.UUID]] = []
+    deletes: list[tuple[uuid.UUID, uuid.UUID]] = []
+    async with db.read() as session:
+        workspace_ids = [row.id for row in await WorkspaceRepository(session).list_all()]
+    for workspace_id in workspace_ids:
+        async with db.write() as session:
+            live = {
+                kb.id for kb in await KnowledgeBaseRepository(session, workspace_id).list_active()
+            }
+            documents = KbDocumentRepository(session, workspace_id)
+            for document in await documents.list_to_resume(live):
+                if document.indexing_status != KbIndexingStatus.WAITING:
+                    document.indexing_status = KbIndexingStatus.WAITING
+                    document.updated_at = now
+                    reset += 1
+                resume.append((workspace_id, document.id))
+            deletes.extend(
+                (workspace_id, document.id)
+                for document in await documents.list_deleted(limit=100_000)
+                if document.kb_id in live
+            )
+    for workspace_id, document_id in deletes:
+        lane.delete(workspace_id, document_id)
+    for workspace_id, document_id in resume:
+        lane.index(workspace_id, document_id)
+    result = {"reset": reset, "requeued": len(resume), "deletes": len(deletes)}
+    if any(result.values()):
+        log.warning("knowledge.recovered", **result)
     return result

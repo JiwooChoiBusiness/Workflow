@@ -119,3 +119,9 @@ def tool_output_key(run_id: UUID, tool_call_id: str) -> str:
 def wf_file_key(workspace_id: UUID, file_id: UUID) -> str:
     # 워크플로우 업로드·출력 파일(2단계 4.1 wf_file).
     return f"wf-files/{workspace_id}/{file_id}"
+
+
+def kb_file_key(workspace_id: UUID, document_id: UUID) -> str:
+    # 지식 베이스 문서의 원본(3단계 설계 6.2). 붙여 넣은 글도 .txt로 여기에 둬 재색인이 원본에서
+    # 다시 돈다.
+    return f"kb-files/{workspace_id}/{document_id}"

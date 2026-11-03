@@ -4,6 +4,9 @@ from app.api.console import (
     agents,
     auth,
     files,
+    knowledge,
+    knowledge_documents,
+    knowledge_search,
     llm,
     models,
     runs,
@@ -49,5 +52,8 @@ for module in (
     workflow_dsl,
     wf_runs,
     wf_conversations,
+    knowledge,
+    knowledge_documents,
+    knowledge_search,
 ):
     router.include_router(module.router)
