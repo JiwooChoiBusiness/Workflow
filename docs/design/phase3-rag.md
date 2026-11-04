@@ -665,7 +665,7 @@ Z5가 (a)일 때 구현한다. (b)면 이 장과 ADR-0008은 설계로만 남고
 ### 10.2 데이터 소스와 준비 단계
 
 - 생성: 이름·설명 → 파일 업로드(최대 20개·각 200MB, `sql-sources/<workspace_id>/<file_id>`) → 파일마다 표 이름(기본은 파일 이름을 snake_case로)과 옵션(머리글 여부, 인코딩 자동 → `cp949` 선택, `all_varchar`, xlsx 시트) → "준비"가 샌드박스에서 스키마를 뜨고 질의용 파일을 만든다.
-- 준비(파일 소스): 샌드박스 DuckDB가 원본 CSV·xlsx를 읽어(이때만 `excel`·`encodings` 확장과 원본 경로 접근이 필요하다) 숨김 열을 뺀 표를 `data/cache/kb-sql/<source_id>.duckdb`에 `CREATE TABLE <표> AS SELECT <보이는 열…> FROM read_csv(…)`로 적재하고, `DESCRIBE`·행 수·열 샘플값(열당 3개)을 뜬 `schema` 스냅샷과 `materialized{path, built_at, source_hash}`를 저장한다. 질의 때는 이 파일만 읽기 전용으로 연다(10.5). 숨긴 열은 파일에 아예 없으므로 어떤 SQL로도 읽을 수 없고, 200MB CSV를 질의마다 다시 파싱하는 비용도 없다. 파일·표 옵션·숨김 열이 바뀌면 다시 만든다(`source_hash`가 바뀜). 크기는 원본과 비슷하거나 작다(열 지향 압축). SQLite 소스는 원본을 그대로 쓰고 `PRAGMA table_info`·`sqlite_master`(뷰 포함)로 스냅샷만 뜬다.
+- 준비(파일 소스): 샌드박스 DuckDB가 원본 CSV·xlsx를 읽어(이때만 `excel`·`encodings` 확장과 원본 경로 접근이 필요하다) 숨김 열을 뺀 표를 `data/cache/kb-sql/<source_id>.duckdb`에 `CREATE TABLE <표> AS SELECT <보이는 열…> FROM read_csv(…)`로 적재하고, `DESCRIBE`·행 수·열 샘플값(열당 3개)을 뜬 `schema` 스냅샷과 `materialized{path, built_at, source_hash}`를 저장한다. 질의 때는 이 파일만 읽기 전용으로 연다(10.5). 숨긴 열은 파일에 아예 없으므로 어떤 SQL로도 읽을 수 없고, 200MB CSV를 질의마다 다시 파싱하는 비용도 없다. 파일·표 옵션·숨김 열이 바뀌면 다시 만든다(`source_hash`가 바뀜). 크기는 원본과 비슷하거나 작다(열 지향 압축). SQLite 소스는 `PRAGMA table_info`·`sqlite_master`(뷰 포함)로 스냅샷을 뜬다. 숨긴 표·열이 하나도 없으면 원본을 그대로 쓰고, 있으면 준비가 숨긴 것을 뺀 질의용 사본 `data/cache/kb-sql/<source_id>.sqlite`를 만든다(M27 검토 반영, 17.4).
 - 주석(`annotations`): 표·열 설명, 숨김 열(`hidden=true`면 질의 파일·스키마 DDL·결과에 없다. 개인정보 열을 LLM과 결과에서 치우는 수단), 용어집(`glossary`, 자유 글). 이것이 LLM에 주는 컨텍스트의 재료다.
 - DDL 텍스트(`sql_schema` 노드와 도구가 돌려주는 것): 표마다 `CREATE TABLE <이름> (<열> <타입> -- <설명>, …); -- <표 설명>` + 샘플값 + 용어집. 토큰 상한 `schema_max_tokens`(기본 8,000)를 넘으면 표 목록만 주고 "큰 스키마는 10.7의 스키마 KB를 쓰라"는 경고.
 - 런타임 설치: 첫 사용 전 "런타임 준비" 단추가 샌드박스 pip으로 `duckdb>=2.0,<3`를 `data/cache/kb-sql/packages-<해시>/`에 받고(`extract_runner`의 설치 잠금·표시 파일 방식을 공용 함수로 뺀다) DuckDB 확장 `excel`·`encodings`를 `data/cache/kb-sql/duckdb-ext/`에 미리 설치한다(`SET extension_directory`. 잠근 뒤에는 INSTALL이 거부되므로 미리 해야 한다). 휠 15.4MB, 네트워크 필요. 노드·도구는 준비가 안 돼 있으면 `sql_runtime_missing(retryable)`.
@@ -686,15 +686,15 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
 ### 10.4 검증(서버, sqlglot)
 
 - 의존성: `sqlglot` 30.x(순수 파이썬, 의존성 없음, MIT). import에 RSS +14MB[실측]라 첫 검증 때 지연 import한다. 방언은 소스 `kind`에 따라 `duckdb` 또는 `sqlite`.
-- 순서: (1) 주석 제거와 끝 세미콜론 정리(sqlglot이 끝 주석을 두 번째 문장으로 세는 한계). (2) `parse_one`이 실패하면 `sql_invalid`. (3) 문장이 둘 이상이면 `multiple_statements`. (4) 루트가 `Select`·`Union`·CTE(`With`)가 아니면 `not_select`. CTE 본문과 서브쿼리 안의 DML·DDL·`Command`(PRAGMA, ATTACH, VACUUM, EXPLAIN 등)도 트리 전체를 돌며 거부한다. (5) 테이블: `find_all(exp.Table)`이 소스의 표(SQLite는 뷰 포함) 밖을 가리키면 `table_not_allowed`. 문자열 경로 치환 스캔(`FROM '<경로>'`)과 DuckDB의 `read_csv`·`read_parquet`·`glob`·`read_text` 같은 테이블 함수는 함수 허용 목록으로 막는다. (6) 함수: 방언별 허용 목록(집계·문자열·날짜·수학·창 함수)이고 목록 밖은 `function_not_allowed`. SQLite의 `load_extension`·`readfile`·`writefile`·`fts5`류, DuckDB의 `read_*`·`glob`·`getenv`·`current_setting` 등은 애초에 목록에 없다. (7) 숨김 열 참조는 `column_hidden`으로 거부하고 `SELECT *`·`t.*`는 보이는 열 목록으로 풀어 쓴다(sqlglot `expand_star`에 열 목록을 준다. 놓치는 경우는 10.5의 엔진 수준 방어가 받는다). (8) `LIMIT`: 없으면 `max_rows + 1`을 주입하고, 있으면 `min(기존, max_rows + 1)`로 바꾼다(1행 더 받아 잘림을 안다). (9) 결과 SQL 문자열을 `sql_executed`로 돌려준다. 방언 변환은 하지 않는다(생성 때부터 목표 방언으로).
+- 순서: (1) 주석 제거와 끝 세미콜론 정리(sqlglot이 끝 주석을 두 번째 문장으로 세는 한계). (2) `parse_one`이 실패하면 `sql_invalid`. (3) 문장이 둘 이상이면 `multiple_statements`. (4) 루트가 `Select`·`Union`·CTE(`With`)가 아니면 `not_select`. CTE 본문과 서브쿼리 안의 DML·DDL·`Command`(PRAGMA, ATTACH, VACUUM, EXPLAIN 등)도 트리 전체를 돌며 거부한다. (5) 테이블: `find_all(exp.Table)`이 소스의 표(SQLite는 뷰 포함) 밖을 가리키면 `table_not_allowed`. 문자열 경로 치환 스캔(`FROM '<경로>'`)과 DuckDB의 `read_csv`·`read_parquet`·`glob`·`read_text` 같은 테이블 함수는 함수 허용 목록으로 막는다. (6) 함수: 방언별 허용 목록(집계·문자열·날짜·수학·창 함수)이고 목록 밖은 `function_not_allowed`. SQLite의 `load_extension`·`readfile`·`writefile`·`fts5`류, DuckDB의 `read_*`·`glob`·`getenv`·`current_setting` 등은 애초에 목록에 없다. (7) 숨김 열 참조는 `column_hidden`으로 거부하고 `SELECT *`·`t.*`는 보이는 열 목록으로 풀어 쓴다(sqlglot `expand_star`에 열 목록을 준다. 놓치는 경우는 10.5의 엔진 수준 방어가 받는다). M27 검토에서 CTE 이름 충돌(`cte_name_conflict`), SQLite의 USING·NATURAL 조인(`column_hidden`·`column_unresolved`), 괄호 밖 LIMIT 처리, sqlglot 내부 예외(`sql_invalid`)를 더했다(17.4). (8) `LIMIT`: 없으면 `max_rows + 1`을 주입하고, 있으면 `min(기존, max_rows + 1)`로 바꾼다(1행 더 받아 잘림을 안다). (9) 결과 SQL 문자열을 `sql_executed`로 돌려준다. 방언 변환은 하지 않는다(생성 때부터 목표 방언으로).
 - sqlglot은 "변환기이지 검증기가 아니다". 그래서 검증 통과가 실행 안전을 뜻하지 않고 10.5가 진짜 방어다. 검증 결과는 `sql_query_log`에 남긴다(`rejected`와 사유).
 
 ### 10.5 실행(샌드박스 하위 프로세스)
 
 - 러너(`app/knowledge/sql/runner.py`): `extract_runner`와 같은 방식으로 스크립트 템플릿을 만들어 `kb_backend.exec(kind="python")`으로 돌린다. 작업 폴더 `data/kb-work/sql-<job_id>/`, Job Object 메모리 `SQL_MEMORY_MB`(512), 프로세스 수 4, 시간 `timeout_sec + 5`(넘으면 트리 종료 → `timeout`). 결과는 `result.json`(열·행·행 수·잘림·소요)과 잘린 전체 결과의 `result.csv`. 서버는 JSON을 `max_rows` 기준 상한(1MB + 64KB)까지만 읽는다. 환경변수는 최소 목록(1단계 3.6과 같은 규칙)이고 네트워크는 쓰지 않는다.
 - DuckDB(파일 소스): 10.2에서 만든 `<source_id>.duckdb`를 `duckdb.connect(path, read_only=True)`로 열고 아래 순서로 잠근다(순서가 바뀌면 잠금이 무의미하다). `SET autoload_known_extensions=false; SET autoinstall_known_extensions=false;` → `SET allowed_paths=[]; SET enable_external_access=false;`(질의 때는 어떤 외부 파일도 필요 없다. 원본 CSV 경로도 열리지 않는다) → `SET memory_limit=256MB; SET threads=2; SET max_temp_directory_size=1GB; SET temp_directory=<작업 폴더>` → `SET lock_configuration=true` → 질의 실행(`fetchmany(max_rows + 1)`). 잠근 뒤에는 다른 파일 읽기·COPY TO·ATTACH·INSTALL·설정 변경이 모두 거부되는 것을 확인했다[실측]. 읽기 전용 파일이라 `CREATE TABLE`도 안 된다. 숨김 열은 파일에 없으므로 `read_csv('<원본>')`·`FROM '<경로>'`·`SELECT t.*`·서브쿼리 `*` 어느 길로도 나오지 않는다. 확장은 질의 때 로드하지 않는다(xlsx·cp949 변환은 준비 단계에서 끝났다).
-- SQLite(파일 소스): `file:<경로>?mode=ro&immutable=1` URI(`-wal`·`-shm`도 생기지 않는다), `isolation_level=None`, `PRAGMA query_only=ON`, `conn.setlimit(SQLITE_LIMIT_ATTACHED, 0)`, authorizer, 진행 핸들러(마감 시각을 넘으면 1을 돌려 `interrupted`), `fetchmany(max_rows + 1)`. authorizer는 SELECT·READ·허용 함수·RECURSIVE만 허용하고 그 밖(INSERT·CREATE·ATTACH·VACUUM·PRAGMA·`load_extension`)은 DENY이며, `SQLITE_READ(table, column)`에서 숨김 열이면 `SQLITE_IGNORE`를 돌려 그 열이 NULL로 읽히게 한다(`SELECT *`·`t.*`·`USING` 조인·서브쿼리·`json_each` 어디서든 엔진이 막는다. `pragma_table_info`는 PRAGMA라 거부된다). 이 조합이 `VACUUM INTO`·`ATTACH`·재귀 CTE 폭주를 막는 것을 확인했고[실측], `SQLITE_IGNORE` 동작은 17.3-8에서 확인한다. app.db는 같은 PC에 있지만 ATTACH가 0으로 잠겨 열 수 없고, 소스 파일 외의 경로는 스크립트가 알지 못한다.
-- 결과 처리(`results.py`): 행은 JSON 직렬화 가능한 값으로(날짜 → ISO, Decimal → 문자열, bytes → 길이 표시), `rows`는 변수 상한 안에서 `max_rows`까지, 넘치면 `truncated=true`와 CSV `wf_file(kind=output)`. `result_text`는 앞 `llm_rows`행 마크다운 표, `llm_bytes`를 넘으면 열을 줄이지 않고 행을 줄인다. 숫자 집계는 그대로 둔다. SQLite에서 숨김 열이 NULL로 나온 열은 결과에서 뺀다.
+- SQLite(파일 소스): `file:<경로>?mode=ro&immutable=1` URI(`-wal`·`-shm`도 생기지 않는다), `isolation_level=None`, `PRAGMA query_only=ON`, `conn.setlimit(SQLITE_LIMIT_ATTACHED, 0)`, authorizer, 진행 핸들러(마감 시각을 넘으면 1을 돌려 `interrupted`), `fetchmany(max_rows + 1)`. authorizer는 SELECT·READ·허용 함수·RECURSIVE만 허용하고 그 밖(INSERT·CREATE·ATTACH·VACUUM·PRAGMA·`load_extension`)은 DENY이며, `SQLITE_READ(table, column)`에서 숨김 열이면 `SQLITE_IGNORE`를 돌려 그 열이 NULL로 읽히게 한다. M27 실측(SQLite 3.45.3)에서 `SELECT *`·`t.*`·ON·WHERE·서브쿼리·뷰·`json_each`는 NULL로 읽혔지만, USING·NATURAL 조인 조건은 SQLite가 안에서 만들어 authorizer를 거치지 않고 실제 값으로 비교됐다. 그래서 숨긴 열·표가 있는 소스는 10.2의 질의용 사본을 열고, 숨긴 표는 직접이든 뷰를 거치든 DENY하며, `pragma_*` 표 값 함수는 READ 허용 목록 밖이라 DENY된다(17.4). 이 조합이 `VACUUM INTO`·`ATTACH`·재귀 CTE 폭주를 막는 것을 확인했고[실측], `SQLITE_IGNORE` 동작은 17.3-8에서 확인한다. app.db는 같은 PC에 있지만 ATTACH가 0으로 잠겨 열 수 없고, 소스 파일 외의 경로는 스크립트가 알지 못한다.
+- 결과 처리(`results.py`): 행은 JSON 직렬화 가능한 값으로(날짜 → ISO, Decimal → 문자열, bytes → 길이 표시), `rows`는 변수 상한 안에서 `max_rows`까지, 넘치면 `truncated=true`와 CSV `wf_file(kind=output)`. `result_text`는 앞 `llm_rows`행 마크다운 표, `llm_bytes`를 넘으면 열을 줄이지 않고 행을 줄인다. 숫자 집계는 그대로 둔다. 검증이 `LIMIT max_rows + 1`을 넣으므로 CSV에 담기는 것은 최대 `max_rows`행이고 "결과 전체"가 아니다(17.4).
 - 동시 실행: 1(레인이 아니라 세마포어. `code` 노드와 같은 방식). SQL 작업은 지식 레인을 쓰지 않는다(수 초짜리라 노드 안에서 기다린다).
 
 ### 10.6 승인, 미리보기, LLM에 보내는 범위
@@ -782,7 +782,7 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
 | `tool_call.completed`(1단계) | `retriever_resources?[]`(같은 제한), `sql?{sql_executed, row_count, truncated}` |
 | `node.completed` | 변경 없음(`outputs_preview`에 `result`가 4KB까지) |
 | `workflow.waiting_input` | 폼 종류는 `form` 그대로. 폼 `description`에 "SQL 승인"이 들어간다 |
-| `run.error`·`workflow.error` | 일일 한도면 `code=rate_limited_daily`, `retry_after` |
+| `run.error`·`workflow.error` | 일일 한도면 `retry_after`. 코드는 M21a대로 `model_unavailable`이다(17.4) |
 
 인제스트 진행은 이벤트가 아니라 폴링이다(6.5).
 
@@ -856,6 +856,7 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
 | KS11 | SQL 승인 카드에서 SQL을 쓰기 문장으로 고쳐 승인하면 재검증에서 거부된다 |
 | KS12 | (확장) 서비스 API `create-by-file`에 50MB 초과·실행 파일을 올리면 413·415 |
 | KS13 | 일일 한도 429를 가짜 전송으로 흉내 내면 인제스트 문서가 `rate_limited_daily`로 끝나고 다른 키로 넘어가지 않으며, 채팅은 같은 모델의 다른 키가 아니라 다음 모델로 간다 |
+| KS14 | (M28 검토에서 더함) SQL 결과 CSV(화면에서 만든 것, 서버가 만든 잘린 결과, 에이전트의 `sql/<call>.csv`)에서 `=`·`+`·`-`·`@`·탭·CR로 시작하는 글 칸 앞에 `'`가 붙어 엑셀에서 수식으로 실행되지 않는다 |
 
 ## 15. 2단계 후속 목록과 4단계 "지금 코드에 영향" 처리
 
@@ -1108,7 +1109,7 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
   - 시험은 `tests/conftest.py`의 autouse 장치 때문에 live가 아니면 실제 Gemini를 부르지 못한다. 실제 전송 대신 가짜 임베더를 주고, 새어 나가는 호출이 있으면 그 시험을 실패시킨다.
 - M22에서 뒤로 미룬 것
   - `EmbedCache`의 첫 단계(다른 KB의 같은 글 유닛 벡터 복사)를 잇지 않았다. 지운·끈·다시 나눈·고친 유닛 벡터를 캐시로 옮기는 것은 된다.
-  - 12.1의 `GET .../stats`, `GET /api/console/knowledge-defaults`, 콘솔 `indexing-status`가 없다. M25 화면 전에 만든다.
+  - 12.1의 `GET .../stats`, `GET /api/console/knowledge-defaults`, 콘솔 `indexing-status`가 없다. M25 화면 전에 만든다(M25에서 만들었다).
   - doctor의 지식 색인 항목과 memcheck ingest 구간은 M29다.
 - M23 이후 확정(2026-11-02, 검토 반영 포함)
   - 공개 계약은 `KnowledgeSearchService(db, settings, runtime, *, llm=None).retrieve(workspace_id, kb_ids, query, settings=None, *, metadata_filter=None, source, tier="free") -> RetrievalResult`와 `list_fields(workspace_id, kb_ids)`다. 결과는 `records`, 실제로 쓴 설정, `warnings`, 재순위·자동 필터의 `model_calls`, `latency_ms`를 담는다. 시간 상한은 부르는 쪽이 `asyncio.timeout`으로 건다. 취소되면 리미터 허가는 쓴 채로 남고 질의 기록·`hit_count`는 쓰지 않는다.
@@ -1134,12 +1135,196 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
     - 목록은 `{data, has_more, limit, total, page}`, 시각은 ISO 문자열이다.
     - v1의 503 `index_unavailable`은 예외 원문 대신 고정 문구와 `retryable`만 싣는다. 콘솔은 사유를 그대로 보여 준다.
     - KB 키 콘솔 경로(`/knowledge/{id}/api-keys`)는 `knowledge_search.py`에 있다.
-- M23 검토에서 뒤로 미룬 것(다음 작업)
+- M23 검토에서 뒤로 미룬 것. 뒤의 셋은 M24에서 고쳤고 앞의 둘은 M29에서 본다.
   - 질의마다 KB의 살아 있는 문서 (id, 상태)를 전부 읽는다. 검색할 수 없는 문서만 읽는 역집합 방식이 더 작다.
   - datasets 세그먼트 응답마다 KB 요약(`SUM(word_count)`)을 다시 센다.
   - 자동 필터가 만든 조건이 질의 기록에 남지 않는다.
   - LLM 재순위 설정으로 평가를 돌리면 문항 수만큼 채팅 호출이 직렬로 난다. 상한이 없다.
   - `POST .../documents/metadata` 본문이 Dify의 `operation_data` 모양이 아니라 우리 모양이다.
+- M24 이후 확정(2026-11-03, 검토 반영 포함)
+  - 인용
+    - 인용 모델은 `app/schemas/citations.py`의 `RetrieverResourceData`다. 필드 이름은 Dify 인용과 같고, 이벤트 스키마가 지식 화면 스키마에 묶이지 않게 따로 뒀다.
+    - 인용은 llm 노드의 `context`에서만 생긴다. `knowledge_retrieval` 노드는 `result`(`{content, title, metadata}` 목록), `result_text`, `count`만 낸다(Dify와 같다). 검색 결과 모양이 아닌 context 항목은 번호 없이 글로만 들어간다.
+    - 번호는 런 전체에서 세그먼트마다 하나이고 모델이 본 [n]과 같다. 워크플로우는 엔진의 번호표(`NodeContext.cite`, 체크포인트 `citation_numbers`)를, 에이전트는 `ToolContext.cited`를 쓴다. 처음 보는 세그먼트는 지금까지 가장 큰 번호의 다음이다. 실패한 노드가 받은 번호는 비어 있을 수 있고, 병렬 가지에서는 번호 순서가 정해지지 않는다. 처음에는 노드마다 1부터 매겼는데, iteration 안의 llm이나 context를 쓰는 llm이 둘이면 번호가 겹쳐 검토에서 바꿨다.
+    - 자료는 `<document index="n" name="…" source="KB">본문</document>`로 감싼다(도구 결과에는 `score`가 더 붙는다). 이름의 개행·제어 문자는 공백으로 접고 속성 값은 HTML 이스케이프한다. 본문 속 `</document`는 대소문자와 관계없이 `<\/document`로 바꾼다. 블록은 사용자 시스템 프롬프트 뒤, JSON 지시 앞에 붙고, 머리말이 자료 속 문장을 지시로 따르지 않게 한다. `knowledge_retrieval.result_text`도 같은 모양이고 번호는 그 결과 안의 순서다.
+    - 런 단위 인용은 position 순으로 가장 작은 번호 50개를 저장한다. 저장본(체크포인트·런·메시지)은 content·answer를 2,000자, 자식 청크 글을 500자로 자르고, 전문은 segment_id로 청크 API에서 본다. 이벤트(`workflow.completed`, `tool_call.completed`)는 20개·500자다. 런 목록에는 싣지 않고 단건 조회와 blocking 응답에만 싣는다.
+    - 에이전트 인용은 런이 끝나면 마지막 assistant 메시지 하나로 모인다. 대기 중인 런의 중간 스텝 메시지에는 인용이 남아 있으므로 화면은 마지막 메시지가 아닌 곳의 인용을 무시한다(M26).
+    - 웹앱 `citations_enabled`(기본 켬)는 화면 표시만 끈다. Dify의 `retriever_resource.enabled=false`와 달리 API 응답의 `retriever_resources`는 그대로 나간다.
+  - 키 등급
+    - 런 tier는 런을 만들 때 정해 `limits.tier`에 남긴다(free도 남긴다). 그래프의 KB에 더해 agent 노드가 부르는 에이전트의 발행 버전과 그 하위 에이전트(call_agent 대상)의 KB까지 `app/services/agent_tree.py`가 따라간다(깊이 4, 방문 집합). 하나라도 paid면 런 전체가 paid다. 14.4는 "부모가 유료면 자식도 유료"만 정했지만, 유료 KB 내용이 자식의 답으로 올라와 무료 키로 나가는 길이 남아 검토에서 위쪽으로도 올렸다.
+    - 자식은 max(부르는 런, 자기 트리)다. 유료 키가 없으면 런 생성은 422 `paid_key_missing`이고 워크플로우 발행도 같은 코드로 거부한다. 에이전트는 저장 때 경고 `paid_key_required`(하위 에이전트 때문이면 `agent_id`를 채운다)를 내고, 발행은 `draft_invalid`의 details로 거부한다.
+    - 두 실행기는 런을 시작·재개할 때마다 그때의 KB 등급으로 tier를 다시 계산해 올리기만 한다. 그사이 유료 키가 빠졌으면 런이 `paid_key_missing`으로 실패하고 무료 키로 넘어가지 않는다.
+    - 도구 검색 안의 재순위·자동 필터 채팅 호출도 `usage` 이벤트(`tool_call_id`)로 내고 런 합계와 예산에 넣는다. 한 스텝에 usage가 여럿일 수 있고 스텝 수는 늘지 않는다. 워크플로우 노드는 `node.usage`로 낸다.
+  - 일일 한도: 고른 모델이 모두 일일 한도로 실패하면 런 오류에 `retry_after`를 싣는다. 모델마다 가장 늦게 풀리는 키를 보고, 그중 가장 빨리 풀리는 모델의 시각을 초 단위로 올림한다. 오류 코드는 M21a대로 `model_unavailable`이라 12.4 표를 고쳤다. 값이 없으면 `retry_after` 키 자체가 빠진다.
+  - 노드
+    - `knowledge_retrieval`: `query_var` 기본값이 `sys.query`라 워크플로우에서는 직접 고른다. `retrieval`을 주면 search_method까지 KB 설정을 통째로 덮는다. 시간 상한은 30초다. `top_k`가 `KB_TOP_K_MAX`를 넘으면 저장과 런 시작 때 `top_k_too_large`(field `retrieval.top_k`)다.
+    - `knowledge_index`: 문서 서비스에는 늘 중복 허용으로 넘기고 중복은 노드가 이름으로 처리한다(`on_duplicate`는 skip·replace·add, 기본 replace). replace는 새 문서를 만든 뒤 옛 문서를 지운다. 만든 뒤 단계(이름 바꾸기·메타데이터·옛 문서 지우기)에서 실패하면 재시도하지 않고 만든 문서 id를 오류에 남기며, 옛 문서가 이미 없으면 넘어간다. 문서 404는 `document_not_found`다. wait 시간 초과 `index_wait_timeout`도 재시도하지 않는다. wait 중 런을 중지하면 새 문서는 큐에 남고 교체 대상은 이미 지워져 있다. 파일로 만든 문서의 `data_source_type`은 `workflow`다.
+    - `kb_options`는 NodeTypeList 최상위에 있고 `index_statuses`(queued·skipped·completed·error·paused)와 `duplicate_policies`를 담는다.
+  - 에이전트
+    - `search_knowledge`는 도구 목록에서 고르지 않는다. `knowledge.kb_ids`에 살아 있는 KB가 있으면 붙고, 없으면 도구도 프롬프트 절도 없어 prompt_hash가 그대로다. 프롬프트 절의 줄은 `- <slug>: <이름> — <설명>`이다. 도구 인자 `knowledge_base`가 slug enum이라 8.4의 `- <이름>: <설명>`을 바꿨다.
+    - 저장은 경고(`knowledge_base_not_found`, `paid_key_required`, KB가 둘 이상인데 검색 설정이 없으면 `retrieval_settings_required`)를 내고 발행은 같은 것이 오류다. 런은 지운 KB를 건너뛰고, KB가 여럿인데 설정이 없으면 기본 설정으로 돈다.
+    - `agent_version.knowledge.retrieval_model`은 `RetrievalSettings` 타입이다. 순환 import를 풀려고 `Icon`·`Slug`를 `app/schemas/common.py`로 옮겼다.
+  - 발행 버전으로 도는 런(웹앱·서비스 API)도 시작할 때 KB를 다시 검증한다. 지운 KB면 `knowledge_base_not_found`로 시작하지 않는다.
+  - Dify 가져오기: knowledge-retrieval은 kb_ids를 비우고 원래 id를 `ui.dify_dataset_ids`에 남긴다(검증 `kb_required`, 경고 `knowledge_unlinked`). single 모드는 받지 않는다(`single_retrieval_unsupported`). reranking_model은 LLM 재순위로 옮기고, llm의 `{{#context#}}`는 `context.var`로 옮긴다.
+  - M23에서 미룬 셋: 평가의 LLM 재순위는 60문항까지다(넘으면 422 `eval_rerank_limit`). 자동 필터 조건은 질의 기록 `settings.auto_filter`에 남는다(검사에서 걸려 무시되면 `applied=false`). datasets `POST .../documents/metadata`가 Dify `operation_data`도 받는다. 문서마다 따로 써서 중간에 실패하면 앞 문서는 바뀐 채 남는다.
+- M25 이후 확정(2026-11-03, 검토 반영 포함)
+  - `GET .../stats`와 `GET /api/console/knowledge-defaults`는 index.db를 못 열어도 200이고 색인 칸만 null이다(defaults는 `index_available=false`와 `index_error`). M21b의 "지식 API만 503"에서 이 둘만 뺐다. defaults는 런타임 객체가 없을 때만 503이다. 화면은 이 값으로 목록·만들기·올리기·KB 화면에 경고를 띄우고 올리기를 막는다(미리보기는 둔다). 서버는 업로드를 그대로 받는다.
+  - stats
+    - 설계 항목에 상태별 문서 수, `vector_state`(ready·stale·missing), `pending_vector_units`를 더했다. 상태별 수는 (indexing_status, enabled, archived) GROUP BY 한 번에 목록 필터와 같은 규칙을 씌워 센다.
+    - 유닛 수는 전문 색인 행 수(꺼 둔 청크 제외)이고, 벡터 수는 KB 설정과 맞는 벡터 테이블일 때만 센다. `index_bytes`는 모든 KB가 함께 쓰는 index.db와 WAL의 크기다. 남은 분은 미리보기와 같은 식이다.
+    - 일일 한도로 멈춘 문서 수는 오류 문서의 (id, error)를 5,000개까지 읽어 파이썬에서 센다(error JSON을 SQL 조건에 쓰지 않는다). 그보다 많으면 적게 나온다.
+  - 임베딩 리미터 값은 knowledge-defaults가 실행 중인 리미터에서 읽은 것 하나만 쓴다. 설정 > LLM 화면도 그 값을 쓰고, `LlmStatus`에는 임베딩 칸이 없다. `capped`를 내려고 `KnowledgeRuntime`에 `fake`(기본 false)를 더했고 계약 시험의 필드 목록도 고쳤다.
+  - knowledge-defaults는 설계 항목에 등급별 오늘 사용량과 막힌 시각, 업로드·Top K·질의 기록 한도, 접두어, 입력 토큰 상한을 더했다.
+  - 콘솔 `indexing-status`는 datasets 서비스의 `indexing_status`와 응답 모델을 그대로 쓴다.
+  - 원본 내려받기 `GET .../documents/{doc}/file`은 늘 attachment와 nosniff로 준다. 원본을 바꾼 문서는 지금 원본을, 글로 만든 문서는 저장된 .txt를 준다.
+  - 평가셋 응답 `EvalCaseList.document_names`에 살아 있는 정답 문서의 이름을 싣는다. `create_from_uploads`는 `data_source_type`(기본 `upload_file`)을 받는다.
+  - 화면
+    - 폴링은 진행 중 문서가 있을 때만 돈다. KB 정보와 문서 목록은 2초, 통계는 5초이고, 진행 중 수가 0이 되는 순간 통계와 문서 표를 한 번 더 읽는다. 올리기 대화상자가 열린 동안에는 문서 표 대신 묶음 진행만 읽는다. 청크 목록은 따로 폴링하지 않고 문서 상태나 진행이 바뀔 때만 다시 읽는다.
+    - 일괄 메타데이터 편집의 "값이 없는 문서에도 넣기"는 화면에서 기본으로 켠다(API 기본은 끔).
+    - 설정 탭은 칸마다 저장하고, 키 등급을 바꾸면 데이터 정책을 다시 확인해야 한다.
+    - vector_unavailable 경고는 기다릴 시간이 120초를 넘으면 해제 시각으로 보인다.
+    - API 탭은 KB에 발행·버전이 없어 `PublishPanel` 없이 기존 키 패널과 예시 컴포넌트에 KB 대상을 넘긴다.
+    - 임베딩 모델이 지금 하나뿐이라 고르는 칸 대신 글로 보인다.
+- M24·M25에서 뒤로 미룬 것
+  - 평가셋 CSV 내보내기(백엔드 경로도 없다). M29에서 다시 보고, 쓸 일이 없으면 뺀다.
+  - 검색 시험의 메타데이터 필터 입력과 e2e `knowledge.spec.ts`는 M26, "지식 베이스 / 데이터 소스" 탭은 M28이다.
+  - 여러 KB를 고른 노드 폼의 메타데이터 필드 교집합은 폼이 계산한다. 서버는 저장 때 `metadata_field_mismatch`·`metadata_field_not_found`로만 알린다(M26).
+  - 워크플로우 초안의 agent 노드에는 "유료 에이전트" 경고가 없다. 발행 거부와 실행 등급만 있다.
+  - workflow agent 노드의 자식 런 `retry_after`는 노드 오류로 넘어가지 않는다.
+  - knowledge_index가 만드는 문서 이름 자체는 접지 않는다. 프롬프트에 넣을 때만 접는다.
+- 화면 용어(사용자 결정 2026-11-03): `hierarchical_model`의 화면 이름은 "맥락 확장"이고, 부모·자식 청크는 "큰 조각·작은 조각"이다. 청크 규칙 폼에서는 "큰 조각(넘기는 단위)", "작은 조각(찾는 단위)"으로 쓴다. 코드 값과 이 문서의 Parent-child 표기는 그대로 둔다.
+- M26 이후 확정(2026-11-03, 검토 반영 포함)
+  - 인용 표시
+    - 에이전트: 스트리밍 중에는 `tool_call.completed`의 인용을 런별로 쌓아 보인다. 런이 끝나면(대기 제외) 메시지를 한 번 다시 읽어 마지막 assistant 메시지의 저장본으로 바꾼다. 기록은 런마다 마지막 assistant 메시지 것만 쓰고, 진행 중인 런은 이벤트 재생으로 다시 쌓는다. 칩은 그 런의 마지막 답 아래와 search_knowledge 도구 카드에 붙는다.
+    - 챗플로우: 메시지 저장본(`WfMessageOut`)을 먼저 쓰고, `workflow.completed`의 인용(20개·500자)은 메시지를 다시 읽기 전까지만 보인다.
+    - 청크 화면 링크는 콘솔에만 둔다. 에이전트에는 웹앱 설정 객체가 없어 에이전트 웹앱은 칩을 늘 보인다. 16장 M26의 "WebAppPage(칩, `citations_enabled`)"와 다르고, 인용 끄기는 챗플로우 웹앱에만 있다.
+    - 칩의 위치 표기는 "청크 #n"이고, 작은 조각이 있는 인용과 결과는 "큰 조각 #n"이다.
+  - 노드 폼
+    - KB가 둘 이상이면 "지식 베이스 설정 쓰기"를 끄고 첫 KB의 설정에서 시작하며, 그동안 이 스위치는 잠긴다. 노드 폼과 빌더가 같다.
+    - 메타데이터 조건의 타입은 필드 목록에서 가져오고, 값 모양으로 하는 짐작은 목록을 읽기 전에만 쓴다. 여러 KB의 공통 필드는 고른 KB를 모두 읽은 뒤에만 세고, 그 전에는 "읽는 중", 실패하면 오류와 다시 시도를 보인다.
+    - 조건은 필터 모드와 관계없이 config에 남는다. 서버는 manual일 때만 검증·적용하고, 구조(필드 이름 형식, 연산자, 값 길이)는 어느 모드에서든 읽는다. 변수를 고르지 않은 조건은 `{var: ""}`로 남고 폼이 막는다.
+    - 검색 시험의 필터는 끔과 직접 조건(상수)만 둔다. 자동은 모델 호출이 들어 노드에서만 고른다.
+    - llm 컨텍스트의 변수 선택기는 `array[object]`만 맞게 보인다. 선택기의 accept는 받는 쪽 타입이라 any를 넣으면 모든 변수가 맞게 보이기 때문이다. 서버는 array[object]·array[any]·any를 받고, 시험이 두 목록을 묶어 둔다.
+    - 지식 노드 폼 두 개와 빌더 지식 탭은 지연 로드한다. 빌더는 `top_k_max`를 설정 API의 같은 쿼리(knowledge-defaults)로 읽어 지식 API 조각을 끌어오지 않는다.
+  - 저장 경고와 발행 거부: 에이전트 저장 경고 중 지식 코드는 지식 탭과 별도 토스트로 보낸다. 발행 거부는 발행 패널의 Alert로 남고(details 다섯 줄, 유료 키 안내), 다시 고치기 시작하거나 저장하면 내린다. 에이전트와 워크플로우가 같은 컴포넌트를 쓴다.
+  - 실행
+    - `retry_after`는 이벤트 시각(저장된 런은 ended_at)에 더한 절대 시각으로 보인다.
+    - 후속 (6): 중지면 대기·실행 중 노드를 cancelled로 닫는다. 실패면 대기 노드는 런 오류를 붙인 failed, 실행 중 노드는 cancelled로 닫는다. 서버 `close_waiting_nodes`와 같은 규칙이고, 이벤트가 지워진 런 상세에도 쓴다.
+    - 후속 (9): 워크플로우 편집기를 열면 최근 미리보기 런 5개 중 처음 열린 런에 실행 탭이 다시 붙는다(단일 노드 런 제외).
+    - usage의 `tool_call_id`: 런 인스펙터는 도구 안 채팅 호출을 그 도구 줄에 합친다.
+    - 기록에서 다시 그린 search_knowledge 카드는 결과 글 처음이나 `</document>` 뒤 빈 줄 바로 다음의 `<document …>` 머리만 센다.
+  - e2e: 전역 준비가 실행마다 API로 한 번 로그인해 세션을 `test-results/.auth/console.json`에 두고 모든 스펙이 쓴다. 화면 로그인은 login.spec.ts만 한다. 지식 에이전트 시험(K6)은 각본 서버에서만 돌아 기본 서버에서는 건너뛴다.
+- M26에서 뒤로 미룬 것
+  - K6 e2e를 CI에서 자동으로 돌리기(각본 서버 잡을 하나 더 두거나 가짜 어댑터 각본을 에이전트별로 고르게 한다). 크래시 복구 때 서버가 running 노드 행도 닫기(지금은 waiting_input만 닫고 화면이 가린다). 둘 다 M29.
+- M27 이후 확정(2026-11-04, 검토 반영 포함)
+  - 런타임과 준비
+    - 샌드박스 런타임은 `duckdb==2.0.0`과 `pytz==2026.6`(TIMESTAMPTZ 값을 꺼낼 때 필요)으로 고정했다. 파서도 `pypdf==6.21.4`, `python-docx==1.2.0`으로 고정했다. 설치는 디스크 252.6MB(패키지 44MB, excel 확장 46.7MB, encodings 171.7MB)이고 네트워크에 따라 13~52초였다.
+    - 작업마다 `kb-work/<uuid4>` 폴더를 쓰고 끝나면 지운다. 질의와 준비는 한 번에 하나다.
+    - SQLite 소스에 숨긴 표·열(자동으로 숨긴 뷰 포함)이 하나라도 있으면 준비가 질의용 사본 `<source_id>.sqlite`를 만든다. 사본에는 보이는 표와 열만 담고, rowid 별칭을 유지하고, 보이는 열만으로 된 인덱스와 보이는 객체만 읽는 뷰를 다시 만든다. 숨김이 없으면 원본을 쓴다. 해시에 숨김 설정이 들어가고, 숨김이 바뀌면 옛 사본을 바로 지운 뒤 다시 준비할 때까지 stale이다. 원본 134MB에서 email 열을 숨기면 준비 3.6초, 사본 104.6MB이고 질의 속도는 원본과 비슷했다.
+    - 스냅샷의 열 목록은 authorizer 없이 뜨고, 행 수와 샘플은 질의와 같은 숨김 규칙으로 뜬다. 깨진 뷰는 그 뷰만 `error`로 남는다. 숨긴 표·열을 읽는 뷰는 자동으로 숨기고 `schema.warnings`에 `view_exposes_hidden`을 남긴다. 다시 보이게 해도 다음 준비에서 다시 숨긴다.
+    - 실측(17.3-8): 200MB CSV(329만 행) 준비 2.2초, 질의 파일 72.5MB. cp949는 자동 인식이 실패하면 다시 읽는다. `read_xlsx`는 한국어 시트 이름과 날짜 서식을 읽는다. DuckDB 정렬이 메모리 상한을 넘으면 작업 폴더 `.tmp/duckdb`에 내려 쓴다(400만 행 정렬, 64MB 상한에서 202MB).
+  - 검증
+    - 표 참조는 범위마다 풀어 그 범위에서 보이는 CTE만 CTE로 인정한다. CTE 이름이 소스의 표·뷰(숨긴 것 포함)와 같거나 `sqlite_`·`pragma_`·`duckdb_`·`pg_`·`information_schema`로 시작하면 `cte_name_conflict`다.
+    - SQLite에서 질의가 실제로 읽는 표에 숨긴 열이 있으면 엄격하게 푼다. USING이 숨긴 열이면 `column_hidden`, NATURAL과 표에 잇지 못한 열은 `column_unresolved`이고, 실행 SQL은 보이는 열로 풀어 쓴 트리(USING → ON)에서 낸다.
+    - 괄호 밖 ORDER BY·LIMIT·OFFSET은 안쪽에 같은 절이 없을 때만 안으로 옮기고, 겹치면 `sql_invalid`다. sqlglot 내부 예외와 DuckDB에서 숨긴 열이 있는 표의 풀지 못한 `*`도 `sql_invalid`다.
+    - 이름 없는 식의 결과 열은 식 글을 그대로 별칭으로 쓴다.
+  - 실행
+    - authorizer: 숨긴 표는 직접이든 뷰를 거치든 DENY, 숨긴 열은 IGNORE다. CTE 이름은 열 없는 읽기에서만, 다른 이름과 겹치지 않을 때만 받는다. READ는 보이는 표·뷰, 그 질의의 CTE, `json_each`·`json_tree`에만 허용한다(설계보다 엄격).
+    - DuckDB `temp_directory`는 외부 접근을 끈 뒤에는 SET이 거부되므로 연결을 열 때 config로 준다. 잠금 순서는 10.5와 같다.
+    - 결과 JSON은 1MB + 512KB까지 읽는다. DuckDB 결과의 열 이름이 식 전체일 수 있어서다. 결과에 `spilled_bytes`(내려 쓴 크기)를 싣는다.
+    - SQL 추출은 첫 `sql` 코드 펜스, 없으면 첫 맨 펜스, 그것도 없으면 글 전체다. 노드의 max_rows·timeout·approval·llm_rows·llm_bytes를 비우면 데이터 소스의 값을 쓴다(max_rows는 `SQL_MAX_ROWS`까지).
+    - 엔진 `_default_outputs`: error.strategy=default일 때 실패한 노드가 낸 출력(`error`, `sql_executed`)이 사용자 기본값보다 앞선다. 1·2단계 노드는 실패 결과에 출력을 담지 않아 동작은 같다(18장).
+    - 마스킹: 워크플로우의 `sql_executed`는 다른 출력처럼 마스킹된다. 에이전트 런 이벤트(`tool_call.completed`의 `output_excerpt`·`sql`)에는 1단계부터 마스킹 층이 없다. KS9 점검 때 본다(M29). 승인 폼의 기본 SQL은 마스킹하지 않는다. 가리면 고치지 않고 승인할 때 SQL이 깨진다.
+  - 콘솔 API와 템플릿
+    - query는 검증 거부와 실행 실패를 200 `ok=false`로 준다. 준비 전이거나 런타임이 없으면 409이고, 런타임 설치는 202를 준 뒤 상태를 폴링한다.
+    - 스키마 내보내기를 다시 하면 KB 안에서 이름이 같고 `data_source_type=api`인 이전 문서를 새 문서로 바꾸고, 응답에 `removed`·`failed`를 싣는다. 데이터 소스 이름을 바꾸면 옛 이름으로 내보낸 문서는 찾지 못해 남는다.
+    - `WorkflowCreate.sql_source_id`는 text_to_sql 템플릿 전용이고 chatflow만 받는다.
+  - 정리: 지운 소스의 원본 파일은 `deleted_at`부터 7일 뒤, 어느 행도 가리키지 않는 파일은 mtime부터 7일 뒤 지운다. 사본(`.sqlite`)도 같이 거둔다.
+  - 키 등급: 유료 데이터 소스는 워크플로우·에이전트·하위 에이전트 트리와 재개 때 재계산에 들어간다(M24 규칙과 같음).
+  - M26 검토에서 넘어온 서버 쪽 셋을 처리했다. 메타데이터 조건의 변수 선택자 검사(`metadata_filter.conditions.N.value`), `document_block`이 본문의 여는 `<document`도 무력화하는 것, 에이전트 `RunErrorOut.retry_after`다.
+- M27에서 뒤로 미룬 것
+  - 전체 결과 추출용 `export_rows`(별도 상한). 지금 CSV는 `max_rows`행까지다.
+  - windows 시험이 실행마다 런타임을 받는 것(약 250MB)의 캐시는 M29 CI와 함께 한다.
+  - 뷰에 직접 건 숨긴 열은 사본에서 빼지 않는다. authorizer IGNORE와 검증이 막는다.
+  - live 시험(text_to_sql 1턴)의 답 내용 확인은 무료 채팅 한도가 풀린 뒤 한다.
+- M28 이후 확정(2026-11-04, 검토 반영 포함)
+  - 화면 구성
+    - 지식 화면 위의 링크 탭 "지식 베이스 / 데이터 소스"로 `/knowledge`와 `/knowledge/sql-sources`를 오간다. 데이터 소스 화면, SQL 노드 폼, 결과 카드, 승인 카드는 지연 로드한다.
+    - 상세 화면은 준비 상태 카드, CSV·엑셀일 때만 보이는 런타임 카드, 그 아래 탭(파일·스키마·SQL 시험·설정, `?tab=`) 순이다.
+    - 설정 탭은 설계에 없던 것이다. 이름·slug·설명·승인·한도·키 등급·삭제를 둔다. 키 등급을 바꾸면 데이터 정책을 다시 확인하고, 칸은 저장에 성공했을 때만 서버 값으로 다시 채운다.
+    - 만들기에서 한도를 기본값 그대로 두면 `limits=null`을 보내 서버 설정을 쓴다.
+  - 스키마 저장
+    - 주석 전체를 `prepare=true`로 보내고 빈 주석은 뺀다.
+    - 숨김을 바꾸면 저장할 때 다시 준비한다고 미리 알린다. 다시 준비하지 못해 stale이면 서버가 준 이유를 보인다.
+  - 오류 문장
+    - 코드별 사용자 문장 아래에 서버 문장을 붙인다. 모르는 코드는 서버 문장만 쓴다. 코드 목록은 vitest가 서버 `validate.py`·`runner.py`에서 뽑아 맞춰 본다.
+    - 노드 실패 배지는 넷이다. 검사 거부, 거절(`sql_rejected`), 실행하지 않음(소스·런타임 상태 코드), 실행 실패(나머지)다. `sql_failed`는 서버의 준비·실행 두 단계에서 나올 수 있지만 코드만 보고 나누므로 실행 실패로 둔다.
+  - SQL 시험
+    - 받은 행 중 200행까지 표로 그리고, CSV는 받은 행 전부로 만든다.
+    - "예시로 저장"은 그 결과를 낸 SQL을 넣는다. LIMIT을 붙이기 전, 사용자가 보낸 글이다. 노드 런 카드에서는 노드 입력 SQL을 쓴다.
+    - 예시를 저장할 수 있는 곳은 Q&A 지식 베이스뿐이고, 스키마 내보내기 대상에서는 Q&A 지식 베이스를 뺀다.
+  - 화면 CSV의 수식 중화는 서버(KS14)와 같은 문자 규칙이다.
+    - 데이터 칸은 글 값만 보고 숫자 모양 글은 그대로 둔다. 서버가 DECIMAL, 2^53을 넘는 정수, inf·nan을 글로 보내서 웹은 원래 타입을 알 수 없다. 그대로 중화하면 음수 DECIMAL이 `'-12.50`이 된다.
+    - 숫자 모양 글은 수식이 될 수 없어 안전하다. 머리글은 서버처럼 늘 글로 본다.
+  - 노드 폼
+    - 한도·승인·모델에 보낼 범위를 비우면 null이고, 안내에 그 데이터 소스의 값을 보인다.
+    - 행 상한 칸은 서버 스키마 상한인 10,000까지 받는다. 실행 상한 `SQL_MAX_ROWS`는 안내로만 알린다.
+    - SQL은 템플릿과 변수 중 고른 쪽만 보내고 템플릿 글은 남긴다. `sql_var`는 선택자 키에 넣어 노드 id를 바꾸면 따라간다.
+    - sql_schema·sql_query의 출력은 고정 출력 목록(FIXED_OUTPUTS)에 넣었다.
+    - 서버 이슈는 field가 source_id면 소스 칸에, sql이면 SQL 칸에 붙인다. `paid_key_required`는 칸 오류가 아니라 안내로 보인다.
+    - 스키마 노드는 소스가 준비 전이면 "준비하면 표 목록이 보입니다." 한 줄만 보인다.
+    - 빌더의 승인 안내는 오류 가지를 짤 때 쓰도록 `sql_rejected` 코드를 그대로 보인다.
+  - 승인 카드
+    - SQL 카드로 그리는 조건은 넷이다. 안내문이 "**SQL 승인**"으로 시작하고, 칸이 `sql`(paragraph)과 `decision`(select) 둘뿐이며, 선택지가 순서까지 `["approve","reject"]`여야 한다. 하나라도 어긋나면 필드 폼이다. 서버가 칸 이름·종류·선택지 순서를 바꾸면 웹도 같이 고친다.
+    - 거절할 때도 sql 칸이 필수라 지금 SQL을 같이 보낸다. 카드 문구는 웹앱에서 실행 과정이 보이지 않는다는 전제로 쓰고 코드명을 보이지 않는다.
+    - 런이 이어지면 카드가 사라진다. 고친 SQL이 재검사에서 거부된 이유(KS11)는 콘솔의 실행 과정과 런 상세 노드 카드에만 보인다. 웹앱에서는 템플릿 실패 가지의 답이나 런 오류로만 알 수 있다.
+  - 에이전트
+    - `sql_source_not_found`는 지식 경고 묶음에 넣는다. `source_id`가 있는 경고는 그 소스 줄에 붙인다.
+    - 데이터 소스는 10개까지 붙인다. 붙이면 도구 탭에 SQL 자동 도구가 보인다.
+    - query_sql 도구 카드는 `tool_call.completed.sql`과 결과 글의 표를 쓴다.
+    - 기록에서 다시 그린 카드는 행 수·보인 행·잘림·실행한 SQL을 결과 글에서 다시 읽는다. 그래서 결과 글 형식이 웹이 읽는 계약이 됐다. 요약 줄 네 모양, "실행한 SQL: " 접두, 끝의 CSV 안내 줄이다. 서버 문구를 바꾸면 `parseToolResult`와 시험을 같이 고친다.
+    - 잘린 결과 CSV 링크는 런이 끝나 `file.changed`가 온 뒤에 생긴다. 그 전에는 경로만 보인다.
+  - e2e
+    - SQLite 파일은 `node:sqlite`로 그때그때 만든다. Node 22.13+ 또는 23.4+가 필요하고 저장소는 Node 24를 쓴다.
+    - 템플릿 시험은 가짜 어댑터 기본 응답의 ```sql 블록을 써서 각본 서버가 필요 없다.
+    - CSV 시험은 런타임이 있는 DATA_DIR에서만 돈다. 처음 한 번은 `E2E_SQL_RUNTIME=install`로 받는다.
+    - 에이전트 도구 카드 시험은 `LLM_FAKE_SCRIPT=…/sql_agent_query.json`으로 띄운 서버에서 `E2E_FAKE_SCRIPT=sql_agent_query`로만 돈다.
+- M28에서 뒤로 미룬 것
+  - Text2SQL 갈래로 넘긴 것: 화면에 박힌 `memory_mb` 기본 512가 서버 `SQL_MEMORY_MB`를 덮는 것, 런타임 설치 시간 상한, CI의 text2sql·각본 서버 잡과 런타임 캐시.
+  - 화면에서 재현하지 않은 상태: 413(200MB 초과), 내보내기 일부 실패, `view_broken`, 런타임 설치 실패, xlsx 시트·cp949·"모든 열을 글로"를 바꾼 뒤 준비. 문장 변환과 렌더 코드만 있다.
+- M29 앞부분 이후 확정(2026-11-04, 검토 반영 포함)
+  - K9 벡터 재사용(M22에서 미룬 EmbedCache 첫 단계): 같은 워크스페이스 안에서만 살아 있는 유닛의 벡터를 복사한다.
+    - 원본 유닛의 조건: 켜져 있고 색인이 끝났으며, 지우지 않은 문서의 유닛이다. 자식 청크는 부모가 completed이고 켜져 있어야 한다.
+    - 설정 조건: KB의 config_key가 같고, index.db에 기록된 (config_key, version, 차원)이 원본 KB 설정과 맞아야 한다. version은 KB마다 따로 세므로 원본 색인이 지금 버전인지로 본다.
+    - 벡터를 읽은 뒤 app.db를 다시 보고, 그사이 글이나 설정이 바뀌었으면 버린다. (hash, KB)마다 가장 큰 unit_no 하나만 쓴다.
+    - economy KB는 빠진다. 키 등급과는 관계없다(같은 글을 이미 보낸 결과라 새 노출이 없다). 일일 한도에는 세지 않는다.
+  - 검색 범위: 질의마다 문서 목록을 읽지 않는다.
+    - 개수와 진행 여부는 집계 한 번으로 센다. 지움·끔·보관·완료만 조건은 후보 유닛 SQL에 조인으로 건다.
+    - 문서 id는 메타데이터 필터일 때, 그리고 검색할 문서가 1,000개 이하라 `doc_id IN`을 걸 때만 읽는다.
+    - datasets 세그먼트 응답은 KB 행만 읽고 `SUM(word_count)`를 다시 세지 않는다. M23 검토에서 미룬 둘을 이렇게 풀었다(역집합안보다 더 줄였다).
+  - 노드 런 닫기(M26에서 미룬 것): 엔진 밖에서 끝나는 모든 경로를 `close_waiting_nodes` 하나로 닫는다. 대상은 중지, 실행 전 실패, 엔진의 실패·취소 끝, 재기동 복구다.
+    - 중지면 대기·실행 중 노드를 모두 cancelled로 닫는다.
+    - 실패면 대기 노드는 런 오류를 붙인 failed, 실행 중 노드는 cancelled로 닫는다. 화면의 규칙과 같다.
+  - doctor 지식 항목은 다섯이다.
+    - 항목: 지식 색인(열림·크기·스키마·64KB 페이지·sqlite-vec 버전), SQLite·전문 색인 모드, 색인 설정 불일치와 다시 임베딩할 양, 색인 고아, 지식 작업 폴더 크기.
+    - 고아와 불일치는 알리기만 한다. 다시 색인할 양은 지우지 않은 문서만 세고, 고아는 매시 정리와 같은 기준으로 센다.
+  - `platform knowledge rebuild-index`
+    - 서버 포트가 쓰이고 있으면 거절하고, `--yes`가 없으면 한 번 묻는다.
+    - 옆 파일(`index.db.rebuild`)에 전문 색인을 끝까지 만든 뒤 바꿔 끼우고, 실패하면 원본을 그대로 둔다.
+    - 옛 파일은 확장 없이 열어 WAL을 비우고 하루 사용량을 옮긴다. 못 열면 그날 한도는 0부터 다시 센다.
+    - 벡터는 다음 기동 정합 검사가 채운다. sqlite-vec 로드 실패는 재생성으로 고쳐지지 않는다(`uv sync`).
+  - 비밀값 가림(KS9, 1단계 S8 확장)
+    - 에이전트 런의 이벤트(델타는 스트림마다 이어서), 메시지 행(글·도구 결과·인용), 요약, `run.output`·`run.error`, 대기 카드(`pending_interaction`, 선택지 포함)에서 버전의 비밀 환경변수와 설정의 키를 가린다.
+    - 모델이 원문을 보는 것은 한 실행 구간 안에서뿐이다. 재개·다음 턴·압축 요약·`call_agent` 자식 결과·워크플로우 agent 노드 출력에서는 `***`를 본다. 2단계 체크포인트 마스킹과 같은 절충이고, 비밀값이 필요하면 리터럴 대신 환경변수를 쓴다.
+    - 원문으로 남는 곳: 대화 기록의 도구 카드 입력, storage에 흘려 쓴 도구 출력, `call_agent` 과업 글. 8자 미만 비밀값은 가리지 않고 경고한다.
+    - 워크플로우도 설정의 키를 늘 가린다. "출력에서 비밀 값 가리기" 설정은 워크플로우 비밀 환경변수를 끝·답변 출력에서 가릴지만 정한다.
+  - CSV 수식 중화(KS14): 서버가 쓰는 결과 CSV에서 글 값과 열 이름이 `=`·`+`·`-`·`@`·탭·CR로 시작하면 앞에 `'`를 붙인다. 판단은 원래 값 기준이라 수·날짜는 그대로이고, JSON 결과와 모델에 보내는 표는 바꾸지 않는다. 화면 CSV도 같은 규칙이다(M28).
+  - 백업의 `.part` 폴더 이름 바꾸기는 PermissionError면 0.3초 간격으로 다섯 번까지 해 본다(백신·검색 색인이 새 파일을 잠깐 쥘 때).
+  - memcheck 지식 구간: 1MB 글(989청크) 인제스트, 하이브리드 검색 20번, 평가 1번. 최대 RSS는 182.9MB(색인 캐시 4MB면 179.0MB)다. sql 구간과 sqlglot(+16.5MB)은 Text2SQL 갈래에서 재고, 200MB를 넘으면 `KB_INDEX_CACHE_KB` 기본을 4MB로 내린다.
+  - CI: ubuntu 잡이 `KB_TEST_OLD_SQLITE=1`로 `knowledge or datasets` 시험을 한 번 더 돈다. 실제 옛 SQLite가 아니라 버전 상수를 바꿔 본문 저장 FTS와 rowid 문서 필터 경로를 타는 방식이다.
+  - 지식 보안 확인표: KS2·KS6·KS7·KS8·KS10·KS12·KS13은 통과, KS9는 고친 뒤 통과(`docs/ops/security.md`). KS1은 실제 모델이 필요해 미뤘다.
+- M29 앞부분에서 뒤로 미룬 것
+  - KS1(실제 모델 인젝션). 델타 flush를 같은 스트림으로 좁히기, vec 테이블에 content_hash 두기, 도구 출력 내려받기와 도구 카드 입력의 읽기 시점 가림, 워크플로우 agent 노드의 대기 카드 가림.
 
 ## 18. 1·2단계 접점 변경 목록
 
@@ -1179,5 +1364,14 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
 | `apps/web` 공용 컴포넌트 | 일반화 | `FormPrompt`(SQL 폼 감지), `MessageList`·`AssistantMessage`(칩 슬롯), `ToolCallCard`(결과 표·요약), (확장) `PublishPanel`·`ApiKeyPanel`·`ApiExamples`(KB 대상 props) | M25~M28 |
 | `apps/web/src/app/{router,layout/AppShell,crumbs}.tsx` | 추가 | `/knowledge*` 라우트, 레일 항목 | M25 |
 | `pyproject.toml` | 추가 | `sqlite-vec`, (Z5 (a)) `sqlglot` | M21b, M27 |
+| `app/workflow/engine.py`(`_default_outputs`) | 변경 | error.strategy=default일 때 실패한 노드가 낸 출력이 사용자 기본값보다 앞선다. 1·2단계 노드는 실패 결과에 출력을 담지 않아 동작 동일 | M27 |
+| `app/schemas/workflow.py`(`WorkflowCreate.sql_source_id`) | 추가 | text_to_sql 템플릿으로 만들 때 데이터 소스를 바로 연결(chatflow만) | M27 |
+| `app/workflow/extract_runner.py` | 변경 | 샌드박스 파서 버전 고정(`pypdf==6.21.4`, `python-docx==1.2.0`). 동작 동일 | M27 |
+| `app/services/run_executor.py`(`RunMasker`), `app/services/agents.py`(`RuntimeVersion.secret_names`) | 변경 | 에이전트 런의 이벤트·메시지 행·요약·`run.output`·`run.error`·대기 카드에서 비밀 환경변수와 설정의 키를 가린다(1단계 S8 확장). 저장된 글과 재개 히스토리에서 비밀값이 `***`가 되도록 동작이 바뀐다. 도구 카드 입력은 원문 | M29 |
+| `app/workflow/engine.py`, `app/services/workflow_executor.py` | 변경 | `RunContext.platform_secrets`. 설정의 키도 늘 가리고, 출력 가림 설정을 꺼도 끝·답변에서 키는 가린다 | M29 |
+| `app/services/workflow_runs.py`(`close_waiting_nodes`), `app/runner/recovery.py`, `app/services/workflow_executor.py` | 변경 | 엔진 밖에서 끝난 런의 running 노드 런도 cancelled로 닫는다(화면 규칙과 같음). 중복 `close_running` 호출 정리 | M29 |
+| `app/backup.py` | 변경 | 폴더 이름 바꾸기가 PermissionError면 짧게 다시 시도 | M29 |
+| `app/sysinfo.py`·`app/knowledge_doctor.py`, `app/cli.py`·`app/services/knowledge_rebuild.py` | 추가 | doctor 지식 항목 다섯, `knowledge rebuild-index` | M29 |
+| `app/main.py` | 일반화 | Database를 먼저 만들어 지식 런타임에 넘긴다(K9 벡터 재사용). 동작 동일 | M29 |
 
 바꾸지 않는 것: `AgentLoop`의 스텝 로직(요청에 `tier`를 실을 뿐), 승인 판정(`interactions.py`. `search_knowledge`·`query_sql`은 승인 대상 이름에 없으므로 자동), 채팅 어댑터의 스트림·분당 429 순환·5xx 재시도·모델 폴백 규칙(일일 429와 유료 등급 분기만 추가), 샌드박스 프로토콜과 로컬 백엔드 구현(세 번째 인스턴스를 만들 뿐), `Supervisor`의 큐·워커·취소 로직(`dequeue` 추가 외), 2단계 엔진의 스케줄러·체크포인트·재개, 이벤트 봉투와 SSE 규약, `platform backup`의 폴더 구조(파일 하나와 옵션 추가), 로그인·CSRF.

@@ -16,7 +16,7 @@ uv가 PATH에 없는 터미널이면 `python -m uv run platform serve`로 같다
 
 워크플로우 런은 이보다 먼저 복구한다. `running`이던 런은 `failed(shutdown)`으로 닫고, 체크포인트가 남아 있어도 자동으로 잇지 않는다. 이미 나간 HTTP POST 같은 노드의 부수 효과를 두 번 내지 않으려는 것이라, 이어서 하려면 같은 입력으로 다시 실행한다. 큐에 있던 런은 다시 넣고, 승인이나 질문을 기다리던 런은 그대로 둔다. 다만 자식이 이미 답을 받았거나 끝났는데 부모를 다시 넣기 전에 꺼진 런은 이어서 돌도록 다시 넣는다. 에이전트 노드가 만든 자식 런이 큐나 입력 대기에 남았는데 부모 워크플로우 런이 이미 끝났다면 기다릴 부모가 없으니 `cancelled`와 `orphaned`로 닫는다. 그 자식이 지휘자였으면 하위 에이전트까지 닫는다. 정리한 것이 있으면 로그에 `workflow.recovered`가 남는다. 지휘자 에이전트가 하위 에이전트를 기다리는 중에 꺼졌다면 실행 중이던 하위 에이전트만 `shutdown`으로 실패하고, 지휘자는 큐에 다시 들어가 그 실패를 결과로 받아 이어서 일한다.
 
-러너의 줄은 둘이다. 에이전트 줄은 채팅 런, 과업 런, 하위 에이전트 런, 워크플로우 에이전트 노드가 만든 자식 런을 돌리고(`RUNNER_MAX_CONCURRENT_RUNS`, 기본 1), 워크플로우 줄은 워크플로우·챗플로우 런과 노드 하나 실행을 돌린다(`RUNNER_MAX_CONCURRENT_WORKFLOW_RUNS`, 기본 1). 나눈 이유는 교착이다. 워크플로우 런이 에이전트 줄의 하나뿐인 자리를 쥔 채 자식 런을 같은 줄에 넣으면 영원히 기다리게 된다. 줄이 둘이라 채팅 런과 워크플로우 런은 겹쳐 돌 수 있고 거기에 code 노드 프로세스가 더해지니, 메모리가 빠듯하면 `WF_MAX_PARALLEL_NODES`를 낮춘다. 에이전트 노드의 자식 런은 에이전트 줄에서 채팅 런 뒤에 서므로 그동안 노드 카드에 '에이전트 대기열 N번째'가 보인다. 끌 때는 두 줄을 함께 멈춘 뒤에 DB를 닫는다.
+러너의 줄은 셋이다. 에이전트 줄은 채팅 런, 과업 런, 하위 에이전트 런, 워크플로우 에이전트 노드가 만든 자식 런을 돌리고(`RUNNER_MAX_CONCURRENT_RUNS`, 기본 1), 워크플로우 줄은 워크플로우·챗플로우 런과 노드 하나 실행을 돌린다(`RUNNER_MAX_CONCURRENT_WORKFLOW_RUNS`, 기본 1). 앞의 둘을 나눈 이유는 교착이다. 워크플로우 런이 에이전트 줄의 하나뿐인 자리를 쥔 채 자식 런을 같은 줄에 넣으면 영원히 기다리게 된다. 줄이 나뉘어 채팅 런과 워크플로우 런은 겹쳐 돌 수 있고 거기에 code 노드 프로세스가 더해지니, 메모리가 빠듯하면 `WF_MAX_PARALLEL_NODES`를 낮춘다. 에이전트 노드의 자식 런은 에이전트 줄에서 채팅 런 뒤에 서므로 그동안 노드 카드에 '에이전트 대기열 N번째'가 보인다. 셋째 지식 줄은 지식 베이스 문서의 색인과 삭제를 한 번에 하나씩 돌린다(`RUNNER_MAX_CONCURRENT_INDEX_JOBS`, 기본 1). 몇 시간짜리 인제스트가 워크플로우 줄을 쥐지 않게 따로 뒀다. 끌 때는 세 줄을 함께 멈춘 뒤에 DB를 닫고, 색인하던 문서는 다음 기동에서 끝난 청크 뒤부터 잇는다.
 
 1단계 데이터 위에서 2단계 코드로 처음 띄우면 마이그레이션 0003~0006이 자동으로 돈다. 0003은 워크플로우 테이블 여섯 개(`workflow`, `wf_version`, `wf_run`, `wf_node_run`, `wf_run_event`, `wf_file`), 0004는 `run.parent_run_id`와 `agent_version.sub_agents`(하위 에이전트), 0005는 API 키를 에이전트나 워크플로우 중 하나에 묶는 변경(기존 키는 모두 에이전트 키라 그대로 통과한다), 0006은 챗플로우 대화·메시지 테이블(`wf_conversation`, `wf_message`)이다. 미리 올려 두려면 `uv run platform migrate`를 쓴다. 올리기 전에 `uv run platform backup`을 한 번 해 두면 안전하다.
 
@@ -35,13 +35,13 @@ grep housekeeping.hourly C:/wf-data/logs/app.log | tail -n 1
 curl -s http://127.0.0.1:8500/healthz
 ```
 
-`status`, `rss_mb`(서버 프로세스의 메모리), `uptime_sec`, `runner`, `db`가 나온다. `runner`는 레인마다 `active`(돌고 있는 런 수)와 `queued`(기다리는 런 수)를 `agent`와 `workflow` 아래에 따로 담고, 종료 중인지는 `shutting_down`이다.
+`status`, `rss_mb`(서버 프로세스의 메모리), `uptime_sec`, `runner`, `db`가 나온다. `runner`는 레인마다 `active`(돌고 있는 런·작업 수)와 `queued`(기다리는 수)를 `agent`, `workflow`, `knowledge` 아래에 따로 담고, 종료 중인지는 `shutting_down`이다.
 
 ```json
-"runner": {"agent": {"active": 0, "queued": 0}, "workflow": {"active": 0, "queued": 0}, "shutting_down": false}
+"runner": {"agent": {"active": 0, "queued": 0}, "workflow": {"active": 0, "queued": 0}, "knowledge": {"active": 0, "queued": 0}, "shutting_down": false}
 ```
 
-`/readyz`는 DB가 응답하고 두 레인이 떠 있으면 200이고 아니면 503이다.
+`/readyz`는 DB가 응답하고 레인이 떠 있으면 200이고 아니면 503이다.
 
 ## 하우스키핑과 보존
 
@@ -69,7 +69,7 @@ curl -s http://127.0.0.1:8500/healthz
 
 ## 디스크와 메모리
 
-데이터 폴더에서 크기를 차지하는 곳은 세션별 작업공간(`workspaces`), 첨부와 결과 파일과 발행 스냅샷이 있는 `storage`, pip 캐시(`cache\pip`)다. 2단계에서는 `storage` 안에 워크플로우의 업로드·출력 파일(`wf-files`)이 생겼고, 데이터 폴더 바로 아래에 워크플로우 런의 임시 폴더 `wf-workspaces`가 생겼다. `cache\wf-extract`에는 문서 추출 노드가 처음 쓸 때 받아 둔 pdf·docx 파서가 있다. 매시 로그는 `workspaces_mb`·`pip_cache_mb`와 함께 이 셋을 `wf_workspaces_mb`·`wf_files_mb`·`wf_extract_mb`로 남기고, `uv run platform doctor`의 '디스크' 항목에도 다섯 폴더의 크기가 나온다. 폴더별로 더 자세히 보려면 이렇게 한다.
+데이터 폴더에서 크기를 차지하는 곳은 세션별 작업공간(`workspaces`), 첨부와 결과 파일과 발행 스냅샷이 있는 `storage`, pip 캐시(`cache\pip`)다. 2단계에서는 `storage` 안에 워크플로우의 업로드·출력 파일(`wf-files`)이 생겼고, 데이터 폴더 바로 아래에 워크플로우 런의 임시 폴더 `wf-workspaces`가 생겼다. `cache\wf-extract`에는 문서 추출 노드가 처음 쓸 때 받아 둔 pdf·docx 파서가 있다. 매시 로그는 `workspaces_mb`·`pip_cache_mb`와 함께 이 셋을 `wf_workspaces_mb`·`wf_files_mb`·`wf_extract_mb`로 남긴다. 3단계에서는 지식 색인(`knowledge`), 지식 문서 파싱의 임시 폴더(`kb-work`), 문서 원본(`storage\kb-files`), 데이터 소스의 질의 파일과 DuckDB 런타임(`cache\kb-sql`)이 더해졌고 같은 로그에 `knowledge_mb`·`kb_work_mb`·`kb_files_mb`·`kb_sql_mb`로 남는다. `uv run platform doctor`의 '디스크' 항목에는 이 아홉 폴더의 크기가 나온다. 폴더별로 더 자세히 보려면 이렇게 한다.
 
 ```powershell
 Get-ChildItem C:\wf-data\storage\wf-files -Recurse -File | Measure-Object Length -Sum
@@ -90,9 +90,29 @@ Remove-Item -Recurse -Force C:\wf-data\cache\pip
 python scripts/memcheck.py
 ```
 
-유휴 상태에서 재고, 가짜 어댑터로 에이전트 런 하나, 워크플로우 런 하나(llm, code, 원소 20개 반복 안의 code, txt 파일을 읽는 문서 추출), 챗플로우 미리보기 대화 3턴을 차례로 돌리는 동안 재고, 끝난 뒤에 다시 잰다. 결과는 `RSS 최대 X MB (유휴 Y, 런 중 Z, 워크플로우 런 중 V, 챗플로우 3턴 중 C, 런 뒤 W)`로 나오고 최댓값이 예산을 넘으면 종료 코드가 1이다. 서버가 뜨지 않거나 런이 성공으로 끝나지 않아 못 쟀으면 2다. 예산은 셸 환경변수 `MEMORY_BUDGET_MB`에서 읽고 없으면 300이다. `--seconds`로 유휴 측정 시간(기본 5초)을 바꾸고, `--idle-only`는 유휴만 잰다. `uv run platform memcheck`도 같은 스크립트다. CI의 ubuntu와 windows 잡에서도 돌지만 기준은 Windows 값이다. 2026-10-15에 이 PC에서는 최대 137.2MB(유휴 127.0, 런 중 132.4, 워크플로우 런 중 136.2, 챗플로우 3턴 중 137.2, 런 뒤 137.2)였다.
+유휴 상태에서 재고, 가짜 어댑터로 에이전트 런 하나, 워크플로우 런 하나(llm, code, 원소 20개 반복 안의 code, txt 파일을 읽는 문서 추출), 챗플로우 미리보기 대화 3턴을 차례로 돌린 다음, 지식 베이스에 1MB 글 문서 하나를 가짜 임베더로 색인하고(청크 989개, 분당 6,000건) 하이브리드 검색 20번(메타데이터 필터 5번 포함)과 평가 실행 1번을 하는 동안 재고, 끝난 뒤에 다시 잰다. 결과는 `RSS 최대 X MB (유휴 Y, 런 중 Z, 워크플로우 런 중 V, 챗플로우 3턴 중 C, 인제스트 중 I, 검색 중 S, 런 뒤 W)`로 나오고 최댓값이 예산을 넘으면 종료 코드가 1이다. 서버가 뜨지 않거나 런이 성공으로 끝나지 않아 못 쟀으면 2다. 예산은 셸 환경변수 `MEMORY_BUDGET_MB`에서 읽고 없으면 300이다. `--seconds`로 유휴 측정 시간(기본 5초)을 바꾸고, `--idle-only`는 유휴만 잰다. `uv run platform memcheck`도 같은 스크립트다. CI의 ubuntu와 windows 잡에서도 돌지만 기준은 Windows 값이다. 2026-10-15에 이 PC에서는 최대 137.2MB(유휴 127.0, 런 중 132.4, 워크플로우 런 중 136.2, 챗플로우 3턴 중 137.2, 런 뒤 137.2)였다. 지식 구간을 더한 2026-11-04에는 최대 182.9MB(유휴 143.4, 런 중 148.9, 워크플로우 런 중 152.8, 챗플로우 3턴 중 153.5, 인제스트 중 170.9, 검색 중 182.9, 런 뒤 182.5)였다. 3단계의 목표는 최대 200MB 이하다.
+
+지식 기능 때문에 200MB에 가까워지면 index.db 연결의 캐시를 먼저 줄인다. `.env`의 `KB_INDEX_CACHE_KB`(기본 8000, 연결 셋에 각각)를 4000으로 두면 같은 측정이 179.0MB였다. 그다음은 검색 후보 깊이, 세그먼트 쓰기 묶음, 질의 임베딩 LRU 순서로 코드에서 줄인다(설계 3단계 13장).
 
 예산을 계속 넘으면 코드에서 순서대로 줄인다. `openai`를 첫 모델 호출 때 불러오는지 확인하고, 이벤트 링버퍼를 2000개에서 1000개로, 도구 출력의 메모리 보관을 256KB에서 128KB로, SQLAlchemy 풀을 3에서 2로 줄인다. 그래도 넘으면 예산을 올리고 결정 기록(ADR)에 적는다([설계 12.3](../design/phase1-agent-sandbox.md#123-리스크)).
+
+## 지식 색인
+
+지식 베이스의 벡터와 전문 색인은 `C:\wf-data\knowledge\index.db` 하나에 있다. 문서 원문과 청크는 `app.db`에 있고 index.db는 거기서 다시 만들 수 있는 파생 파일이지만, 다시 만들려면 모든 청크를 다시 임베딩해야 한다. 크기는 768차원 10만 청크에 약 300MB다. index.db를 열지 못하면(sqlite-vec를 불러오지 못하거나 파일이 깨졌을 때) 서버는 뜨고 지식 기능만 503 `index_unavailable`을 낸다. 기동 로그의 `startup.check_failed`(`knowledge_index`)에 사유가 있다.
+
+`uv run platform doctor`는 끝에 지식 항목을 보인다. index.db가 있으면 다섯이고 없으면 '지식 색인'과 '지식 작업 폴더' 둘이다. 서버가 떠 있어도 읽기만 하므로 돌려도 된다.
+
+| 항목 | 보이는 것 | 경고일 때 |
+|---|---|---|
+| 지식 색인 | index.db 경로·크기, 스키마 버전, 페이지 크기(64KB), sqlite-vec 버전 | 파일이 없는데 청크가 있으면 다시 임베딩할 유닛 수와 걸릴 시간. 열지 못하거나 확장을 못 불러오면 그 오류 |
+| SQLite·전문 색인 | 파이썬이 쓰는 SQLite 버전과 전문 색인 모드(3.43 이상은 contentless, 그 아래는 본문 저장) | 3.43 이상에서 만든 index.db를 더 낮은 SQLite에서 열 때. `rebuild-index`로 다시 만든다 |
+| 색인 설정 | 지식 베이스 수, app.db와 index.db의 색인 설정(모델·차원·접두어·버전)이 같은지 | 어긋나거나 색인이 없는 KB 이름과 다시 임베딩할 양. 서버가 뜰 때 다시 만든다 |
+| 색인 고아 | app.db에 없는 유닛의 벡터·전문 행, app.db가 모르는 KB의 색인 | 수만 알린다. 매시 정리가 지운다 |
+| 지식 작업 폴더 | `kb-work`의 폴더 수와 크기 | 경고는 내지 않는다. pdf·docx 파싱 작업 폴더라 끝나면 지우고, 남은 것은 매시 정리가 1시간 뒤 지운다 |
+
+설정 불일치는 백업에서 두 파일의 시점이 어긋났거나 색인 설정을 바꾼 직후 서버가 죽었을 때 생긴다. 서버가 뜰 때 그 KB의 벡터 테이블을 지우고 다시 임베딩하며(`knowledge.index_mismatch`), 매시 정리도 같은 검사와 고아 정리를 한다(`knowledge.orphans`). index.db가 깨졌으면(doctor가 파일을 열거나 읽지 못한다고 할 때) 서버를 끄고 `uv run platform knowledge rebuild-index`로 다시 만든다. 새 파일을 다 만든 뒤에야 바꿔 끼우므로 실패하면 원래 파일이 그대로 남는다. sqlite-vec를 불러오지 못하는 경우는 이 명령으로 고쳐지지 않고 `uv sync`로 패키지부터 다시 깐다. 무엇을 하는지는 [backup-restore.md](backup-restore.md#색인-다시-만들기)에 있다.
+
+같은 워크스페이스에서 같은 색인 설정(모델·차원·접두어)의 다른 지식 베이스에 같은 글이 이미 색인돼 있으면 그 벡터를 복사하고 임베딩 API를 부르지 않는다. 끈 청크, 지우는 중인 문서, 다시 임베딩을 기다리는 청크는 원본으로 쓰지 않는다. 지웠거나 끈 청크의 벡터도 30일 동안 남겨 두었다가 같은 글이 돌아오면 쓴다. 두 경우 모두 일일 한도에서 세지 않는다.
 
 ## 계정과 키
 
