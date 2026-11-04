@@ -4,11 +4,13 @@
  * 웹앱이 같이 쓴다. 한 턴은 user·assistant 두 행이고 둘 다 그 턴의 런 id를 가지므로 런 id로 맞춘다.
  */
 import type { WfConversationDetail, WfFileOut, WfMessageList, WfMessageOut } from "@/api/types";
-import type {
-  AttachmentView,
-  PendingInteraction,
-  RunStatus,
-  TimelineItem,
+import { sameCitations, type Citation } from "@/lib/citations";
+import {
+  retryAtOf,
+  type AttachmentView,
+  type PendingInteraction,
+  type RunStatus,
+  type TimelineItem,
 } from "@/stores/runStore";
 import type { WfPendingForm, WfRunViewState } from "./wfRunStore";
 
@@ -38,10 +40,13 @@ export interface ChatTurn {
 export type LiveRun = Pick<
   WfRunViewState,
   "runId" | "status" | "answerText" | "answerResumedAt" | "pendingInteraction" | "error"
->;
+> &
+  Partial<Pick<WfRunViewState, "retrieverResources">>;
 
 export interface ChatView {
   items: TimelineItem[];
+  // 런 id → 답 아래 칩으로 보일 인용
+  citations: Readonly<Record<string, readonly Citation[]>>;
   // 1단계 승인·질문 카드가 받는 모양(런 id 포함). 이 대화의 런이 기다릴 때만 있다.
   pending: PendingInteraction | null;
   // human_input 노드의 폼(M19). 1단계 카드 모양이 아니라 따로 둔다.
@@ -58,6 +63,7 @@ export interface ChatView {
 
 export const EMPTY_VIEW: ChatView = {
   items: [],
+  citations: {},
   pending: null,
   form: null,
   pendingNodeId: null,
@@ -140,6 +146,7 @@ export function chatView(
   let openRunId: string | null = null;
   let status: RunStatus = "idle";
   let started = false;
+  const citations: Record<string, readonly Citation[]> = {};
 
   const assistant = (
     key: string,
@@ -147,8 +154,14 @@ export function chatView(
     messageId: string,
     stored: string,
     storedStatus: RunStatus | null,
+    storedCitations: readonly Citation[] = [],
   ) => {
     const tracked = runId !== null && runId === liveRunId;
+    // 메시지 저장본(글 2,000자)이 있으면 그것이고, 런이 막 끝나 메시지를 다시 읽기 전에는
+    // workflow.completed의 것(20개, 글 500자)을 잠깐 보인다.
+    const cited =
+      storedCitations.length > 0 ? storedCitations : tracked ? (live.retrieverResources ?? []) : [];
+    if (runId !== null && cited.length > 0) citations[runId] = cited;
     // reset({runId}) 직후(첫 이벤트 전)는 idle이다. 큐에 들어간 것으로 본다.
     const current: RunStatus = tracked
       ? live.status === "idle"
@@ -173,18 +186,19 @@ export function chatView(
       });
     }
     if (current === "failed") {
-      const error =
+      const lastRun = history.lastRun?.id === runId ? history.lastRun : null;
+      const error = tracked && live.error ? live.error : (lastRun?.error ?? null);
+      const retryAt =
         tracked && live.error
-          ? live.error
-          : history.lastRun?.id === runId && history.lastRun.error
-            ? history.lastRun.error
-            : null;
+          ? live.error.retryAt
+          : retryAtOf(lastRun?.ended_at, lastRun?.error?.retry_after);
       items.push({
         kind: "error",
         id: `error:${key}`,
         code: error?.code ?? "",
         message: error?.message ?? "",
         retryable: error?.retryable ?? false,
+        ...(retryAt ? { retryAt } : {}),
       });
     } else if (current === "cancelled") {
       items.push({
@@ -203,7 +217,14 @@ export function chatView(
       started = true;
       items.push(userItem(key, message.text, attachmentsOf(message.files)));
     } else {
-      assistant(key, message.run_id, message.id, message.text, message.status);
+      assistant(
+        key,
+        message.run_id,
+        message.id,
+        message.text,
+        message.status,
+        message.retriever_resources,
+      );
     }
   }
   if (turn && !(turn.runId !== null && known.has(turn.runId))) {
@@ -222,6 +243,7 @@ export function chatView(
   }
   return {
     items,
+    citations,
     pending,
     form,
     pendingNodeId: pending || form ? (waiting?.nodeId ?? null) : null,
@@ -230,6 +252,24 @@ export function chatView(
     liveRunId,
     started,
   };
+}
+
+// 내용이 같으면 앞 객체를 그대로 쓴다. 델타마다 목록을 다시 만들어도 칩이 다시 그려지지 않게 한다.
+export function reuseCitations(
+  previous: Readonly<Record<string, readonly Citation[]>>,
+  next: Readonly<Record<string, readonly Citation[]>>,
+): Readonly<Record<string, readonly Citation[]>> {
+  const keys = Object.keys(next);
+  let same = keys.length === Object.keys(previous).length;
+  const merged: Record<string, readonly Citation[]> = {};
+  for (const key of keys) {
+    const old = previous[key];
+    const value = next[key] ?? [];
+    const kept = old && sameCitations(old, value) ? old : value;
+    if (kept !== old) same = false;
+    merged[key] = kept;
+  }
+  return same ? previous : merged;
 }
 
 function sameItem(a: TimelineItem, b: TimelineItem): boolean {

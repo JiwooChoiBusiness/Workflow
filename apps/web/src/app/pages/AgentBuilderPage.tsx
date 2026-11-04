@@ -35,11 +35,13 @@ import {
   agentToForm,
   formToAgentPatch,
   formToDraftUpdate,
+  KNOWLEDGE_WARNING_CODES,
   makeAgentFormSchema,
   type AgentForm,
 } from "@/features/agents/schemas";
 import { subAgentErrorPath } from "@/features/agents/subAgents";
-import { useModels } from "@/features/settings/api";
+import { retrievalFormField } from "@/features/knowledge/retrievalSettings";
+import { useEmbeddingUsage, useModels } from "@/features/settings/api";
 import { errorMessage } from "@/lib/errors";
 import { applyServerErrors } from "@/lib/serverErrors";
 
@@ -47,8 +49,21 @@ import { applyServerErrors } from "@/lib/serverErrors";
 const PreviewPanel = lazy(async () => ({
   default: (await import("@/components/builder/PreviewPanel")).PreviewPanel,
 }));
+// 지식 탭은 지식·데이터 소스 화면 문구와 검색 설정 폼을 함께 쓴다. 탭을 열 때 받는다.
+const KnowledgeTab = lazy(async () => ({
+  default: (await import("@/components/builder/KnowledgeTab")).KnowledgeTab,
+}));
 
-const TABS = ["settings", "tools", "files", "env", "approval", "publish", "api"] as const;
+const TABS = [
+  "settings",
+  "tools",
+  "knowledge",
+  "files",
+  "env",
+  "approval",
+  "publish",
+  "api",
+] as const;
 type TabKey = (typeof TABS)[number];
 
 // PUT draft의 오류 위치(loc)를 폼 칸으로 옮긴다. 배열 항목 하나의 오류(스킬·파일)는 목록 전체에 붙인다.
@@ -68,6 +83,16 @@ function draftErrorPath(loc: (string | number)[]): string | null {
       return head;
     case "sub_agents":
       return subAgentErrorPath(rest);
+    case "knowledge": {
+      if (rest[0] === "kb_ids") return "knowledge.kb_ids";
+      if (rest[0] !== "retrieval_model") return "knowledge.kb_ids";
+      // 검색 설정 폼의 칸은 평평하다(retrieval_model.weights.vector_weight → retrieval.vector_weight).
+      // 칸을 가리키지 않는 오류는 이어받기 스위치에 붙인다.
+      const field = retrievalFormField(rest.slice(1));
+      return field ? `knowledge.retrieval.${field}` : "knowledge.custom_retrieval";
+    }
+    case "sql_sources":
+      return "sql_sources";
     default:
       return null;
   }
@@ -93,15 +118,19 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
   const [warnings, setWarnings] = useState<AgentWarning[]>([]);
 
   const modelEntries = models.data?.models;
+  // top_k 상한(KB_TOP_K_MAX)은 지식 기본값(GET /knowledge-defaults)에 있다. 지식 API 모듈을 빌더 묶음에
+  // 끌어들이지 않으려고 같은 쿼리를 둔 설정 API로 읽는다.
+  const topKMax = useEmbeddingUsage().data?.top_k_max;
   // 출력 상한은 고른 모델의 능력표에 따라 달라서 검증할 때마다 스키마를 만든다.
   const resolver = useCallback<Resolver<AgentForm>>(
     (values, context, options) => {
       const schema = makeAgentFormSchema(tc, {
         maxOutputTokens: maxOutputTokensFor(modelEntries, values.model.model_id),
+        topKMax,
       });
       return zodResolver(schema)(values, context, options);
     },
-    [tc, modelEntries],
+    [tc, modelEntries, topKMax],
   );
   const form = useForm<AgentForm>({ defaultValues: agentToForm(agent, draft), resolver });
   const { errors, isDirty, isSubmitting } = form.formState;
@@ -156,11 +185,21 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
         toast.success(t("builder.saved"));
         const found = saved.warnings ?? [];
         setWarnings(found);
-        if (found.length > 0) {
+        const knowledge = found.filter((warning) => KNOWLEDGE_WARNING_CODES.has(warning.code));
+        const others = found.filter((warning) => !KNOWLEDGE_WARNING_CODES.has(warning.code));
+        if (others.length > 0) {
           toast.warning(
             t("subAgents.saveWarnings", {
-              count: found.length,
-              messages: found.map((warning) => warning.message).join(" / "),
+              count: others.length,
+              messages: others.map((warning) => warning.message).join(" / "),
+            }),
+          );
+        }
+        if (knowledge.length > 0) {
+          toast.warning(
+            t("knowledge.saveWarnings", {
+              count: knowledge.length,
+              messages: knowledge.map((warning) => warning.message).join(" / "),
             }),
           );
         }
@@ -181,6 +220,7 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
   const tabErrors: Record<TabKey, boolean> = {
     settings: Boolean(errors.meta || errors.instructions || errors.model),
     tools: Boolean(errors.tools || errors.skill_version_ids || errors.sub_agents),
+    knowledge: Boolean(errors.knowledge || errors.sql_sources),
     files: Boolean(errors.file_ids),
     env: Boolean(errors.env_vars),
     approval: Boolean(errors.approval_mode || errors.limits || errors.sandbox),
@@ -250,7 +290,19 @@ function AgentBuilder({ agent, draft }: { agent: AgentOut; draft: AgentVersionOu
               />
             </TabsContent>
             <TabsContent value="tools" className="pt-5">
-              <ToolsTab form={form} agentId={agent.id} warnings={warnings} />
+              <ToolsTab
+                form={form}
+                agentId={agent.id}
+                warnings={warnings.filter((item) => !KNOWLEDGE_WARNING_CODES.has(item.code))}
+              />
+            </TabsContent>
+            <TabsContent value="knowledge" className="pt-5">
+              <Suspense fallback={<Spinner className="size-4" label={tc("state.loading")} />}>
+                <KnowledgeTab
+                  form={form}
+                  warnings={warnings.filter((item) => KNOWLEDGE_WARNING_CODES.has(item.code))}
+                />
+              </Suspense>
             </TabsContent>
             <TabsContent value="files" className="pt-5">
               <FilesTab form={form} agentId={agent.id} />

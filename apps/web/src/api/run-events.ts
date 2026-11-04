@@ -15,6 +15,7 @@ import {
 export type {
   MessageFileData,
   RunErrorData,
+  ToolSqlSummary,
   UsageTotal,
   WorkflowFormData,
   WorkflowFormField,

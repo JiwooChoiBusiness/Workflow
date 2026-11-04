@@ -4,6 +4,9 @@ import { expect, test } from "@playwright/test";
 const EMAIL = process.env.E2E_EMAIL ?? "e2e@local.test";
 const PASSWORD = process.env.E2E_PASSWORD ?? "e2e-password-1234";
 
+// 이 파일만 전역 준비의 로그인 세션 없이 시작해 화면으로 로그인한다.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.beforeEach(async ({ request }) => {
   const health = await request.get("/healthz").catch(() => null);
   test.skip(!health?.ok(), "백엔드가 떠 있지 않아 건너뛴다");

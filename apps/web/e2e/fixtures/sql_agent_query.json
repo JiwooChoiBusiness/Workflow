@@ -1,0 +1,31 @@
+{
+  "description": "에이전트가 query_sql로 붙인 데이터 소스(slug e2e-sql-agent)에 집계 SQL을 한 행 상한으로 돌리고 답한다(text2sql.spec.ts의 에이전트 시험만 쓴다).",
+  "turns": [
+    [
+      {
+        "type": "tool_call_start",
+        "index": 0,
+        "id": "call_query_sql",
+        "name": "query_sql"
+      },
+      {
+        "type": "tool_call_delta",
+        "index": 0,
+        "json_fragment": "{\"source\": \"e2e-sql-agent\", \"sql\": \"SELECT region, COUNT(*) AS n FROM customers GROUP BY region ORDER BY region\", \"max_rows\": 1}"
+      },
+      {
+        "type": "tool_call_end",
+        "index": 0,
+        "id": "call_query_sql",
+        "name": "query_sql",
+        "arguments": "{\"source\": \"e2e-sql-agent\", \"sql\": \"SELECT region, COUNT(*) AS n FROM customers GROUP BY region ORDER BY region\", \"max_rows\": 1}"
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "지역별 고객 수를 표로 정리했습니다. 전체 결과는 CSV로 남겼습니다."
+      }
+    ]
+  ]
+}

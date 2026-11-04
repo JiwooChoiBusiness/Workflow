@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NodeTypeInfo, WorkflowKind } from "@/api/types";
+import nodeTypeList from "@/test/fixtures/contract/node-types.json";
 import {
   connectProblem,
   enclosingLoop,
@@ -198,6 +199,8 @@ describe("참조 치환", () => {
       node("agg", "variable_aggregator", { config: { vars: ["llm_1.text", "start.q"] } }),
       node("ans", "answer", { config: { text: "답: {{ llm_1.text }}" } }),
       node("py", "code", { config: { code: "x = '{{ llm_1.text }}'" } }),
+      node("sql_a", "sql_query", { config: { sql: "{{ llm_1.text }}", sql_var: null } }),
+      node("sql_b", "sql_query", { config: { sql: "", sql_var: "llm_1.text" } }),
     );
     const renamed = renameNode(graph, "llm_1", "writer");
     const byId = new Map(renamed.nodes.map((item) => [item.id, item]));
@@ -209,6 +212,9 @@ describe("참조 치환", () => {
     expect(byId.get("ans")?.config.text).toBe("답: {{ writer.text }}");
     // 파이썬 코드는 템플릿이 아니다.
     expect(byId.get("py")?.config.code).toBe("x = '{{ llm_1.text }}'");
+    // sql_query의 SQL 템플릿과 SQL 변수(sql_var)도 따라간다.
+    expect(byId.get("sql_a")?.config.sql).toBe("{{ writer.text }}");
+    expect(byId.get("sql_b")?.config.sql_var).toBe("writer.text");
     expect(renamed.edges.filter((item) => item.source === "writer").length).toBe(2);
     expect(renamed.edges.some((item) => item.target === "writer")).toBe(true);
     // 바뀌지 않은 노드는 같은 객체다(카드가 다시 그려지지 않는다).
@@ -262,6 +268,15 @@ describe("nodeOutputs", () => {
       "json",
       "usage",
     ]);
+  });
+
+  it("노드 타입 목록을 받기 전에도 SQL 노드의 출력이 서버와 같다", () => {
+    for (const type of ["sql_schema", "sql_query"]) {
+      const info = nodeTypeList.items.find((item) => item.type === type)!;
+      expect(
+        nodeOutputs(node("n", type)).map((item) => ({ name: item.name, type: item.type })),
+      ).toEqual(info.outputs.map((item) => ({ name: item.name, type: item.type })));
+    }
   });
 });
 

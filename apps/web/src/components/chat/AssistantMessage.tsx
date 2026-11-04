@@ -1,7 +1,9 @@
 import { memo } from "react";
 import Markdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Citation } from "@/lib/citations";
 import { rehypeHighlight } from "@/lib/highlight";
+import { CitationChips } from "./CitationChips";
 
 type PluggableList = NonNullable<Options["remarkPlugins"]>;
 
@@ -29,11 +31,16 @@ const components: Components = {
 export const AssistantMessage = memo(function AssistantMessage({
   text,
   streaming,
+  citations,
+  citationLinks = false,
 }: {
   text: string;
   streaming: boolean;
+  // 답 아래에 둘 인용 칩. 런의 마지막 답에만 넘긴다.
+  citations?: readonly Citation[];
+  citationLinks?: boolean;
 }) {
-  return (
+  const body = (
     <div className="wf-markdown text-sm leading-relaxed text-ink">
       {/* 스트리밍 중에는 매 프레임 다시 그리므로 코드 강조를 끝난 뒤로 미룬다. */}
       <Markdown
@@ -49,6 +56,13 @@ export const AssistantMessage = memo(function AssistantMessage({
           aria-hidden
         />
       ) : null}
+    </div>
+  );
+  if (!citations?.length) return body;
+  return (
+    <div className="flex flex-col gap-2">
+      {body}
+      <CitationChips citations={citations} chunkLinks={citationLinks} />
     </div>
   );
 });

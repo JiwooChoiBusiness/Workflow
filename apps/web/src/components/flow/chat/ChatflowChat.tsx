@@ -61,6 +61,8 @@ export function ChatflowChat({
   beforeSend,
   onSendError,
   toolbar,
+  citationLinks = false,
+  hideCitations = false,
   className,
 }: {
   session: ChatflowSession;
@@ -76,6 +78,9 @@ export function ChatflowChat({
   onSendError?: (error: unknown) => boolean;
   // 상태 줄 오른쪽에 둘 것
   toolbar?: ReactNode;
+  // 인용 팝오버의 청크 화면 링크(콘솔 미리보기), 웹앱 설정으로 인용 칩 감추기
+  citationLinks?: boolean;
+  hideCitations?: boolean;
   className?: string;
 }) {
   const { t } = useTranslation("workflows");
@@ -245,6 +250,8 @@ export function ChatflowChat({
           <MessageList
             renderInteraction={renderInteraction}
             fileHref={session.fileHref}
+            citationLinks={citationLinks}
+            hideCitations={hideCitations}
             footer={
               chat.form ? (
                 <PendingPrompt

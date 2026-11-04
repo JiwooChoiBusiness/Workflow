@@ -1,9 +1,11 @@
 import type { ApprovalMode } from "@/api/types";
+import { runCitations } from "@/lib/citations";
 import {
   appendOutput,
   changedFileOf,
   mergeFiles,
   newToolCall,
+  retryAtOf,
   usageFromTotal,
   type AttachmentView,
   type ChangedFile,
@@ -226,19 +228,29 @@ export function historyState(
     );
   }
 
+  // 진행 중인 런의 인용은 이벤트 재생이 도구 결과에서 다시 쌓는다.
+  const citations = runCitations(messages.filter((row) => !active || row.run_id !== active.id));
   const base: Partial<RunViewState> = {
     sessionId: detail?.id ?? null,
     items,
     toolCalls,
     files,
     sessionAutoApprove: detail?.approval_override === "off",
+    citations,
   };
   if (active) return { ...base, ...activeRunState(active) };
   const last = detail?.last_run ?? null;
   if (!last) return base;
   const finished = finishedRunState(last);
   if (last.status === "failed" && finished.error) {
-    items.push({ kind: "error", id: `error:${last.id}`, ...finished.error });
+    // 일일 한도로 끝난 런은 retry_after(초)를 끝난 시각에 더해 다시 할 수 있는 시각을 잇는다(3단계 12.4).
+    const retryAt = retryAtOf(last.ended_at, last.error?.retry_after);
+    items.push({
+      kind: "error",
+      id: `error:${last.id}`,
+      ...finished.error,
+      ...(retryAt ? { retryAt } : {}),
+    });
   } else if (last.status === "cancelled") {
     const timeout = last.error?.code === "input_timeout";
     items.push({

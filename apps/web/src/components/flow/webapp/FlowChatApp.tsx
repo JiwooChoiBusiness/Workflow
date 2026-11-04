@@ -279,6 +279,7 @@ export function FlowChatApp({ app }: { app: FlowAppOut }) {
             upload={(file) => uploadFlowFile(app.slug, file)}
             suggested={app.webapp.suggested_questions}
             nodeTitle={nodeTitle}
+            hideCitations={app.webapp.citations_enabled === false}
           />
         </div>
       </main>

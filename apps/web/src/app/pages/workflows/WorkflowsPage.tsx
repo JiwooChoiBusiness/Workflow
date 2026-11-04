@@ -21,6 +21,7 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { Select } from "@/components/ui/select";
 import { PageSpinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { useSqlSources } from "@/features/sql/api";
 import { useCreateWorkflow, useDeleteWorkflow, useWorkflows } from "@/features/workflows/api";
 import "@/features/workflows/i18n";
 import { errorMessage } from "@/lib/errors";
@@ -32,7 +33,9 @@ function createSchema(t: T) {
   return z.object({
     name: requiredText(t, 100),
     kind: z.enum(["workflow", "chatflow"]),
-    template: z.enum(["blank", "chat_basic"]),
+    template: z.enum(["blank", "chat_basic", "text_to_sql"]),
+    // text_to_sql의 데이터 소스. 비우면 만든 뒤 세 SQL 노드에서 고른다.
+    sql_source_id: z.string(),
     icon: z
       .string()
       .trim()
@@ -49,6 +52,43 @@ function createSchema(t: T) {
 }
 
 type CreateForm = z.infer<ReturnType<typeof createSchema>>;
+
+// Radix Select는 빈 값을 받지 않아 "나중에 고르기"를 따로 둔다.
+const LATER = "__later__";
+
+function SqlSourceSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation("workflows");
+  const sources = useSqlSources();
+  if (sources.isPending) return null;
+  const items = sources.data ?? [];
+  return (
+    <Field label={t("create.sqlSource")} hint={t("create.sqlSourceHint")}>
+      {items.length === 0 ? (
+        <p className="text-xs text-ink-muted">
+          {t("create.sqlSourceNone")}{" "}
+          <Link to="/knowledge/sql-sources" className="text-accent hover:underline">
+            {t("create.sqlSourceCreate")}
+          </Link>
+        </p>
+      ) : (
+        <Select
+          value={value || LATER}
+          onValueChange={(next) => onChange(next === LATER ? "" : next)}
+          options={[
+            { value: LATER, label: t("create.sqlSourceLater") },
+            ...items.map((source) => ({ value: source.id, label: source.name })),
+          ]}
+        />
+      )}
+    </Field>
+  );
+}
 
 function CreateWorkflowDialog({
   open,
@@ -68,6 +108,7 @@ function CreateWorkflowDialog({
       name: "",
       kind: "workflow",
       template: "blank",
+      sql_source_id: "",
       icon: "",
       slug: "",
       description: "",
@@ -75,14 +116,18 @@ function CreateWorkflowDialog({
   });
   const { errors, isSubmitting } = form.formState;
   const kind = useWatch({ control: form.control, name: "kind" });
+  const template = useWatch({ control: form.control, name: "template" });
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
+      // chat_basic·text_to_sql은 챗플로우에만 있고, sql_source_id는 text_to_sql에만 준다(서버
+      // template_kind_mismatch).
+      const chosen = values.kind === "chatflow" ? values.template : "blank";
       const workflow = await create.mutateAsync({
         name: values.name,
         kind: values.kind,
-        // chat_basic은 챗플로우에만 있다(서버 template_kind_mismatch).
-        template: values.kind === "chatflow" ? values.template : "blank",
+        template: chosen,
+        sql_source_id: chosen === "text_to_sql" ? values.sql_source_id || null : null,
         icon: values.icon || null,
         slug: values.slug || null,
         description: values.description,
@@ -141,11 +186,25 @@ function CreateWorkflowDialog({
                         label: t("create.templates.chat_basic"),
                         description: t("create.templates.chat_basicHint"),
                       },
+                      {
+                        value: "text_to_sql",
+                        label: t("create.templates.text_to_sql"),
+                        description: t("create.templates.text_to_sqlHint"),
+                      },
                     ]}
                   />
                 )}
               />
             </Field>
+          ) : null}
+          {kind === "chatflow" && template === "text_to_sql" ? (
+            <Controller
+              control={form.control}
+              name="sql_source_id"
+              render={({ field }) => (
+                <SqlSourceSelect value={field.value} onChange={field.onChange} />
+              )}
+            />
           ) : null}
           <div className="grid grid-cols-[6rem_1fr] gap-3">
             <Field label={t("create.icon")} error={errors.icon?.message}>
@@ -246,7 +305,8 @@ function WorkflowCard({
 
 type KindFilter = "all" | WorkflowKind;
 
-// 워크플로우 목록(설계 7.2 /workflows). 가져오기는 DSL YAML로 새 워크플로우를 만든다(설계 5장).
+// 워크플로우 목록(설계 7.2 /workflows). 가져오기는 DSL YAML로 새 워크플로우를 만든다(설계 5장). 챗플로우
+// 템플릿 text_to_sql은 데이터 소스를 골라 만들 수 있다(3단계 10.3).
 export default function WorkflowsPage() {
   const { t } = useTranslation("workflows");
   const { t: tc } = useTranslation();

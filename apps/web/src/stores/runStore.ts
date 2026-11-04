@@ -6,10 +6,12 @@ import type {
   RunEventOf,
   RunEventType,
   ToolCallResult,
+  ToolSqlSummary,
   UsageTotal,
   WaitingInputData,
 } from "@/api/run-events";
 import type { ApprovalMode } from "@/api/types";
+import { mergeCitations, type Citation } from "@/lib/citations";
 
 // 도구 출력은 화면에 이만큼(문자 수)만 들고 있고, 넘치면 앞부분을 버린다. 전체는 서버에서 내려받는다(설계 7.4).
 export const TOOL_OUTPUT_LIMIT = 200 * 1024;
@@ -94,6 +96,10 @@ export interface ToolCallView {
   outputStorageKey: string | null;
   // call_agent 호출이면 그 하위 에이전트 런(오케스트레이션 6.1). 메시지 기록에서 다시 그린 카드는 비어 있다.
   child: ChildCallView | null;
+  // search_knowledge가 찾은 인용(tool_call.completed, 20개·500자). 메시지 기록에서 다시 그린 카드는 null이다.
+  retrieverResources: readonly Citation[] | null;
+  // query_sql의 실행 요약(tool_call.completed.sql). 결과 표는 출력 글에 있다. 기록에서 다시 그린 카드는 null이다.
+  sql: ToolSqlSummary | null;
 }
 
 export interface ChangedFile {
@@ -155,7 +161,15 @@ export type TimelineItem =
       autoApprove: boolean;
     }
   | { kind: "notice"; id: string; code: NoticeCode; message: string | null; count: number | null }
-  | { kind: "error"; id: string; code: string; message: string; retryable: boolean };
+  | {
+      kind: "error";
+      id: string;
+      code: string;
+      message: string;
+      retryable: boolean;
+      // 일일 한도처럼 기다리면 풀리는 실패면 다시 할 수 있는 시각(ISO)
+      retryAt?: string | null;
+    };
 
 export interface RunError {
   code: string;
@@ -184,6 +198,8 @@ export interface RunViewState {
   error: RunError | null;
   sessionAutoApprove: boolean;
   activeChild: ActiveChildHint | null;
+  // 런 id → 답 아래 칩으로 보일 인용. 스트리밍 중에는 도구 결과의 것을 쌓고, 끝난 런은 메시지 저장본이다.
+  citations: Readonly<Record<string, readonly Citation[]>>;
 }
 
 export function emptyUsage(): UsageTotals {
@@ -218,8 +234,21 @@ export function initialRunState(partial: Partial<RunViewState> = {}): RunViewSta
     error: null,
     sessionAutoApprove: false,
     activeChild: null,
+    citations: {},
     ...partial,
   };
+}
+
+// 오류가 난 시각(ISO)과 서버가 준 남은 초(retry_after)로 다시 할 수 있는 시각을 낸다.
+export function retryAtOf(
+  from: string | null | undefined,
+  seconds: number | null | undefined,
+): string | null {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0 || !from) {
+    return null;
+  }
+  const start = new Date(from).getTime();
+  return Number.isNaN(start) ? null : new Date(start + seconds * 1000).toISOString();
 }
 
 export function isRunActive(status: RunStatus): boolean {
@@ -283,6 +312,8 @@ export function newToolCall(id: string, runId: string, step: number, name: strin
     outputBytes: null,
     outputStorageKey: null,
     child: null,
+    retrieverResources: null,
+    sql: null,
   };
 }
 
@@ -553,8 +584,9 @@ const handlers: HandlerMap = {
       () => newToolCall(event.data.tool_call_id, event.run_id, state.step, ""),
     ),
 
-  "tool_call.completed": (state, event) =>
-    withTool(
+  "tool_call.completed": (state, event) => {
+    const resources = event.data.retriever_resources ?? [];
+    const next = withTool(
       state,
       event.data.tool_call_id,
       (tool) => {
@@ -569,6 +601,8 @@ const handlers: HandlerMap = {
           peakMemoryBytes: d.peak_memory_bytes ?? null,
           outputBytes: d.output_bytes,
           outputStorageKey: d.output_storage_key ?? null,
+          retrieverResources: d.retriever_resources ?? tool.retrieverResources,
+          sql: d.sql ?? tool.sql,
         };
         // 실시간 출력이 없었으면(파일 도구, 재접속 후 재생) 완료 이벤트의 발췌를 출력으로 쓴다.
         if (tool.outputChars === 0 && d.output_excerpt) {
@@ -580,7 +614,18 @@ const handlers: HandlerMap = {
         return next;
       },
       () => newToolCall(event.data.tool_call_id, event.run_id, state.step, ""),
-    ),
+    );
+    if (resources.length === 0) return next;
+    // 스트리밍 중에는 도구 결과의 인용을 쌓아 둔다. 런이 끝나면 화면이 메시지 저장본으로 바꾼다.
+    const runId = event.run_id;
+    return {
+      ...next,
+      citations: {
+        ...next.citations,
+        [runId]: mergeCitations(next.citations[runId] ?? [], resources),
+      },
+    };
+  },
 
   "file.changed": (state, event) => {
     const file: ChangedFile = {
@@ -791,7 +836,11 @@ const handlers: HandlerMap = {
         message: d.error.message,
         retryable: d.error.retryable ?? false,
       };
-      next = pushItem({ ...next, error }, { kind: "error", id: `error:${event.run_id}`, ...error });
+      const retryAt = retryAtOf(event.ts, d.error.retry_after);
+      next = pushItem(
+        { ...next, error },
+        { kind: "error", id: `error:${event.run_id}`, ...error, ...(retryAt ? { retryAt } : {}) },
+      );
     }
     if (d.status === "cancelled") {
       const timeout = d.error?.code === "input_timeout";
@@ -897,7 +946,13 @@ const handlers: HandlerMap = {
       pendingInteraction: null,
       items: markTextDone(state.items, event.run_id),
     };
-    return pushItem(next, { kind: "error", id: `error:${event.run_id}`, ...error });
+    const retryAt = retryAtOf(event.ts, event.data.retry_after);
+    return pushItem(next, {
+      kind: "error",
+      id: `error:${event.run_id}`,
+      ...error,
+      ...(retryAt ? { retryAt } : {}),
+    });
   },
 };
 
@@ -936,6 +991,8 @@ export interface RunStoreActions {
   addUserMessage: (text: string, options?: { id?: string; files?: AttachmentView[] }) => string;
   removeItem: (id: string) => void;
   setSessionAutoApprove: (on: boolean) => void;
+  // 끝난 런의 인용을 메시지 저장본(글 2,000자)으로 바꾼다. 비어 있으면 그 런의 칩을 지운다.
+  setCitations: (runId: string, citations: readonly Citation[]) => void;
   reset: (partial?: Partial<RunViewState>) => void;
 }
 
@@ -1005,6 +1062,15 @@ export function createRunStore(
       },
       setSessionAutoApprove(on) {
         set({ sessionAutoApprove: on });
+      },
+      setCitations(runId, citations) {
+        flush();
+        set((state) => {
+          const next = { ...state.citations };
+          if (citations.length > 0) next[runId] = citations;
+          else delete next[runId];
+          return { citations: next };
+        });
       },
       reset(partial) {
         cancelScheduled?.();

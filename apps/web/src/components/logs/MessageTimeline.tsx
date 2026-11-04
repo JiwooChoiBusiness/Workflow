@@ -8,6 +8,7 @@ import {
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AssistantMessage } from "@/components/chat/AssistantMessage";
+import { CitationChips } from "@/components/chat/CitationChips";
 import { ToolIcon } from "@/components/chat/ToolIcon";
 import { summarizeInput } from "@/components/chat/toolSummary";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
@@ -17,6 +18,7 @@ import { EmptyState } from "@/components/ui/layout";
 import { Spinner } from "@/components/ui/spinner";
 import { sessionFileUrl, useSessionMessages } from "@/features/logs/api";
 import type { MessageOut } from "@/features/logs/types";
+import { lastAssistantByRun } from "@/lib/citations";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatDateTime } from "@/lib/format";
 
@@ -143,12 +145,15 @@ function Meta({
 function MessageEntry({
   sessionId,
   message,
+  cited,
   selectedRunId,
   onSelectRun,
   onOpenTool,
 }: {
   sessionId: string;
   message: MessageOut;
+  // 런의 마지막 assistant 메시지라 인용 칩을 붙인다.
+  cited: boolean;
   selectedRunId: string | null;
   onSelectRun?: (runId: string) => void;
   onOpenTool?: (runId: string, toolCallId: string) => void;
@@ -227,6 +232,7 @@ function MessageEntry({
       )}
     >
       {parts}
+      {cited ? <CitationChips citations={message.retriever_resources ?? []} chunkLinks /> : null}
       {message.stop_reason && !NORMAL_STOPS.has(message.stop_reason) ? (
         <Badge
           tone={message.stop_reason === "cancelled" ? "neutral" : "warn"}
@@ -275,6 +281,8 @@ export function MessageTimeline({
   if (messages.length === 0) {
     return <EmptyState icon={MessagesSquare} title={t("timeline.none")} />;
   }
+  // 인용은 런이 끝나면 마지막 assistant 메시지 하나로 모인다. 기다리는 런의 중간 메시지 것은 보이지 않는다.
+  const lastByRun = lastAssistantByRun(messages);
   return (
     <div className="flex flex-col gap-4">
       {query.hasNextPage ? (
@@ -293,6 +301,7 @@ export function MessageTimeline({
           key={message.id}
           sessionId={sessionId}
           message={message}
+          cited={message.run_id !== null && lastByRun.get(message.run_id) === message.id}
           selectedRunId={selectedRunId}
           onSelectRun={onSelectRun}
           onOpenTool={onOpenTool}

@@ -78,7 +78,16 @@
     "dropped": "앞부분 {{count}}자는 화면에서 생략했습니다.",
     "fullOutput": "전체 출력 내려받기",
     "excerpt": "실시간 출력이 없어 저장된 발췌를 보여 줍니다.",
-    "restored": "대화 기록에서 불러온 결과입니다. 모델에 전달한 내용이라 길면 잘려 있습니다."
+    "restored": "대화 기록에서 불러온 결과입니다. 모델에 전달한 내용이라 길면 잘려 있습니다.",
+    "knowledgeSummary": "결과 {{count}}개(문서 {{documents}}개) · 1위 {{name}}",
+    "knowledgeNone": "찾은 결과가 없습니다.",
+    "sqlRows": "{{rows}}행",
+    "sqlTruncated": "잘림 · 전체는 CSV",
+    "sqlExecuted": "실행한 SQL",
+    "sqlTable": "결과 표",
+    "sqlShown": "앞 {{shown}}행",
+    "sqlCsv": "잘린 결과 CSV",
+    "sqlCsvPending": "{{path}} · 런이 끝나면 파일 목록에서 받습니다"
   },
   "approval": {
     "title": "실행 승인 요청",
@@ -150,7 +159,8 @@
   },
   "error": {
     "title": "런이 실패했습니다",
-    "retryable": "잠시 뒤 다시 보내 볼 수 있습니다."
+    "retryable": "잠시 뒤 다시 보내 볼 수 있습니다.",
+    "retryAt": "일일 한도에 걸렸습니다. {{time}} 이후에 다시 할 수 있습니다."
   },
   "child": {
     "cardLabel": "하위 에이전트 {{agent}}",
@@ -223,5 +233,17 @@
     "path": "경로",
     "disk": "디스크",
     "processes": "실행 중 프로세스"
+  },
+  "citations": {
+    "label": "인용",
+    "chip": "인용 {{position}}: {{name}}",
+    "detail": "인용 {{position}} 내용",
+    "source": "{{kb}} · 청크 #{{segment}}",
+    "sourceParent": "{{kb}} · 큰 조각 #{{segment}}",
+    "score": "점수 {{score}}",
+    "answer": "답",
+    "fullText": "청크 화면에서 전문 보기",
+    "children": "맞은 작은 조각",
+    "child": "작은 조각 #{{position}}"
   }
 }

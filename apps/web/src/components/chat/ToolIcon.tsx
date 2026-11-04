@@ -1,6 +1,8 @@
 import {
+  BookSearch,
   Bot,
   CheckCheck,
+  DatabaseZap,
   FileCode,
   FilePen,
   FileText,
@@ -9,6 +11,7 @@ import {
   MessageCircleQuestion,
   Package,
   SquareTerminal,
+  TableProperties,
   Wrench,
 } from "lucide-react";
 
@@ -35,6 +38,12 @@ export function ToolIcon({ name, className }: { name: string; className?: string
       return <CheckCheck className={className} aria-hidden />;
     case "call_agent":
       return <Bot className={className} aria-hidden />;
+    case "search_knowledge":
+      return <BookSearch className={className} aria-hidden />;
+    case "query_sql":
+      return <DatabaseZap className={className} aria-hidden />;
+    case "describe_sql_source":
+      return <TableProperties className={className} aria-hidden />;
     default:
       return <Wrench className={className} aria-hidden />;
   }

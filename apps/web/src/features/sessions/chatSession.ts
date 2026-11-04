@@ -1,6 +1,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { isApiError } from "@/api/http";
 import type { InteractionInput } from "@/api/run-events";
+import { runCitations } from "@/lib/citations";
 import { streamRunEvents, type StreamStatus } from "@/lib/sse";
 import { createRunStore, isRunOpen, type RunStore } from "@/stores/runStore";
 import { attachmentsOf, historyState } from "./history";
@@ -325,6 +326,23 @@ export class ChatSessionController {
   }
 
   /*
+   * 끝난 런의 인용을 메시지 저장본으로 바꾼다. 스트리밍 중에 보인 것은 도구 결과 이벤트의 것(20개, 글
+   * 500자)이고, 런이 끝나면 서버가 모든 도구 결과를 마지막 assistant 메시지 하나에 2,000자까지 모은다.
+   */
+  private async settleCitations(sessionId: string, runId: string): Promise<void> {
+    const state = this.store.getState();
+    if (state.runId !== runId || isRunOpen(state.status) || !state.citations[runId]?.length) return;
+    const epoch = this.epoch;
+    try {
+      const messages = await this.api.listMessages(sessionId);
+      if (epoch !== this.epoch || this.sessionId !== sessionId) return;
+      this.store.getState().actions.setCitations(runId, runCitations(messages.items)[runId] ?? []);
+    } catch {
+      // 다시 읽지 못하면 이벤트로 받은 인용을 그대로 둔다.
+    }
+  }
+
+  /*
    * 스트림 하나를 연다(이전 것은 닫는다). 응답 헤더가 오면 true, 그 전에 실패하면 그 오류로 풀린다.
    * 스트림 자체는 run.completed를 받을 때까지 뒤에서 계속 돈다.
    */
@@ -344,6 +362,7 @@ export class ChatSessionController {
         this.stream = null;
         if (outcome === "completed") this.setMeta({ connection: null });
       }
+      if (outcome === "completed" && runId) void this.settleCitations(sessionId, runId);
       if (outcome !== "aborted") this.options.onSettled?.(sessionId);
     };
     void streamRunEvents({

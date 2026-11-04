@@ -9,15 +9,32 @@
  */
 import type { TFunction } from "i18next";
 import * as z from "zod";
-import type { VarType } from "@/api/types";
+import type { RetrievalSettings, VarType } from "@/api/types";
+import {
+  conditionProblems,
+  emptyFilterForm,
+  fromFilterForm,
+  toFilterForm,
+  type FilterField,
+  type MetadataFilterForm,
+} from "@/features/knowledge/metadataFilter";
+import { completeRule, toProcessRule, type RuleValues } from "@/features/knowledge/processRule";
+import {
+  DEFAULT_RETRIEVAL,
+  fromRetrievalForm,
+  toRetrievalForm,
+  type RetrievalForm,
+} from "@/features/knowledge/retrievalSettings";
 import { decimal, integer, type T } from "@/lib/formSchemas";
 import { LOOP_COUNT_OUTPUT, parseSelector } from "./graph";
 import {
   defaultModel,
   DEFAULT_MAX_OUTPUT_TOKENS,
   HTTP_MAX_BODY_BYTES,
+  INDEX_WAIT_DEFAULT_SEC,
   LOOP_DEFAULT_ITERATIONS,
   LOOP_MAX_ITERATIONS,
+  SQL_SCHEMA_TOKENS,
 } from "./nodeTypes";
 
 export type TW = TFunction<"workflows">;
@@ -729,6 +746,12 @@ export function assignerFromForm(
 
 // llm
 
+// context로 받을 수 있는 변수 타입(서버 llm.CONTEXT_TYPES). any는 실행할 때 항목을 본다.
+export const CONTEXT_TYPES: readonly VarType[] = ["array[object]", "array[any]", "any"];
+// 변수 선택기의 accept는 받는 쪽 타입이다. array[object] 하나면 CONTEXT_TYPES 셋만 맞고(graph.assignable),
+// any나 array[any]를 넣으면 모든 변수가 맞아 버린다. 두 집합이 같은지는 configSchemas.test.ts가 본다.
+export const CONTEXT_ACCEPT: readonly VarType[] = ["array[object]"];
+
 export function llmSchema(t: T, tw: TW) {
   return z
     .object({
@@ -738,17 +761,19 @@ export function llmSchema(t: T, tw: TW) {
       vision: z.object({ enabled: z.boolean(), var: z.string() }),
       json_mode: z.boolean(),
       output_schema_text: jsonObjectText(tw, true),
+      context: z.object({ enabled: z.boolean(), var: z.string() }),
     })
     .superRefine((values, ctx) => {
       if (!values.prompt.some((item) => item.role === "user")) {
         ctx.addIssue({ code: "custom", path: ["prompt"], message: tw("validation.promptUser") });
       }
-      if (values.vision.enabled) {
-        const text = values.vision.var.trim();
+      for (const key of ["vision", "context"] as const) {
+        if (!values[key].enabled) continue;
+        const text = values[key].var.trim();
         if (!text || !parseSelector(text)) {
           ctx.addIssue({
             code: "custom",
-            path: ["vision", "var"],
+            path: [key, "var"],
             message: tw("validation.selector"),
           });
         }
@@ -760,6 +785,7 @@ export type LlmForm = z.infer<ReturnType<typeof llmSchema>>;
 export function llmToForm(config: Record<string, unknown>): LlmForm {
   const memory = record(config.memory);
   const vision = record(config.vision);
+  const context = config.context;
   return {
     model: modelToForm(config.model),
     prompt: records(config.prompt).map((item) => ({
@@ -770,10 +796,16 @@ export function llmToForm(config: Record<string, unknown>): LlmForm {
     vision: { enabled: bool(vision.enabled), var: str(vision.var) },
     json_mode: bool(config.json_mode),
     output_schema_text: jsonText(config.output_schema),
+    context: {
+      enabled: typeof context === "object" && context !== null,
+      var: str(record(context).var),
+    },
   };
 }
 
+// context는 켜고 변수를 고른 때만 보낸다. 서버는 비운 context를 붙이지 않는다.
 export function llmFromForm(values: LlmForm) {
+  const contextVar = values.context.var.trim();
   return {
     model: modelFromForm(values.model),
     prompt: values.prompt.map((item) => ({ role: item.role, text: item.text })),
@@ -781,6 +813,7 @@ export function llmFromForm(values: LlmForm) {
     vision: { enabled: values.vision.enabled, var: values.vision.var.trim() || null },
     json_mode: values.json_mode,
     output_schema: parseJsonText(values.output_schema_text),
+    context: values.context.enabled && contextVar ? { var: contextVar } : null,
   };
 }
 
@@ -1472,3 +1505,345 @@ export const humanInputFromForm = (values: HumanInputForm) => ({
   description: values.description,
   fields: startFromForm({ fields: values.fields }).fields,
 });
+
+// knowledge_retrieval (3단계 8.1, 서버 KnowledgeRetrievalConfig). 상한은 GET /node-types의 kb_options다.
+
+export interface KnowledgeLimits {
+  maxKbs: number;
+  topKMax: number;
+  waitMaxSec: number;
+}
+
+// 서버 knowledge_retrieval.MAX_KBS, KB_TOP_K_MAX 기본값, knowledge_index.MAX_WAIT_SEC. kb_options를 받기 전에 쓴다.
+export const DEFAULT_KNOWLEDGE_LIMITS: KnowledgeLimits = {
+  maxKbs: 5,
+  topKMax: 20,
+  waitMaxSec: 3600,
+};
+
+// 서버 knowledge_index.on_duplicate(ports.DuplicatePolicy). 화면 순서다.
+export const DUPLICATE_POLICIES = ["replace", "skip", "add"] as const;
+export type DuplicatePolicy = (typeof DUPLICATE_POLICIES)[number];
+
+// 서버 RetrievalSettings는 모든 칸에 기본값이 있어 저장된 값에 칸이 빠져 있을 수 있다(DSL 가져오기 등).
+function completeRetrieval(value: unknown): RetrievalSettings {
+  const raw = record(value) as Partial<RetrievalSettings>;
+  return {
+    ...DEFAULT_RETRIEVAL,
+    ...raw,
+    weights: { ...DEFAULT_RETRIEVAL.weights!, ...record(raw.weights) },
+    rerank: { ...DEFAULT_RETRIEVAL.rerank!, ...record(raw.rerank) },
+  };
+}
+
+// 메타데이터 필터 조건을 검사할 때 쓰는 것. 폼이 kb_options.operators와 고른 지식 베이스의 공통 필드를
+// 넘긴다. fields가 null이면 아직 읽는 중이라 필드 타입에 기대는 검사는 건너뛴다.
+export interface KnowledgeFilterContext {
+  operators: Record<string, readonly string[]>;
+  fields: readonly FilterField[] | null;
+}
+
+const NO_FILTER_CONTEXT: KnowledgeFilterContext = { operators: {}, fields: null };
+
+function isSelectorText(text: string): boolean {
+  return parseSelector(text) !== null;
+}
+
+export function knowledgeRetrievalSchema(
+  t: T,
+  tw: TW,
+  limits: KnowledgeLimits,
+  filter: KnowledgeFilterContext = NO_FILTER_CONTEXT,
+) {
+  return z
+    .object({
+      kb_ids: z
+        .array(z.string())
+        .min(1, { error: tw("validation.kbRequired") })
+        .max(limits.maxKbs, { error: t("validation.maxItems", { max: limits.maxKbs }) }),
+      query_var: selectorSchema(tw),
+      // 끄면 KB 설정을 이어받는다(retrieval: null).
+      custom_retrieval: z.boolean(),
+      retrieval: z.custom<RetrievalForm>(),
+      metadata_filter: z.custom<MetadataFilterForm>(),
+    })
+    .superRefine((values, ctx) => {
+      if (new Set(values.kb_ids).size > 1 && !values.custom_retrieval) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["custom_retrieval"],
+          message: tw("validation.retrievalRequired"),
+        });
+      }
+      // 조건 값의 문제(빈 값, 고르지 않은 변수, 숫자 아님)는 서버가 실행할 때에야 알린다. 칸 문구는 필터
+      // 빌더가 보이고, 여기서는 폼이 그 문제를 오류로 갖게 한다.
+      const conditions = values.metadata_filter.conditions;
+      const problems = conditionProblems(
+        values.metadata_filter,
+        filter.fields,
+        filter.operators,
+        isSelectorText,
+      );
+      for (const [key, found] of Object.entries(problems)) {
+        const index = Number(key);
+        let message: string;
+        if (found.value === "var") {
+          message = conditions[index]?.var.trim()
+            ? tw("validation.selectorFormat")
+            : tw("validation.selector");
+        } else if (found.value === "number") {
+          message = t("validation.number");
+        } else if (found.value === "value") {
+          message = t("validation.required");
+        } else {
+          continue;
+        }
+        ctx.addIssue({
+          code: "custom",
+          path: ["metadata_filter", "conditions", index, "value"],
+          message,
+        });
+      }
+    });
+}
+export type KnowledgeRetrievalForm = z.infer<ReturnType<typeof knowledgeRetrievalSchema>>;
+
+export function knowledgeRetrievalToForm(config: Record<string, unknown>): KnowledgeRetrievalForm {
+  const retrieval = config.retrieval;
+  const custom = typeof retrieval === "object" && retrieval !== null;
+  return {
+    kb_ids: Array.isArray(config.kb_ids)
+      ? config.kb_ids.filter((item): item is string => typeof item === "string")
+      : [],
+    query_var: str(config.query_var),
+    custom_retrieval: custom,
+    retrieval: toRetrievalForm(custom ? completeRetrieval(retrieval) : DEFAULT_RETRIEVAL),
+    metadata_filter: config.metadata_filter
+      ? toFilterForm(config.metadata_filter)
+      : emptyFilterForm(),
+  };
+}
+
+// fields는 고른 지식 베이스의 공통 필드다. 조건 값을 그 필드 타입(글·수·시간)으로 바꿔 보낸다.
+export function knowledgeRetrievalFromForm(
+  values: KnowledgeRetrievalForm,
+  fields: readonly FilterField[] | null = null,
+) {
+  return {
+    kb_ids: values.kb_ids,
+    query_var: values.query_var.trim(),
+    retrieval: values.custom_retrieval ? fromRetrievalForm(values.retrieval) : null,
+    metadata_filter: fromFilterForm(values.metadata_filter, fields),
+  };
+}
+
+// knowledge_index (3단계 8.2, 서버 KnowledgeIndexConfig)
+
+// 서버 FieldName: 영문 소문자로 시작, 소문자·숫자·밑줄, 40자까지
+const FIELD_NAME = /^[a-z][a-z0-9_]{0,39}$/;
+
+export function knowledgeIndexSchema(t: T, tw: TW, limits: KnowledgeLimits) {
+  return z
+    .object({
+      kb_id: z.string().min(1, { error: tw("validation.kbPick") }),
+      source_kind: z.enum(["text", "files"]),
+      text_var: z.string(),
+      files_var: z.string(),
+      name: z.string(),
+      custom_rule: z.boolean(),
+      rule: z.custom<RuleValues>(),
+      metadata: z
+        .array(
+          z.object({
+            name: z
+              .string()
+              .trim()
+              .min(1, { error: t("validation.required") })
+              .regex(FIELD_NAME, { error: tw("validation.fieldName") }),
+            value: z.string(),
+          }),
+        )
+        .superRefine(uniqueBy("name", t("validation.duplicate"))),
+      on_duplicate: z.enum(DUPLICATE_POLICIES),
+      wait: z.boolean(),
+      timeout_sec: integer(t, 10, limits.waitMaxSec),
+    })
+    .superRefine((values, ctx) => {
+      const key = values.source_kind === "text" ? "text_var" : "files_var";
+      const text = values[key].trim();
+      if (!text) {
+        ctx.addIssue({ code: "custom", path: [key], message: tw("validation.selector") });
+      } else if (!parseSelector(text)) {
+        ctx.addIssue({ code: "custom", path: [key], message: tw("validation.selectorFormat") });
+      }
+    });
+}
+export type KnowledgeIndexForm = z.infer<ReturnType<typeof knowledgeIndexSchema>>;
+
+export function knowledgeIndexToForm(config: Record<string, unknown>): KnowledgeIndexForm {
+  const source = record(config.source);
+  const rule = config.process_rule;
+  const customRule = typeof rule === "object" && rule !== null;
+  return {
+    kb_id: str(config.kb_id),
+    source_kind: typeof source.files_var === "string" && source.files_var ? "files" : "text",
+    text_var: str(source.text_var),
+    files_var: str(source.files_var),
+    name: str(config.name),
+    custom_rule: customRule,
+    rule: completeRule(customRule ? (rule as Parameters<typeof completeRule>[0]) : null),
+    metadata: records(config.metadata).map((item) => ({
+      name: str(item.name),
+      value: str(item.value),
+    })),
+    on_duplicate: oneOf(DUPLICATE_POLICIES, config.on_duplicate, "replace"),
+    wait: bool(config.wait),
+    timeout_sec: num(config.timeout_sec, INDEX_WAIT_DEFAULT_SEC),
+  };
+}
+
+// sql_schema·sql_query (3단계 10.3, 서버 SqlSchemaConfig·SqlQueryConfig). 상한은 GET /node-types의 sql_options다.
+
+export interface SqlLimitsOptions {
+  maxRowsMax: number;
+  timeoutMax: number;
+  llmBytesMax: number;
+}
+
+// 서버 SQL_MAX_ROWS 기본값, SQL_TIMEOUT_CAP, LLM_BYTES_CAP. sql_options를 받기 전에 쓴다.
+export const DEFAULT_SQL_LIMITS: SqlLimitsOptions = {
+  maxRowsMax: 1000,
+  timeoutMax: 60,
+  llmBytesMax: 65_536,
+};
+
+// 서버 SqlQueryConfig.max_rows 상한. 저장은 여기까지 받고 실행 때는 maxRowsMax(SQL_MAX_ROWS)까지만 받는다.
+// SQL_MAX_ROWS를 늘린 PC에서 만든 DSL도 그대로 열리게 폼은 서버 스키마를 따른다.
+export const SQL_QUERY_MAX_ROWS = 10_000;
+
+export const SQL_APPROVALS = ["inherit", "none", "always"] as const;
+export type SqlApprovalChoice = (typeof SQL_APPROVALS)[number];
+export const SQL_MODES = ["template", "var"] as const;
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+export function sqlSchemaSchema(t: T, tw: TW) {
+  return z.object({
+    source_id: z.string().min(1, { error: tw("validation.sqlSourceRequired") }),
+    tables: z.array(z.string()).max(200, { error: t("validation.maxItems", { max: 200 }) }),
+    include_samples: z.boolean(),
+    max_tokens: integer(t, 500, 64_000),
+  });
+}
+export type SqlSchemaForm = z.infer<ReturnType<typeof sqlSchemaSchema>>;
+
+export function sqlSchemaToForm(config: Record<string, unknown>): SqlSchemaForm {
+  return {
+    source_id: str(config.source_id),
+    tables: strings(config.tables),
+    include_samples: bool(config.include_samples, true),
+    max_tokens: num(config.max_tokens, SQL_SCHEMA_TOKENS),
+  };
+}
+
+export function sqlSchemaFromForm(values: SqlSchemaForm) {
+  return {
+    source_id: values.source_id || null,
+    tables: values.tables,
+    include_samples: values.include_samples,
+    max_tokens: Number.isFinite(values.max_tokens) ? values.max_tokens : SQL_SCHEMA_TOKENS,
+  };
+}
+
+export function sqlQuerySchema(t: T, tw: TW, limits: SqlLimitsOptions = DEFAULT_SQL_LIMITS) {
+  return z
+    .object({
+      source_id: z.string().min(1, { error: tw("validation.sqlSourceRequired") }),
+      sql_mode: z.enum(SQL_MODES),
+      sql: z.string(),
+      sql_var: z.string(),
+      // 비우면(null) 데이터 소스 limits·approval을 쓴다.
+      max_rows: integer(t, 1, SQL_QUERY_MAX_ROWS).nullable(),
+      timeout_sec: integer(t, 1, limits.timeoutMax).nullable(),
+      approval: z.enum(SQL_APPROVALS),
+      llm_rows: integer(t, 1, 10_000).nullable(),
+      llm_bytes: integer(t, 1024, limits.llmBytesMax).nullable(),
+      export_file: z.boolean(),
+    })
+    .superRefine((values, ctx) => {
+      if (values.sql_mode === "template") {
+        if (!values.sql.trim()) {
+          ctx.addIssue({ code: "custom", path: ["sql"], message: tw("validation.sqlRequired") });
+        }
+        return;
+      }
+      const text = values.sql_var.trim();
+      if (!text) {
+        ctx.addIssue({ code: "custom", path: ["sql_var"], message: tw("validation.selector") });
+      } else if (!parseSelector(text)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["sql_var"],
+          message: tw("validation.selectorFormat"),
+        });
+      }
+    });
+}
+export type SqlQueryForm = z.infer<ReturnType<typeof sqlQuerySchema>>;
+
+export function sqlQueryToForm(config: Record<string, unknown>): SqlQueryForm {
+  const sqlVar = typeof config.sql_var === "string" ? config.sql_var : "";
+  return {
+    source_id: str(config.source_id),
+    sql_mode: sqlVar ? "var" : "template",
+    sql: str(config.sql),
+    sql_var: sqlVar,
+    max_rows: numOrNull(config.max_rows),
+    timeout_sec: numOrNull(config.timeout_sec),
+    approval:
+      config.approval === "none" || config.approval === "always" ? config.approval : "inherit",
+    llm_rows: numOrNull(config.llm_rows),
+    llm_bytes: numOrNull(config.llm_bytes),
+    export_file: bool(config.export_file, true),
+  };
+}
+
+// 고른 쪽만 보낸다. 변수 쪽이면 sql_var가 템플릿보다 앞선다(서버 SqlQueryRunner._sql). 템플릿은 그대로 둬서
+// 변수로 바꿨다 되돌려도 글이 남는다.
+export function sqlQueryFromForm(values: SqlQueryForm) {
+  const finite = (value: number | null) =>
+    value !== null && Number.isFinite(value) ? value : null;
+  return {
+    source_id: values.source_id || null,
+    sql: values.sql,
+    sql_var: values.sql_mode === "var" ? values.sql_var.trim() || null : null,
+    max_rows: finite(values.max_rows),
+    timeout_sec: finite(values.timeout_sec),
+    approval: values.approval === "inherit" ? null : values.approval,
+    llm_rows: finite(values.llm_rows),
+    llm_bytes: finite(values.llm_bytes),
+    export_file: values.export_file,
+  };
+}
+
+// 글과 파일 중 고른 것 하나만 보낸다(서버는 둘 다 있으면 invalid_config다).
+export function knowledgeIndexFromForm(values: KnowledgeIndexForm) {
+  const text = values.source_kind === "text";
+  return {
+    kb_id: values.kb_id || null,
+    source: {
+      text_var: text ? values.text_var.trim() || null : null,
+      files_var: text ? null : values.files_var.trim() || null,
+    },
+    name: values.name,
+    process_rule: values.custom_rule ? toProcessRule(values.rule) : null,
+    metadata: values.metadata.map((item) => ({ name: item.name.trim(), value: item.value })),
+    on_duplicate: values.on_duplicate,
+    wait: values.wait,
+    timeout_sec: Number.isFinite(values.timeout_sec) ? values.timeout_sec : INDEX_WAIT_DEFAULT_SEC,
+  };
+}

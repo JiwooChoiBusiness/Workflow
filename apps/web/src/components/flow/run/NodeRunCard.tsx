@@ -1,6 +1,6 @@
 import { ChevronRight, CornerDownRight, RotateCcw } from "lucide-react";
 import { Collapsible } from "radix-ui";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { LiveElapsed } from "@/components/chat/RunStatusBar";
@@ -8,7 +8,7 @@ import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { JsonTree } from "@/components/common/JsonTree";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { useWfNodeRun } from "@/features/workflows/api";
+import { useWfNodeRun, wfRunFileUrl } from "@/features/workflows/api";
 import "@/features/workflows/i18n";
 import { nodeMeta, TONE_CLASS } from "@/features/workflows/nodeTypes";
 import {
@@ -19,6 +19,12 @@ import {
 import { cn } from "@/lib/cn";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { nodeLabel } from "../labels";
+import { IndexedDocumentLinks, KnowledgeResultList, knowledgeResults } from "./KnowledgeResultList";
+
+// SQL 결과 카드는 데이터 소스 문구(sql)와 예시 저장 대화상자를 함께 쓴다. sql_query 노드 런을 펼칠 때 받는다.
+const SqlResultCard = lazy(async () => ({
+  default: (await import("./SqlResultCard")).SqlResultCard,
+}));
 
 export const NODE_STATUS_TONE: Record<NodeRunStatus, BadgeTone> = {
   running: "info",
@@ -82,8 +88,57 @@ function JsonBlock({ value }: { value: unknown }) {
   );
 }
 
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+// 지식 노드의 결과 목록·문서 링크(3단계 12.3). 전문(outputs)에서 그린다.
+function KnowledgeOutputs({
+  type,
+  inputs,
+  outputs,
+  links,
+}: {
+  type: string;
+  inputs: unknown;
+  outputs: unknown;
+  links: boolean;
+}) {
+  const { t } = useTranslation("workflows");
+  const out = (outputs ?? {}) as Record<string, unknown>;
+  if (type === "knowledge_retrieval") {
+    return (
+      <Section title={t("node.knowledge.results")}>
+        <KnowledgeResultList items={knowledgeResults(out.result)} links={links} />
+      </Section>
+    );
+  }
+  if (type === "knowledge_index" && links) {
+    const kbId = (inputs ?? {}) as { kb_id?: unknown };
+    const ids = strings(out.document_ids);
+    if (typeof kbId.kb_id !== "string" || ids.length === 0) return null;
+    return (
+      <Section title={t("node.knowledge.documents")}>
+        <IndexedDocumentLinks kbId={kbId.kb_id} documentIds={ids} />
+      </Section>
+    );
+  }
+  return null;
+}
+
+function SqlOutputs(props: Parameters<typeof SqlResultCard>[0]) {
+  const { t } = useTranslation("workflows");
+  return (
+    <Suspense fallback={<Spinner className="size-4" label={t("node.loading")} />}>
+      <SqlResultCard {...props} />
+    </Suspense>
+  );
+}
+
 // 펼친 노드 런의 전문(inputs·outputs·process). 이벤트에는 4KB 미리보기만 있어 서버에서 다시 받는다(설계 3.9).
-function NodeRunDetail({ runId, run }: { runId: string; run: NodeRunView }) {
+function NodeRunDetail({ runId, run, type }: { runId: string; run: NodeRunView; type: string }) {
   const { t } = useTranslation("workflows");
   const detail = useWfNodeRun(runId, run.id);
   if (detail.isPending) {
@@ -103,6 +158,16 @@ function NodeRunDetail({ runId, run }: { runId: string; run: NodeRunView }) {
   return (
     <div className="flex flex-col gap-3">
       {data.truncated ? <p className="text-xs text-warn">{t("node.truncated")}</p> : null}
+      <KnowledgeOutputs type={type} inputs={data.inputs} outputs={data.outputs} links />
+      {type === "sql_query" ? (
+        <SqlOutputs
+          outputs={data.outputs}
+          inputs={data.inputs}
+          error={run.error}
+          fileUrl={(fileId) => wfRunFileUrl(runId, fileId)}
+          examples
+        />
+      ) : null}
       <Section title={t("node.inputs")}>
         {data.inputs === null || data.inputs === undefined ? (
           <p className="text-xs text-ink-subtle">{t("node.notStored")}</p>
@@ -153,13 +218,19 @@ export function NodeRunCard({
   const { t } = useTranslation("workflows");
   // 사용자가 직접 접거나 펼치기 전에는 입력을 기다리는 노드를 펼쳐 둔다.
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const open = userOpen ?? (defaultOpen || focused || run.status === "waiting_input");
+  const type = run.nodeType ?? info?.type ?? "";
+  // 실패한 SQL 실행은 거부 이유(승인 카드에서 고친 SQL의 재검사 포함)가 바로 보이게 펼쳐 둔다.
+  const open =
+    userOpen ??
+    (defaultOpen ||
+      focused ||
+      run.status === "waiting_input" ||
+      (type === "sql_query" && run.status === "failed"));
   const header = useRef<HTMLDivElement>(null);
   // 캔버스에서 고른 노드 런으로 한 번 옮긴다. 도는 동안 다시 그려질 때마다 옮기지 않는다.
   useEffect(() => {
     if (focused) header.current?.scrollIntoView({ block: "nearest" });
   }, [focused]);
-  const type = run.nodeType ?? info?.type ?? "";
   const meta = nodeMeta(type);
   const Icon = meta.icon;
   const title = run.title || info?.title || nodeLabel(t, type) || run.nodeId;
@@ -286,9 +357,29 @@ export function NodeRunCard({
         {child && !liveChild ? child : null}
         {children}
         {finished && fetchDetail && runId && open ? (
-          <NodeRunDetail runId={runId} run={run} />
+          <NodeRunDetail runId={runId} run={run} type={type} />
         ) : run.outputsPreview && Object.keys(run.outputsPreview).length > 0 ? (
           <Section title={t("node.outputs")}>
+            {type === "knowledge_retrieval" ? (
+              <div className="mb-2">
+                <KnowledgeOutputs
+                  type={type}
+                  inputs={null}
+                  outputs={run.outputsPreview}
+                  links={false}
+                />
+              </div>
+            ) : null}
+            {type === "sql_query" ? (
+              <div className="mb-2">
+                <SqlOutputs
+                  outputs={run.outputsPreview}
+                  inputs={null}
+                  error={run.error}
+                  preview={run.truncated}
+                />
+              </div>
+            ) : null}
             <JsonBlock value={run.outputsPreview} />
             {run.truncated ? (
               <p className="mt-1 text-xs text-warn">{t("node.previewTruncated")}</p>

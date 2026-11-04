@@ -55,6 +55,16 @@ export function useLlmStatus() {
   });
 }
 
+// 임베딩 하루 사용량(지식 기본값). 지식 API 모듈을 설정 화면 묶음에 끌어들이지 않으려고 여기서 부른다.
+// 키는 knowledgeKeys.defaults와 같아 지식 화면과 캐시를 나눠 쓴다.
+export function useEmbeddingUsage() {
+  return useQuery({
+    queryKey: ["knowledge", "defaults"],
+    queryFn: () => unwrap(api.GET("/api/console/knowledge-defaults")),
+    staleTime: 30_000,
+  });
+}
+
 export function useLlmTest() {
   const client = useQueryClient();
   return useMutation({

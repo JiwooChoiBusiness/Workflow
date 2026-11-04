@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { useAgents } from "@/features/agents/api";
 import { useToolSpecs } from "@/features/workflows/api";
 import type { FlowNode } from "@/features/workflows/graph";
+import { KnowledgeIndexCard } from "./KnowledgeIndexCard";
+import { KnowledgeRetrievalCard } from "./KnowledgeRetrievalCard";
+import { SqlQueryCard } from "./SqlQueryCard";
+import { SqlSchemaCard } from "./SqlSchemaCard";
 
 // 노드 카드의 핵심 설정 한 줄(설계 7.1). 분기 노드의 가지 줄은 BranchRows가 그린다.
 
@@ -215,6 +219,14 @@ export function NodeSummary({ node }: { node: FlowNode }) {
       );
     case "tool":
       return <ToolSummary name={text(config.tool)} />;
+    case "knowledge_retrieval":
+      return <KnowledgeRetrievalCard node={node} />;
+    case "knowledge_index":
+      return <KnowledgeIndexCard node={node} />;
+    case "sql_schema":
+      return <SqlSchemaCard node={node} />;
+    case "sql_query":
+      return <SqlQueryCard node={node} />;
     case "human_input": {
       const fields = list(config.fields)
         .map((field) => text(field.name))

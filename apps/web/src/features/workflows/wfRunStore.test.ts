@@ -140,6 +140,7 @@ describe("wfRunStore 리듀서(실제 서버 이벤트)", () => {
       message: "ValueError: 일부러 실패",
       nodeId: "code_1",
       retryable: true,
+      retryAt: null,
     });
     expect(state.outputs).toBeNull();
   });
@@ -334,5 +335,193 @@ describe("wfRunStore", () => {
     store.getState().actions.reset();
     expect(store.getState().runId).toBeNull();
     expect(store.getState().order).toEqual([]);
+  });
+});
+
+// 손으로 만든 이벤트. 서버가 내는 모양에서 이 시험이 보는 칸만 채운다.
+function wfEvent(seq: number, type: WfEvent["type"], data: Record<string, unknown>): WfEvent {
+  return {
+    run_id: "run-k",
+    session_id: null,
+    seq,
+    ts: `2026-11-03T00:00:${String(seq).padStart(2, "0")}Z`,
+    type,
+    data,
+  } as unknown as WfEvent;
+}
+
+const waitingForm = [
+  wfEvent(1, "workflow.started", {
+    kind: "workflow",
+    inputs_preview: {},
+    truncated: false,
+    resumed: false,
+    node_count: 3,
+  }),
+  wfEvent(2, "node.started", {
+    node_run_id: "nr-start",
+    node_id: "start",
+    node_type: "start",
+    title: "시작",
+    index: 0,
+    attempt: 1,
+  }),
+  wfEvent(3, "node.completed", {
+    node_run_id: "nr-start",
+    node_id: "start",
+    status: "succeeded",
+    duration_ms: 1,
+  }),
+  wfEvent(4, "node.started", {
+    node_run_id: "nr-form",
+    node_id: "human_input_1",
+    node_type: "human_input",
+    title: "사람 입력",
+    index: 1,
+    attempt: 1,
+  }),
+  wfEvent(5, "node.completed", {
+    node_run_id: "nr-form",
+    node_id: "human_input_1",
+    status: "waiting_input",
+    duration_ms: 2,
+  }),
+  wfEvent(6, "workflow.waiting_input", {
+    node_id: "human_input_1",
+    kind: "form",
+    form: { description: "", fields: [] },
+  }),
+  wfEvent(7, "workflow.completed", {
+    status: "waiting_input",
+    usage_total: {},
+    node_runs: 2,
+    duration_ms: 3,
+  }),
+];
+
+describe("wfRunStore 끝난 런의 노드 줄(2단계 후속 6)", () => {
+  it("입력을 기다리던 런을 중지하면 기다리던 노드 런을 cancelled로 닫는다", () => {
+    const waiting = run(waitingForm);
+    expect(latest(waiting, "human_input_1").status).toBe("waiting_input");
+    // 서버는 중지할 때 노드 런 행만 고치고 노드 이벤트 없이 workflow.completed(cancelled)만 낸다.
+    const stopped = applyWfEvent(
+      waiting,
+      wfEvent(8, "workflow.completed", {
+        status: "cancelled",
+        usage_total: {},
+        node_runs: 2,
+        duration_ms: 3,
+      }),
+    );
+    expect(stopped.status).toBe("cancelled");
+    expect(latest(stopped, "human_input_1")).toMatchObject({
+      status: "cancelled",
+      endedAt: "2026-11-03T00:00:08Z",
+    });
+    expect(latest(stopped, "start").status).toBe("succeeded");
+    expect(finishedNodeCount(stopped)).toBe(2);
+  });
+
+  it("대기 시간이 지나 실패하면 기다리던 노드 런을 런의 오류로 닫는다", () => {
+    const failed = applyWfEvent(
+      run(waitingForm),
+      wfEvent(8, "workflow.completed", {
+        status: "failed",
+        usage_total: {},
+        node_runs: 2,
+        duration_ms: 3,
+        error: { code: "input_timeout", message: "입력 대기 시간이 지났다", retryable: false },
+      }),
+    );
+    expect(latest(failed, "human_input_1")).toMatchObject({
+      status: "failed",
+      error: { code: "input_timeout", message: "입력 대기 시간이 지났다", retryable: false },
+    });
+  });
+
+  it("입력 대기로 끝난 런은 노드 줄을 그대로 둔다", () => {
+    expect(latest(run(waitingForm), "human_input_1").status).toBe("waiting_input");
+  });
+
+  it("런 상세로 그릴 때도 프로세스가 죽어 running으로 남은 노드 줄을 닫는다", () => {
+    const { waiting } = wfContract.agent;
+    const crashed: typeof waiting = {
+      ...waiting,
+      status: "failed",
+      ended_at: "2026-11-03T00:00:09Z",
+      pending_interaction: null,
+      error: { code: "interrupted", message: "서버가 다시 시작해 런을 멈췄다", retryable: false },
+    };
+    const nodeRuns = waiting.node_runs.map((item) =>
+      item.node_id === "agent_1" ? { ...item, status: "running" as const, ended_at: null } : item,
+    );
+    const state = stateFromRun(crashed, nodeRuns);
+    expect(latest(state, "agent_1")).toMatchObject({
+      status: "cancelled",
+      endedAt: "2026-11-03T00:00:09Z",
+    });
+    expect(latest(state, "start").status).toBe("succeeded");
+
+    // 입력을 기다리다 실패한 런이면 기다리던 노드 줄은 런의 오류로 닫는다.
+    const timedOut = stateFromRun(
+      {
+        ...crashed,
+        error: { code: "input_timeout", message: "입력 대기 시간이 지났다", retryable: false },
+      },
+      waiting.node_runs,
+    );
+    expect(latest(timedOut, "agent_1")).toMatchObject({
+      status: "failed",
+      error: { code: "input_timeout", message: "입력 대기 시간이 지났다" },
+    });
+    // 기다리는 중인 런은 그대로 둔다.
+    expect(latest(stateFromRun(waiting, waiting.node_runs), "agent_1").status).toBe(
+      "waiting_input",
+    );
+  });
+});
+
+describe("wfRunStore 인용과 일일 한도(3단계 12.4)", () => {
+  const resource = {
+    position: 1,
+    dataset_id: "kb-1",
+    dataset_name: "사내 규정",
+    document_id: "doc-1",
+    document_name: "휴가 규정.md",
+    data_source_type: "upload_file",
+    segment_id: "seg-1",
+    segment_position: 3,
+    score: 0.82,
+    content: "연차는 다음 해로 5일까지 넘길 수 있다.",
+  };
+
+  it("workflow.completed의 retriever_resources를 런 상태에 둔다", () => {
+    const state = run([
+      wfEvent(1, "workflow.completed", {
+        status: "succeeded",
+        usage_total: {},
+        node_runs: 4,
+        duration_ms: 10,
+        retriever_resources: [resource],
+      }),
+    ]);
+    expect(state.retrieverResources).toEqual([resource]);
+  });
+
+  it("retry_after가 있으면 다시 할 수 있는 시각을 오류에 붙인다", () => {
+    const state = run([
+      wfEvent(1, "workflow.error", {
+        code: "model_unavailable",
+        message: "모든 모델이 일일 한도에 걸렸다",
+        retryable: true,
+        retry_after: 3600,
+      }),
+    ]);
+    expect(state.error).toMatchObject({
+      code: "model_unavailable",
+      retryAt: "2026-11-03T01:00:01.000Z",
+    });
+    const plain = run([wfEvent(1, "workflow.error", { code: "x", message: "y" })]);
+    expect(plain.error?.retryAt).toBeNull();
   });
 });

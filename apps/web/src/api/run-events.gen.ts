@@ -102,6 +102,21 @@ export interface ChildRunStartedData {
   task_preview: string;
 }
 
+export interface CitedChildChunk {
+  id: string;
+  content: string;
+  position: number;
+  score: number;
+}
+
+export interface CitedFusion {
+  cosine?: number | null;
+  vector_score?: number | null;
+  keyword_score?: number | null;
+  vector_rank?: number | null;
+  keyword_rank?: number | null;
+}
+
 export interface ContextCompactedData {
   before_tokens: number;
   after_tokens: number;
@@ -185,6 +200,7 @@ export interface NodeError {
   code: string;
   message: string;
   retryable?: boolean;
+  retry_after?: number | null;
 }
 
 /** agent 노드의 자식 런 진행. 자식을 만들자마자 한 번, 그 뒤 10초마다 온다. */
@@ -247,6 +263,28 @@ export interface NodeWaitingData {
 
 export type PingData = Record<string, never>;
 
+/** 인용 하나. position은 런 전체에서 세그먼트마다 하나이고, 모델이 본 [n]과 같다. */
+export interface RetrieverResourceData {
+  position: number;
+  dataset_id: string;
+  dataset_name: string;
+  document_id: string;
+  document_name: string;
+  data_source_type: string;
+  segment_id: string;
+  segment_position: number;
+  score: number;
+  hit_count?: number;
+  word_count?: number;
+  content: string;
+  answer?: string | null;
+  doc_metadata?: Record<string, unknown>;
+  child_chunks?: CitedChildChunk[] | null;
+  fusion?: CitedFusion | null;
+  fusion_score?: number | null;
+  indexing_status?: string | null;
+}
+
 export interface RunCompletedData {
   status: "succeeded" | "failed" | "cancelled" | "waiting_input";
   usage_total: UsageTotal;
@@ -261,6 +299,7 @@ export interface RunErrorData {
   code: string;
   message: string;
   retryable?: boolean;
+  retry_after?: number | null;
 }
 
 export interface RunQueuedData {
@@ -317,6 +356,8 @@ export interface ToolCallCompletedData {
   output_bytes: number;
   output_storage_key?: string | null;
   child_run_id?: string | null;
+  retriever_resources?: RetrieverResourceData[] | null;
+  sql?: ToolSqlSummary | null;
 }
 
 export interface ToolCallInputDeltaData {
@@ -341,6 +382,12 @@ export interface ToolCallStartedData {
   name: string;
 }
 
+export interface ToolSqlSummary {
+  sql_executed: string;
+  row_count: number;
+  truncated: boolean;
+}
+
 export interface UsageData {
   step: number;
   model: string;
@@ -351,6 +398,7 @@ export interface UsageData {
   cached_input_tokens?: number | null;
   estimated: boolean;
   cost_usd?: number | null;
+  tool_call_id?: string | null;
 }
 
 /** run.usage 열과 run.completed.usage_total의 구조. */
@@ -371,6 +419,7 @@ export interface WorkflowCompletedData {
   node_runs: number;
   duration_ms: number;
   error?: WorkflowErrorData | null;
+  retriever_resources?: RetrieverResourceData[] | null;
 }
 
 export interface WorkflowErrorData {
@@ -378,6 +427,7 @@ export interface WorkflowErrorData {
   message: string;
   node_id?: string | null;
   retryable?: boolean;
+  retry_after?: number | null;
 }
 
 /** human_input 노드가 기다리는 폼. 답은 /input에 kind=form과 values({필드 이름: 값})로

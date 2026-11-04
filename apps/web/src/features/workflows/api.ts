@@ -155,6 +155,26 @@ export function useToolSpecs() {
   });
 }
 
+// 지식 노드 폼의 선택지와 상한(top_k, 재순위 후보, 연산자, 중복 처리). 검색 시험 화면도 연산자를 여기서 받는다.
+export function useKbOptions() {
+  return useQuery({
+    queryKey: workflowKeys.nodeTypes,
+    queryFn: fetchNodeTypes,
+    select: (data) => data.kb_options ?? null,
+    staleTime: Infinity,
+  });
+}
+
+// SQL 노드 폼의 기본값과 상한(행·시간·LLM 범위, 3단계 10.3). 데이터 소스 화면도 한도 칸에 쓴다.
+export function useSqlOptions() {
+  return useQuery({
+    queryKey: workflowKeys.nodeTypes,
+    queryFn: fetchNodeTypes,
+    select: (data) => data.sql_options ?? null,
+    staleTime: Infinity,
+  });
+}
+
 export function useWorkflowVersions(id: string) {
   return useQuery({
     queryKey: workflowKeys.versions(id),

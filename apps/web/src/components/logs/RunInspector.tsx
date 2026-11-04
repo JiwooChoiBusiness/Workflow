@@ -344,6 +344,15 @@ function ToolCallDetail({
               {tool.outputBytes !== null ? (
                 <span>{t("tool.outputSize", { size: formatBytes(tool.outputBytes) })}</span>
               ) : null}
+              {tool.usage ? (
+                <span className="tabular-nums" title={t("tool.modelUsageHint")}>
+                  {t("tool.modelUsage", {
+                    input: formatNumber(tool.usage.inputTokens),
+                    output: formatNumber(tool.usage.outputTokens),
+                  })}
+                  {tool.usage.costUsd !== null ? ` · ${formatCost(tool.usage.costUsd)}` : ""}
+                </span>
+              ) : null}
             </footer>
           </section>
         ) : null}

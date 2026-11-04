@@ -13,7 +13,8 @@ import type {
   WorkflowFormData,
 } from "@/api/run-events";
 import type { WfNodeRunOut, WfRunOut } from "@/api/types";
-import { emptyUsage, usageFromTotal, type UsageTotals } from "@/stores/runStore";
+import { NO_CITATIONS, type Citation } from "@/lib/citations";
+import { emptyUsage, retryAtOf, usageFromTotal, type UsageTotals } from "@/stores/runStore";
 
 // llm 노드의 델타는 카드 미리보기로만 쓴다. 전문은 노드 런 상세(GET .../node-runs/{nid})에 있다.
 export const NODE_TEXT_LIMIT = 64 * 1024;
@@ -28,6 +29,8 @@ export interface WfRunError {
   message: string;
   nodeId: string | null;
   retryable: boolean;
+  // 모델이 모두 일일 한도에 걸렸을 때만 온다. 다시 할 수 있는 시각(ISO)이다.
+  retryAt: string | null;
 }
 
 export interface NodeRunError {
@@ -156,6 +159,8 @@ export interface WfRunViewState {
   usage: UsageTotals;
   error: WfRunError | null;
   durationMs: number | null;
+  // workflow.completed의 인용(20개, 글은 500자까지). 저장본은 런 상세·대화 메시지에 있다.
+  retrieverResources: readonly Citation[];
   lastSeq: number;
   // 마지막으로 끝난 노드 런의 프레임. 시작 없이 오는 건너뛴 노드 런을 같은 프레임에 둔다(건너뜀은 앞 노드가
   // 끝나며 같은 프레임 안에서 정해진다).
@@ -184,6 +189,7 @@ export function initialWfRunState(partial: Partial<WfRunViewState> = {}): WfRunV
     usage: emptyUsage(),
     error: null,
     durationMs: null,
+    retrieverResources: NO_CITATIONS,
     lastSeq: 0,
     lastFrame: { iterationId: null, iterationIndex: null },
     ...partial,
@@ -277,15 +283,50 @@ function nodeError(error: RunEventDataMap["node.completed"]["error"]): NodeRunEr
     : null;
 }
 
-function runError(error: RunEventDataMap["workflow.error"] | null | undefined): WfRunError | null {
+function runError(
+  error: RunEventDataMap["workflow.error"] | null | undefined,
+  ts: string,
+): WfRunError | null {
   return error
     ? {
         code: error.code,
         message: error.message,
         nodeId: error.node_id ?? null,
         retryable: error.retryable ?? false,
+        retryAt: retryAtOf(ts, error.retry_after),
       }
     : null;
+}
+
+/*
+ * 끝난 런에 아직 입력을 기다리거나 도는 것으로 남은 노드 런을 런과 같은 상태로 닫는다. 서버는 중지·실패 때
+ * 노드 런 행만 고치고 노드 이벤트는 내지 않는다(workflow_runs.close_waiting_nodes). 닫지 않으면 열린
+ * 패널에 "입력 대기"가 남는다(2단계 후속 6).
+ */
+function closeOpenNodeRuns(
+  nodeRuns: Record<string, NodeRunView>,
+  status: "failed" | "cancelled",
+  error: WfRunError | null,
+  ts: string,
+): Record<string, NodeRunView> {
+  let next: Record<string, NodeRunView> | null = null;
+  for (const run of Object.values(nodeRuns)) {
+    if (run.status !== "waiting_input" && run.status !== "running") continue;
+    next ??= { ...nodeRuns };
+    // 실패한 런에서는 기다리던 노드만 런의 오류로 닫고, 돌던 노드는 프로세스와 함께 끊긴 것으로 본다.
+    const failed = status === "failed" && run.status === "waiting_input";
+    next[run.id] = {
+      ...run,
+      status: failed ? "failed" : "cancelled",
+      error:
+        failed && error
+          ? { code: error.code, message: error.message, retryable: error.retryable }
+          : run.error,
+      endedAt: run.endedAt ?? ts,
+      waiting: null,
+    };
+  }
+  return next ?? nodeRuns;
 }
 
 type Handler<T extends WfEventType> = (
@@ -322,11 +363,13 @@ const handlers: { [T in WfEventType]?: Handler<T> } = {
     pendingInteraction: pendingFrom(event.data),
   }),
 
-  "workflow.error": (state, event) => ({ ...state, error: runError(event.data) }),
+  "workflow.error": (state, event) => ({ ...state, error: runError(event.data, event.ts) }),
 
   "workflow.completed": (state, event) => {
     const data = event.data;
     const waiting = data.status === "waiting_input";
+    const error = runError(data.error, event.ts) ?? (data.status === "failed" ? state.error : null);
+    const status = data.status;
     return {
       ...state,
       status: data.status,
@@ -336,8 +379,15 @@ const handlers: { [T in WfEventType]?: Handler<T> } = {
       usage: usageFromTotal(data.usage_total),
       durationMs: data.duration_ms,
       endedAt: waiting ? null : event.ts,
-      error: runError(data.error) ?? (data.status === "failed" ? state.error : null),
+      error,
       pendingInteraction: waiting ? state.pendingInteraction : null,
+      retrieverResources: data.retriever_resources?.length
+        ? data.retriever_resources
+        : state.retrieverResources,
+      nodeRuns:
+        status === "failed" || status === "cancelled"
+          ? closeOpenNodeRuns(state.nodeRuns, status, error, event.ts)
+          : state.nodeRuns,
     };
   },
 
@@ -544,7 +594,10 @@ export function applyWfEvents(
 }
 
 // 이벤트가 보존 기간으로 지워진 런은 런 상세(WfRunDetail)의 요약으로 그린다. iteration 안쪽은 따로 받는다.
-export function stateFromRun(run: WfRunOut, nodeRuns: readonly WfNodeRunOut[]): WfRunViewState {
+export function stateFromRun(
+  run: WfRunOut & { retriever_resources?: readonly Citation[] },
+  nodeRuns: readonly WfNodeRunOut[],
+): WfRunViewState {
   let state = initialWfRunState({
     runId: run.id,
     status: run.status,
@@ -552,17 +605,31 @@ export function stateFromRun(run: WfRunOut, nodeRuns: readonly WfNodeRunOut[]): 
     endedAt: run.ended_at,
     outputs: run.outputs,
     usage: usageFromTotal(run.usage),
+    retrieverResources: run.retriever_resources ?? NO_CITATIONS,
     error: run.error
       ? {
           code: run.error.code,
           message: run.error.message,
           nodeId: run.error.node_id ?? null,
           retryable: run.error.retryable ?? false,
+          retryAt: retryAtOf(run.ended_at, run.error.retry_after),
         }
       : null,
     pendingInteraction: run.pending_interaction ? pendingFrom(run.pending_interaction) : null,
   });
   state = mergeNodeRuns(state, nodeRuns);
+  // 프로세스가 죽어 실패로 정리된 런은 노드 행이 running으로 남아 있다. 이벤트 재생과 같은 규칙으로 닫는다.
+  if (run.status === "failed" || run.status === "cancelled") {
+    state = {
+      ...state,
+      nodeRuns: closeOpenNodeRuns(
+        state.nodeRuns,
+        run.status,
+        state.error,
+        run.ended_at ?? run.started_at ?? run.created_at,
+      ),
+    };
+  }
   return state;
 }
 

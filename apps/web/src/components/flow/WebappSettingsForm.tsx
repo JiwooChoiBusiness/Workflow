@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import * as z from "zod";
 import type { WebappSettings } from "@/api/types";
@@ -8,8 +8,9 @@ import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Panel } from "@/components/ui/layout";
+import { Switch } from "@/components/ui/toggle";
 import { splitLines } from "@/features/workflows/configSchemas";
-import { useFlowActions, useFlowStoreApi } from "@/features/workflows/flowStoreContext";
+import { useFlow, useFlowActions, useFlowStoreApi } from "@/features/workflows/flowStoreContext";
 import type { T } from "@/lib/formSchemas";
 
 // 서버 WebappSettings(apps/api/app/schemas/workflow.py)와 같은 상한
@@ -32,6 +33,7 @@ function webappSchema(t: T) {
         ctx.addIssue({ code: "custom", message: t("validation.maxLength", { max: 200 }) });
       }
     }),
+    citations_enabled: z.boolean(),
   });
 }
 
@@ -43,6 +45,7 @@ function toForm(webapp: WebappSettings | undefined): WebappForm {
     description: webapp?.description ?? "",
     opening_statement: webapp?.opening_statement ?? "",
     suggested_text: (webapp?.suggested_questions ?? []).join("\n"),
+    citations_enabled: webapp?.citations_enabled ?? true,
   };
 }
 
@@ -52,6 +55,7 @@ function fromForm(values: WebappForm): WebappSettings {
     description: values.description.trim() || null,
     opening_statement: values.opening_statement || null,
     suggested_questions: splitLines(values.suggested_text),
+    citations_enabled: values.citations_enabled,
   };
 }
 
@@ -61,6 +65,7 @@ export function WebappSettingsForm({ initial }: { initial: WebappSettings | unde
   const { t: tc } = useTranslation();
   const store = useFlowStoreApi();
   const actions = useFlowActions();
+  const kind = useFlow((state) => state.kind);
   const schema = useMemo(() => webappSchema(tc), [tc]);
   const form = useForm<WebappForm>({
     defaultValues: toForm(initial),
@@ -112,6 +117,18 @@ export function WebappSettingsForm({ initial }: { initial: WebappSettings | unde
         >
           <Textarea rows={4} {...form.register("suggested_text")} />
         </Field>
+        {/* 인용은 챗플로우 답 아래에만 붙는다. API 응답의 retriever_resources는 스위치와 관계없이 나간다. */}
+        {kind === "chatflow" ? (
+          <Field inline label={t("webapp.citations")} hint={t("webapp.citationsHint")}>
+            <Controller
+              control={form.control}
+              name="citations_enabled"
+              render={({ field }) => (
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              )}
+            />
+          </Field>
+        ) : null}
       </div>
     </Panel>
   );

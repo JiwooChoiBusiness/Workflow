@@ -121,3 +121,86 @@ export const VAR_TYPES: readonly VarType[] = [
   "array[any]",
   "any",
 ];
+
+// 3단계 지식 베이스(설계 12.1). 설정 JSON(규칙·검색 설정·색인 설정·데이터 정책)도 서버 모양 그대로다.
+export type KnowledgeBaseOut = Schemas["KnowledgeBaseOut"];
+export type KnowledgeBaseCreate = Schemas["KnowledgeBaseCreate"];
+export type KnowledgeBasePatch = Schemas["KnowledgeBasePatch"];
+export type KnowledgeBaseStats = Schemas["KnowledgeBaseStats"];
+export type KnowledgeDefaults = Schemas["KnowledgeDefaults"];
+export type EmbeddingDailyUsage = Schemas["EmbeddingDailyUsage"];
+export type EmbeddingLimits = Schemas["EmbeddingLimits"];
+export type EmbeddingLimiterInfo = Schemas["EmbeddingLimiterInfo"];
+export type EmbeddingSettingsIn = Schemas["EmbeddingSettingsIn"];
+export type ProcessRule = Schemas["ProcessRule"];
+export type RetrievalSettings = Schemas["RetrievalSettings"];
+export type DocForm = KnowledgeBaseOut["doc_form"];
+export type IndexingTechnique = KnowledgeBaseOut["indexing_technique"];
+export type KeyTier = Schemas["DataPolicy"]["key_tier"];
+export type SearchMethod = NonNullable<RetrievalSettings["search_method"]>;
+export type RerankingMode = NonNullable<RetrievalSettings["reranking_mode"]>;
+export type KbDocumentOut = Schemas["KbDocumentOut"];
+export type KbDocumentList = Schemas["KbDocumentList"];
+export type KbDocumentsCreated = Schemas["KbDocumentsCreated"];
+export type DisplayStatus = KbDocumentOut["display_status"];
+export type IndexingStatus = KbDocumentOut["indexing_status"];
+export type DocumentStatusResult = Schemas["DocumentStatusResult"];
+export type DocumentStatusSkip = Schemas["DocumentStatusSkip"];
+export type DocumentPreview = Schemas["DocumentPreview"];
+export type DocumentMetadataValue = Schemas["DocumentMetadataValue"];
+export type DocumentMetadataUpdate = Schemas["DocumentMetadataUpdate"];
+export type DatasetIndexingStatus = Schemas["DatasetIndexingStatus"];
+export type SegmentOut = Schemas["SegmentOut"];
+export type SegmentList = Schemas["SegmentList"];
+export type SegmentPatch = Schemas["SegmentPatch"];
+export type ChildChunkOut = Schemas["ChildChunkOut"];
+export type MetadataFieldOut = Schemas["MetadataFieldOut"];
+export type MetadataFieldList = Schemas["MetadataFieldList"];
+export type MetadataType = MetadataFieldOut["type"];
+export type RetrieveRequest = Schemas["RetrieveRequest"];
+export type RetrieveResponse = Schemas["RetrieveResponse"];
+export type RetrieveRecord = Schemas["RetrieveRecord"];
+export type RetrievalWarning = Schemas["RetrievalWarning"];
+export type FusionDetail = Schemas["FusionDetail"];
+export type QueryLogOut = Schemas["QueryLogOut"];
+export type QueryLogList = Schemas["QueryLogList"];
+export type EvalCaseOut = Schemas["EvalCaseOut"];
+export type EvalCaseCreate = Schemas["EvalCaseCreate"];
+export type EvalImportResult = Schemas["EvalImportResult"];
+export type EvalRunOut = Schemas["EvalRunOut"];
+export type EvalRunSummary = Schemas["EvalRunSummary"];
+export type EvalMetrics = Schemas["EvalMetrics"];
+export type EvalCaseResult = Schemas["EvalCaseResult"];
+// 지식 노드 폼의 선택지(GET /node-types의 kb_options), 인용, 에이전트의 지식 베이스(설계 8.1~8.4)
+export type KnowledgeNodeOptions = Schemas["KnowledgeNodeOptions"];
+export type RetrieverResource = Schemas["RetrieverResourceData"];
+export type AgentKnowledge = Schemas["AgentKnowledge"];
+export type MetadataFilterRequest = NonNullable<RetrieveRequest["metadata_filter"]>;
+export type MetadataCondition = Schemas["MetadataCondition"];
+export type MetadataOperator = MetadataCondition["comparison_operator"];
+
+// 3단계 Text2SQL 데이터 소스(설계 10장, 12.1). 스키마 스냅샷·주석·한도도 서버 모양 그대로다.
+export type SqlSourceOut = Schemas["SqlSourceOut"];
+export type SqlSourceSummary = Schemas["SqlSourceSummary"];
+export type SqlSourceCreate = Schemas["SqlSourceCreate"];
+export type SqlSourcePatch = Schemas["SqlSourcePatch"];
+export type SqlSourceFileOut = Schemas["SqlSourceFileOut"];
+export type SqlFileOptions = Schemas["SqlFileOptions"];
+export type SqlFilePatch = Schemas["SqlFilePatch"];
+export type SqlLimits = Schemas["SqlLimits"];
+export type SqlTable = Schemas["SqlTable"];
+export type SqlSchemaWarning = Schemas["SqlSchemaWarning"];
+export type SqlTableNote = Schemas["TableNote"];
+export type SqlColumnNote = Schemas["ColumnNote"];
+export type SqlAnnotationsUpdate = Schemas["SqlAnnotationsUpdate"];
+export type SqlQueryResult = Schemas["SqlQueryResult"];
+export type SqlFailure = Schemas["SqlFailure"];
+export type SqlQueryLogOut = Schemas["SqlQueryLogOut"];
+export type SqlRuntimeStatus = Schemas["SqlRuntimeStatus"];
+export type SqlExportSchemaOut = Schemas["SqlExportSchemaOut"];
+export type SqlExampleCreate = Schemas["SqlExampleCreate"];
+export type SqlNodeOptions = Schemas["SqlNodeOptions"];
+export type SqlSourceKind = SqlSourceOut["kind"];
+export type SqlSourceState = SqlSourceOut["status"]["state"];
+export type SqlApproval = SqlSourceOut["approval"];
+export type SqlEncoding = SqlFileOptions["encoding"];

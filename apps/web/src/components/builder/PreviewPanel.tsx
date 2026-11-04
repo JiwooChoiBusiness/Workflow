@@ -95,6 +95,7 @@ export function PreviewPanel({
           className="min-h-0 flex-1"
           sessionId={chat.sessionId}
           attachments
+          citationLinks
           loading={chat.loading}
           loadError={chat.loadError}
           onRetryLoad={() => void controller.resync()}

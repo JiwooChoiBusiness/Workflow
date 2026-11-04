@@ -236,3 +236,34 @@ describe("런 인스펙터 모델", () => {
     expect(run.steps[0].notices).toEqual([]);
   });
 });
+
+describe("도구 안 모델 호출 사용량(3단계 usage.tool_call_id)", () => {
+  it("search_knowledge 안의 호출은 그 도구에 더하고 스텝의 모델 호출을 덮지 않는다", () => {
+    const run = inspectRun(
+      events(
+        ["step.started", { step: 1 }],
+        ["usage", usage(1, 100, 20, 0.001)],
+        ["tool_call.started", { tool_call_id: "call_k", name: "search_knowledge" }],
+        ["usage", { ...usage(1, 40, 5, 0.0004), tool_call_id: "call_k" }],
+        ["usage", { ...usage(1, 60, 7, null), tool_call_id: "call_k" }],
+        [
+          "tool_call.completed",
+          {
+            tool_call_id: "call_k",
+            status: "ok",
+            duration_ms: 30,
+            output_excerpt: "",
+            output_bytes: 0,
+          },
+        ],
+      ),
+    );
+    const step = run.steps[0]!;
+    expect(step.usage).toMatchObject({ inputTokens: 100, outputTokens: 20, costUsd: 0.001 });
+    expect(step.toolCalls[0]?.usage).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 12,
+      costUsd: 0.0004,
+    });
+  });
+});

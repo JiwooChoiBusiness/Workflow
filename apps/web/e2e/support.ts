@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Cookie, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { AUTH_STATE } from "./auth-state.ts";
 
 // 시험용 계정. 비어 있는 DATA_DIR이면 이 값으로 처음 설정을 한다.
 export const EMAIL = process.env.E2E_EMAIL ?? "e2e@local.test";
@@ -14,7 +15,8 @@ export async function serverUp(request: APIRequestContext): Promise<boolean> {
   return Boolean(health?.ok());
 }
 
-// 로그인 레이트 리밋(분당 5회)에 걸리면 Retry-After만큼 기다렸다가 한 번 더 한다. 거절된 시도는 세지 않는다.
+// 전역 준비(global-setup.ts)가 실행마다 한 번 부른다. 잇달아 여러 번 돌려 로그인 한도(분당 5회)에 걸렸으면
+// Retry-After만큼 기다렸다가 한 번 더 한다. 거절된 시도는 세지 않는다.
 export async function apiLogin(request: APIRequestContext): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const response = await request.post("/api/console/auth/login", {
@@ -25,29 +27,6 @@ export async function apiLogin(request: APIRequestContext): Promise<boolean> {
     await new Promise((resolve) => setTimeout(resolve, Math.min(seconds, 65) * 1000));
   }
   return false;
-}
-
-export async function uiLogin(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("이메일").fill(EMAIL);
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  const limited = page.getByText(/초 뒤에 다시 시도하세요/);
-  const agents = page.getByRole("heading", { level: 1, name: "에이전트" });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    await page.getByRole("button", { name: "로그인" }).click();
-    await expect(limited.or(agents)).toBeVisible({ timeout: 15_000 });
-    if (await agents.isVisible()) return;
-    const seconds = Number((await limited.textContent())?.match(/(\d+)초/)?.[1] ?? "60");
-    await page.waitForTimeout(Math.min(seconds, 65) * 1000);
-  }
-  await expect(agents).toBeVisible();
-}
-
-// 가짜 어댑터(LLM_FAKE=true)로 띄운 서버인지. 실제 Gemini로 띄운 서버에서는 미리보기 시험을 건너뛴다.
-export async function fakeLlm(request: APIRequestContext): Promise<boolean> {
-  if (!(await apiLogin(request))) return false;
-  const models = await request.get("/api/console/models");
-  return models.ok() && Boolean((await models.json()).fake);
 }
 
 // 앞 시험이 대기열에 남긴 런이 다음 시험을 늦추지 않게 워커가 빌 때까지 기다린다. 레인은 에이전트,
@@ -83,31 +62,28 @@ export async function ensureAccount(request: APIRequestContext): Promise<void> {
 }
 
 /*
- * 가짜 어댑터 서버를 쓰는 스펙 파일의 공통 준비. 로그인은 파일마다 한 번만 하고 그 쿠키를 시험마다
- * 넣는다(서버의 로그인 레이트 리밋이 분당 5회다). 서버가 없거나 실제 Gemini로 떠 있으면 건너뛴다.
+ * 가짜 어댑터 서버를 쓰는 스펙 파일의 공통 준비. 로그인은 전역 준비가 해 둔 세션을 쓴다(config의
+ * storageState). 서버가 없거나 로그인하지 못했거나 실제 Gemini로 떠 있으면 건너뛴다.
  */
 export function setupFakeServer(): void {
-  let cookies: Cookie[] | null = null;
+  let loggedIn = false;
   let fake = false;
 
   test.beforeAll(async ({ playwright, baseURL }) => {
-    // 로그인 레이트 리밋에 걸리면 1분 가까이 기다린다.
-    test.setTimeout(90_000);
-    const request = await playwright.request.newContext({ baseURL });
+    const request = await playwright.request.newContext({ baseURL, storageState: AUTH_STATE });
     try {
       if (!(await serverUp(request))) return;
-      await ensureAccount(request);
-      fake = await fakeLlm(request);
-      cookies = (await request.storageState()).cookies;
+      const models = await request.get("/api/console/models");
+      loggedIn = models.ok();
+      fake = loggedIn && Boolean((await models.json()).fake);
     } finally {
       await request.dispose();
     }
   });
 
-  test.beforeEach(async ({ context }) => {
-    test.skip(!cookies, "백엔드가 떠 있지 않거나 로그인하지 못해 건너뛴다");
+  test.beforeEach(() => {
+    test.skip(!loggedIn, "백엔드가 떠 있지 않거나 로그인하지 못해 건너뛴다");
     test.skip(!fake, "LLM_FAKE=true로 띄운 서버에서만 돈다");
-    await context.addCookies(cookies!);
   });
 
   test.afterEach(async ({ request }) => {

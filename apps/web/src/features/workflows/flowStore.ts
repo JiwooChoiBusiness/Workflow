@@ -420,7 +420,7 @@ export function createFlowStore(
         approval_mode: "inherit",
         mask_secrets_in_outputs: true,
         limits: { max_run_seconds: 1800, max_total_tokens: 2_000_000, max_cost_usd: null },
-        webapp: { suggested_questions: [] },
+        webapp: { suggested_questions: [], citations_enabled: true },
       },
       selection: [],
       selectedEdges: [],

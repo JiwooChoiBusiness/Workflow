@@ -4,10 +4,13 @@
  * configSchemas.test.ts).
  */
 import {
+  BookPlus,
+  BookSearch,
   Bot,
   Braces,
   CircleHelp,
   CornerDownRight,
+  DatabaseZap,
   FileText,
   Flag,
   GitBranch,
@@ -22,6 +25,7 @@ import {
   ScanText,
   Sparkles,
   SquareCode,
+  TableProperties,
   Tags,
   UserRoundPen,
   Wrench,
@@ -38,7 +42,7 @@ import {
   type FlowNode,
 } from "./graph";
 
-export type NodeCategory = "io" | "model" | "logic" | "transform";
+export type NodeCategory = "io" | "model" | "knowledge" | "logic" | "transform";
 export type NodeTone = "accent" | "info" | "warn" | "ok";
 
 export interface NodeMeta {
@@ -69,11 +73,21 @@ const META: Record<string, NodeMeta> = {
   list_operator: { category: "transform", icon: ListFilter, tone: "ok" },
   document_extractor: { category: "transform", icon: FileText, tone: "ok" },
   tool: { category: "transform", icon: Wrench, tone: "ok" },
+  knowledge_retrieval: { category: "knowledge", icon: BookSearch, tone: "accent" },
+  knowledge_index: { category: "knowledge", icon: BookPlus, tone: "accent" },
+  sql_schema: { category: "knowledge", icon: TableProperties, tone: "accent" },
+  sql_query: { category: "knowledge", icon: DatabaseZap, tone: "accent" },
 };
 
 const UNKNOWN_META: NodeMeta = { category: "transform", icon: CircleHelp, tone: "ok" };
 
-export const CATEGORY_ORDER: readonly NodeCategory[] = ["io", "model", "logic", "transform"];
+export const CATEGORY_ORDER: readonly NodeCategory[] = [
+  "io",
+  "model",
+  "knowledge",
+  "logic",
+  "transform",
+];
 
 // 팔레트 순서. 서버가 이 밖의 타입을 알려 주면 뒤에 붙인다.
 export const PALETTE_ORDER: readonly string[] = [
@@ -85,6 +99,10 @@ export const PALETTE_ORDER: readonly string[] = [
   "question_classifier",
   "parameter_extractor",
   "agent",
+  "knowledge_retrieval",
+  "knowledge_index",
+  "sql_schema",
+  "sql_query",
   "if_else",
   "iteration",
   "loop",
@@ -155,6 +173,12 @@ export interface DefaultLabels {
 // loop 상한(서버 loop.MAX_ITERATIONS)과 새 노드의 기본값
 export const LOOP_MAX_ITERATIONS = 100;
 export const LOOP_DEFAULT_ITERATIONS = 10;
+
+// knowledge_index의 wait 기본 시간(서버 knowledge_index.DEFAULT_WAIT_SEC). 상한은 kb_options가 준다.
+export const INDEX_WAIT_DEFAULT_SEC = 600;
+
+// sql_schema의 토큰 상한 기본값(서버 sql_schema.DEFAULT_MAX_TOKENS). sql_options.default_schema_tokens와 같다.
+export const SQL_SCHEMA_TOKENS = 8000;
 
 export function defaultConfig(
   type: string,
@@ -264,6 +288,47 @@ export function defaultConfig(
             max_length: null,
           },
         ],
+      };
+    case "knowledge_retrieval":
+      // 서버 KnowledgeRetrievalConfig(3단계 8.1). 검색 설정을 비우면 KB가 하나일 때 그 KB의 설정이다.
+      return {
+        kb_ids: [],
+        query_var: chat ? "sys.query" : "",
+        retrieval: null,
+        metadata_filter: {
+          mode: "disabled",
+          logical_operator: "and",
+          conditions: [],
+          model: { model_id: null },
+        },
+      };
+    case "knowledge_index":
+      // 서버 KnowledgeIndexConfig(3단계 8.2). 같은 이름의 문서는 기본으로 바꿔 넣는다.
+      return {
+        kb_id: null,
+        source: { text_var: null, files_var: null },
+        name: "",
+        process_rule: null,
+        metadata: [],
+        on_duplicate: "replace",
+        wait: false,
+        timeout_sec: INDEX_WAIT_DEFAULT_SEC,
+      };
+    case "sql_schema":
+      // 서버 SqlSchemaConfig(3단계 10.3). 표를 비우면 보이는 표 전부다.
+      return { source_id: null, tables: [], include_samples: true, max_tokens: SQL_SCHEMA_TOKENS };
+    case "sql_query":
+      // 서버 SqlQueryConfig(3단계 10.3). 한도·승인을 비우면(null) 데이터 소스 값을 쓴다.
+      return {
+        source_id: null,
+        sql: "",
+        sql_var: null,
+        max_rows: null,
+        timeout_sec: null,
+        approval: null,
+        llm_rows: null,
+        llm_bytes: null,
+        export_file: true,
       };
     case "agent":
       // 서버 AgentConfig(설계 2.3, 12장). agent_id는 사용자가 고른다. limits는 비우면 버전 한도를 쓴다.

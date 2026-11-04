@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   get,
   useForm,
@@ -9,6 +9,7 @@ import {
   type UseFormReturn,
 } from "react-hook-form";
 import type * as z from "zod";
+import type { WfIssue } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { useFlow, useFlowActions } from "@/features/workflows/flowStoreContext";
 import { issuePath, isNodeLevelField, type FlowNode } from "@/features/workflows/graph";
@@ -60,6 +61,12 @@ export function useServerIssue(nodeId: string): (path: string) => string | undef
     );
     return found?.message;
   };
+}
+
+// 이 노드의 서버 검증 이슈 전부. 경고(paid_key_required 등)를 칸 오류와 따로 보일 때 쓴다.
+export function useNodeIssues(nodeId: string): WfIssue[] {
+  const issues = useFlow((state) => state.issues);
+  return useMemo(() => issues.filter((issue) => issue.node_id === nodeId), [issues, nodeId]);
 }
 
 // 폼(zod) 오류가 먼저, 없으면 같은 칸의 서버 이슈.

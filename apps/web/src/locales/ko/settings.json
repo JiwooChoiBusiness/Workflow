@@ -33,7 +33,8 @@
     "keyState": {
       "ok": "정상",
       "cooldown": "{{time}}까지 쉼",
-      "disabled": "사용 중지 (401·403)"
+      "disabled": "사용 중지 (401·403)",
+      "exhausted": "일일 한도 {{count}}개 모델"
     },
     "test": "연결 테스트",
     "testHint": "모델 목록을 받고 짧은 생성 호출을 한 번 합니다. 실제 호출이라 토큰을 조금 씁니다.",
@@ -47,7 +48,35 @@
     "generationDetail": "{{model}} · 키 {{index}} · {{latency}}ms",
     "reply": "응답",
     "usage": "입력 {{input}} · 출력 {{output}} 토큰",
-    "loadFailed": "LLM 상태를 불러오지 못했습니다."
+    "loadFailed": "LLM 상태를 불러오지 못했습니다.",
+    "paid": {
+      "title": "유료 키",
+      "none": "GEMINI_PAID_API_KEY가 없습니다. 결제를 연결한 새 프로젝트의 키를 넣으면 지식 베이스마다 유료 키 전용을 고를 수 있습니다.",
+      "key": "키",
+      "newProject": "결제를 연결한 새 프로젝트의 키입니다. 무료 키 목록에 같은 키가 있으면 서버가 뜨지 않습니다."
+    },
+    "embedding": {
+      "title": "임베딩 리미터",
+      "description": "지식 베이스의 임베딩 호출을 프로젝트 하나의 한도 안에 묶습니다. 값은 .env의 KB_EMBED_* 설정입니다.",
+      "fake": "가짜 어댑터라 무료 등급 상한(분당 100건)과 하루 몫을 걸지 않습니다.",
+      "tier": "등급",
+      "free": "무료",
+      "paid": "유료",
+      "rpm": "분당 항목",
+      "reserve": "사람 요청 몫",
+      "bulk": "인제스트 몫",
+      "tpm": "분당 토큰",
+      "rpd": "하루 항목",
+      "off": "끔",
+      "today": "오늘 {{used}}/{{limit}}건, {{time}}에 다시 참",
+      "blocked": "{{time}}까지 더 보낼 수 없음"
+    },
+    "blocked": {
+      "title": "일일 한도로 막힌 모델",
+      "description": "일일 한도 429를 받은 키·모델은 다른 키로 넘기지 않고 다음 태평양 자정까지 쉽니다.",
+      "empty": "지금 일일 한도로 막힌 키·모델이 없습니다.",
+      "until": "{{time}}까지"
+    }
   },
   "workspace": {
     "title": "워크스페이스",

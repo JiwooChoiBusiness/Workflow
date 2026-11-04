@@ -203,5 +203,32 @@ describe("메시지 기록으로 채팅 화면 만들기", () => {
       expect.objectContaining({ kind: "error", code: "model_unavailable", retryable: true }),
     ]);
     expect(failed.error).toEqual({ code: "model_unavailable", message: "429", retryable: true });
+    expect(failed.items?.[0]).not.toHaveProperty("retryAt");
+  });
+
+  it("일일 한도로 끝난 마지막 런은 끝난 시각에 retry_after를 더한 시각을 잇는다", () => {
+    const { detailDone } = contract.approval;
+    const lastRun = detailDone.last_run!;
+    const state = historyState([], {
+      ...detailDone,
+      last_run: {
+        ...lastRun,
+        status: "failed",
+        ended_at: "2026-11-04T08:00:00Z",
+        error: {
+          code: "model_unavailable",
+          message: "모든 모델이 일일 한도에 걸렸다",
+          retryable: true,
+          retry_after: 3600,
+        },
+      },
+    });
+    expect(state.items).toEqual([
+      expect.objectContaining({
+        kind: "error",
+        code: "model_unavailable",
+        retryAt: "2026-11-04T09:00:00.000Z",
+      }),
+    ]);
   });
 });

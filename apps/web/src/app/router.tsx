@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/toast";
 import { AgentCrumb, CommonCrumb, SessionCrumb, SettingsCrumb } from "./crumbs";
 import { AgentLogsCrumb, SettingsExtraCrumb, WorkflowCrumb } from "./crumbs";
 import { WorkflowLogsCrumb, WorkflowRunCrumb } from "./crumbs";
+import { KnowledgeCrumb, KnowledgeDocumentCrumb } from "./crumbs";
+import { SqlSourceCrumb } from "./crumbs";
 import { RequireAuth } from "./guards";
 import { AppShell } from "./layout/AppShell";
 import type { RouteHandle } from "./layout/contextBar";
@@ -105,6 +107,52 @@ export const routes: RouteObject[] = [
                             path: ":rid",
                             lazy: page(() => import("./pages/workflows/WorkflowRunPage")),
                             handle: handle((params) => <WorkflowRunCrumb rid={params.rid ?? ""} />),
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    path: "knowledge",
+                    handle: handle(() => <CommonCrumb k="nav.knowledge" />),
+                    children: [
+                      {
+                        index: true,
+                        lazy: page(() => import("./pages/knowledge/KnowledgePage")),
+                      },
+                      {
+                        // 데이터 소스(Text2SQL). 정적 경로라 아래 지식 베이스의 :id보다 먼저 맞는다.
+                        path: "sql-sources",
+                        handle: handle(() => <CommonCrumb k="nav.sqlSources" />),
+                        children: [
+                          {
+                            index: true,
+                            lazy: page(() => import("./pages/knowledge/SqlSourcesPage")),
+                          },
+                          {
+                            path: ":id",
+                            lazy: page(() => import("./pages/knowledge/SqlSourcePage")),
+                            handle: handle((params) => <SqlSourceCrumb id={params.id ?? ""} />),
+                          },
+                        ],
+                      },
+                      {
+                        path: ":id",
+                        handle: handle((params) => <KnowledgeCrumb id={params.id ?? ""} />),
+                        children: [
+                          {
+                            index: true,
+                            lazy: page(() => import("./pages/knowledge/KnowledgeBasePage")),
+                          },
+                          {
+                            path: "documents/:docId",
+                            lazy: page(() => import("./pages/knowledge/KnowledgeDocumentPage")),
+                            handle: handle((params) => (
+                              <KnowledgeDocumentCrumb
+                                id={params.id ?? ""}
+                                docId={params.docId ?? ""}
+                              />
+                            )),
                           },
                         ],
                       },

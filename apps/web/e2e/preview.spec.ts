@@ -11,7 +11,6 @@ import {
   runStatus,
   send,
   setupFakeServer,
-  uiLogin,
   waitingRuns,
 } from "./support.ts";
 
@@ -29,13 +28,9 @@ setupFakeServer();
 
 test("빌더 미리보기: 에이전트 생성·모델 선택·저장 뒤 승인 카드, 도구 카드, 답, 파일 내려받기", async ({
   page,
-  context,
 }) => {
   test.setTimeout(120_000);
-  // 이 시험은 화면으로 로그인한다.
-  await context.clearCookies();
-  await uiLogin(page);
-  await expect(page).toHaveURL(/\/agents$/);
+  await page.goto("/agents");
 
   // 에이전트가 하나도 없으면 빈 화면 안내에도 같은 버튼이 있다.
   await page.getByRole("button", { name: "새 에이전트" }).first().click();

@@ -49,6 +49,7 @@ import { ChatflowChat } from "../chat/ChatflowChat";
 import { ConversationTitleDialog } from "../chat/ConversationTitleDialog";
 import { NodeTimeline } from "./NodeTimeline";
 import { PendingPrompt } from "./PendingPrompt";
+import { RunErrorAlert } from "./RunErrorAlert";
 import { pendingInCard, useTimelineParts, type CurrentRun } from "./RunPanel";
 
 export const CHAT_TABS = ["chat", "nodes", "variables"] as const;
@@ -308,12 +309,7 @@ function NodesPanel({
       {meta.connection ? (
         <ConnectionNotice status={meta.connection.status} attempt={meta.connection.attempt} />
       ) : null}
-      {state.error ? (
-        <Alert tone="danger" title={t("run.error", { code: state.error.code })}>
-          {state.error.nodeId ? `${titleOf(state.error.nodeId)}: ` : ""}
-          {state.error.message}
-        </Alert>
-      ) : null}
+      {state.error ? <RunErrorAlert error={state.error} nodeTitle={titleOf} /> : null}
       {state.pendingInteraction && state.status === "waiting_input" ? (
         pendingInCard(state) ? (
           <Alert
@@ -450,6 +446,7 @@ export function ChatflowPreview({
             nodeTitle={titleOf}
             beforeSend={beforeSend}
             onSendError={onSendError}
+            citationLinks
             toolbar={
               <Badge tone="info" title={t("chat.draftHint")}>
                 {t("chat.draftBadge")}

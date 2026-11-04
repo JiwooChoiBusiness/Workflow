@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import {
   draftRunRequest,
+  fetchWorkflowRuns,
   useWorkflow,
   useWorkflowDraft,
   validateDraft,
@@ -518,6 +519,25 @@ function Editor({ workflow, draft }: { workflow: WorkflowOut; draft: WorkflowVer
     });
   });
   useEffect(() => () => controller.dispose(), [controller]);
+  // 새로 고친 뒤에도 실행 탭이 진행 중인(입력 대기 포함) 미리보기 런에 다시 붙는다(2단계 후속 9).
+  // 챗플로우는 미리보기 대화가 그 대화의 런에 붙는다.
+  useEffect(() => {
+    if (workflow.kind !== "workflow") return;
+    let cancelled = false;
+    fetchWorkflowRuns(workflow.id, { trigger: "preview", limit: 5 }).then(
+      (list) => {
+        // 열린 런보다 나중에 시작해 이미 끝난 미리보기 런이 앞에 있을 수 있다. 최근 다섯 개 중
+        // 처음 열린 런에 붙는다.
+        const open = list.items.find((run) => isWfRunOpen(run.status));
+        if (cancelled || !open || controller.runId) return;
+        controller.attach(open.id, 0);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [workflow.id, workflow.kind, controller]);
   return (
     <FlowStoreProvider store={store}>
       <WfRunProvider controller={controller}>

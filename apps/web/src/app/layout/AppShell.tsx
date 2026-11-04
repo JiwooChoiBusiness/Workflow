@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Bot,
   ChevronRight,
   LogOut,
@@ -31,6 +32,7 @@ import { ContextBarSlotContext, type RouteHandle } from "./contextBar";
 const NAV_ITEMS = [
   { to: "/agents", icon: Bot, key: "nav.agents" },
   { to: "/workflows", icon: Workflow, key: "nav.workflows" },
+  { to: "/knowledge", icon: BookOpen, key: "nav.knowledge" },
   { to: "/skills", icon: Puzzle, key: "nav.skills" },
   { to: "/logs", icon: ScrollText, key: "nav.logs" },
   { to: "/settings", icon: Settings, key: "nav.settings" },

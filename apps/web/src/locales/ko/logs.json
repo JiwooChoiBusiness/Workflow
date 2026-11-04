@@ -173,7 +173,9 @@
     "outputTitle": "{{name}} 전체 출력",
     "outputDescription": "출력 크기 {{size}}",
     "loadingOutput": "출력을 불러오는 중…",
-    "outputFailed": "출력을 불러오지 못했습니다."
+    "outputFailed": "출력을 불러오지 못했습니다.",
+    "modelUsage": "도구 안 모델 호출 입력 {{input}} · 출력 {{output}}",
+    "modelUsageHint": "검색 도구의 자동 필터·LLM 재순위 호출입니다. 스텝의 모델 호출과 따로 세고 런 합계에는 들어 있습니다."
   },
   "toolStatus": {
     "ok": "완료",

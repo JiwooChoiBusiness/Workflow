@@ -1,16 +1,27 @@
-import { ChevronRight, Download } from "lucide-react";
+import { ChevronRight, Download, FileText } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ResultTable } from "@/components/sql/ResultTable";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { parseToolResult } from "@/features/sql/results";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatDuration, formatNumber } from "@/lib/format";
 import { CALL_AGENT, type ToolCallView } from "@/stores/runStore";
 import { useRunStore } from "@/stores/runStoreContext";
 import { ChildRunCard } from "./ChildRunCard";
+import { CitationChips } from "./CitationChips";
 import { ToolIcon } from "./ToolIcon";
-import { prettyJson, summarizeInput } from "./toolSummary";
+import {
+  knowledgeHits,
+  prettyJson,
+  QUERY_SQL,
+  SEARCH_KNOWLEDGE,
+  summarizeInput,
+} from "./toolSummary";
+
+type FileHref = (sessionFileId: string) => string | null;
 
 const RESULT_TONE: Record<string, BadgeTone> = {
   ok: "ok",
@@ -69,13 +80,136 @@ function ToolOutput({ tool }: { tool: ToolCallView }) {
   );
 }
 
-export function ToolCallCard({ toolCallId }: { toolCallId: string }) {
-  const name = useRunStore((state) => state.toolCalls[toolCallId]?.name);
-  if (name === CALL_AGENT) return <ChildRunCard toolCallId={toolCallId} />;
-  return <BasicToolCard toolCallId={toolCallId} />;
+/*
+ * search_knowledge 결과 요약(3단계 설계 12.3): 결과·문서 수와 1위 문서, 인용 칩. 실시간 카드는
+ * tool_call.completed의 인용으로, 메시지 기록에서 다시 그린 카드는 결과 글의 <document> 머리로 요약한다.
+ */
+function KnowledgeSummary({ tool, citationLinks }: { tool: ToolCallView; citationLinks: boolean }) {
+  const { t } = useTranslation("chat");
+  const resources = tool.retrieverResources;
+  const hits = resources
+    ? resources.map((item) => ({
+        position: item.position,
+        documentName: item.document_name,
+        documentKey: item.document_id,
+      }))
+    : knowledgeHits(tool.output.map((chunk) => chunk.text).join("")).map((hit) => ({
+        ...hit,
+        documentKey: `${hit.datasetName}/${hit.documentName}`,
+      }));
+  if (tool.result !== "ok") return null;
+  const documents = new Set(hits.map((hit) => hit.documentKey)).size;
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-line px-3 py-2">
+      <p className="text-xs text-ink-muted">
+        {hits.length === 0
+          ? t("tool.knowledgeNone")
+          : t("tool.knowledgeSummary", {
+              count: hits.length,
+              documents,
+              name: hits[0]?.documentName ?? "",
+            })}
+      </p>
+      {resources?.length ? (
+        <CitationChips citations={resources} chunkLinks={citationLinks} />
+      ) : null}
+    </div>
+  );
 }
 
-function BasicToolCard({ toolCallId }: { toolCallId: string }) {
+/*
+ * query_sql 결과(3단계 설계 10.3, 12.3): 행 수·잘림·실행한 SQL과 결과 글의 표(앞 llm_rows행). 잘렸으면 전체가
+ * 작업공간 sql/<호출>.csv에 남고, 런이 끝나 file.changed가 오면 그 파일을 내려받는 링크가 된다.
+ */
+function SqlSummary({ tool, fileHref }: { tool: ToolCallView; fileHref?: FileHref }) {
+  const { t } = useTranslation("chat");
+  const output = tool.output.map((chunk) => chunk.text).join("");
+  const parsed = parseToolResult(output);
+  const csvPath = parsed.csvPath;
+  const file = useRunStore((state) =>
+    csvPath ? state.files.find((item) => item.path === csvPath) : undefined,
+  );
+  if (tool.result !== "ok") return null;
+  const executed = tool.sql?.sql_executed ?? parsed.executed;
+  const rows = tool.sql?.row_count ?? parsed.rowCount ?? parsed.table?.rows.length ?? 0;
+  const truncated = tool.sql?.truncated ?? parsed.truncated;
+  const href =
+    file && fileHref && file.downloadable && file.sessionFileId
+      ? fileHref(file.sessionFileId)
+      : null;
+  const shown = parsed.table?.rows.length ?? 0;
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-line px-3 py-2">
+      <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+        <span className="font-medium text-ink">
+          {t("tool.sqlRows", { rows: formatNumber(rows) })}
+        </span>
+        {truncated ? <Badge tone="warn">{t("tool.sqlTruncated")}</Badge> : null}
+        {shown > 0 && shown < rows ? <span>{t("tool.sqlShown", { shown })}</span> : null}
+      </p>
+      {executed ? (
+        <pre
+          className="max-h-24 overflow-auto rounded-md bg-code px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap text-code-ink"
+          aria-label={t("tool.sqlExecuted")}
+        >
+          {executed}
+        </pre>
+      ) : null}
+      {parsed.table && parsed.table.rows.length > 0 ? (
+        <ResultTable
+          columns={parsed.table.columns}
+          rows={parsed.table.rows}
+          label={t("tool.sqlTable")}
+          className="max-h-64"
+        />
+      ) : null}
+      {csvPath ? (
+        <p className="flex items-center gap-1.5 text-xs">
+          <FileText className="size-3.5 shrink-0 text-ink-subtle" aria-hidden />
+          {href ? (
+            <a
+              href={href}
+              download
+              className="inline-flex items-center gap-1 text-accent hover:underline"
+            >
+              {t("tool.sqlCsv")}
+              <Download className="size-3.5" aria-hidden />
+            </a>
+          ) : (
+            <span className="text-ink-muted">{t("tool.sqlCsvPending", { path: csvPath })}</span>
+          )}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function ToolCallCard({
+  toolCallId,
+  citationLinks = false,
+  fileHref,
+}: {
+  toolCallId: string;
+  citationLinks?: boolean;
+  // 작업공간 파일(세션 파일) 내려받기 주소. query_sql의 잘린 결과 CSV에 쓴다.
+  fileHref?: FileHref;
+}) {
+  const name = useRunStore((state) => state.toolCalls[toolCallId]?.name);
+  if (name === CALL_AGENT) return <ChildRunCard toolCallId={toolCallId} />;
+  return (
+    <BasicToolCard toolCallId={toolCallId} citationLinks={citationLinks} fileHref={fileHref} />
+  );
+}
+
+function BasicToolCard({
+  toolCallId,
+  citationLinks,
+  fileHref,
+}: {
+  toolCallId: string;
+  citationLinks: boolean;
+  fileHref?: FileHref;
+}) {
   const { t } = useTranslation("chat");
   const tool = useRunStore((state) => state.toolCalls[toolCallId]);
   const [open, setOpen] = useState(false);
@@ -119,6 +253,10 @@ function BasicToolCard({ toolCallId }: { toolCallId: string }) {
           </span>
         ) : null}
       </Collapsible.Trigger>
+      {tool.name === SEARCH_KNOWLEDGE && done ? (
+        <KnowledgeSummary tool={tool} citationLinks={citationLinks} />
+      ) : null}
+      {tool.name === QUERY_SQL && done ? <SqlSummary tool={tool} fileHref={fileHref} /> : null}
       <Collapsible.Content className="flex flex-col gap-3 border-t border-line px-3 py-3">
         <section>
           <h4 className="mb-1 text-xs font-medium text-ink-muted">{t("tool.input")}</h4>

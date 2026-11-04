@@ -13,10 +13,10 @@ import { RunStatusView } from "@/components/chat/RunStatusBar";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { OutputsView } from "@/components/flow/run/OutputsView";
 import { PendingPrompt } from "@/components/flow/run/PendingPrompt";
+import { RunErrorAlert } from "@/components/flow/run/RunErrorAlert";
 import { FlowChatApp } from "@/components/flow/webapp/FlowChatApp";
 import { FlowRunForm } from "@/components/flow/webapp/FlowRunForm";
 import { RunProgress } from "@/components/flow/webapp/RunProgress";
-import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/layout";
@@ -284,11 +284,7 @@ function FlowApp({ app }: { app: FlowAppOut }) {
                     attempt={meta.connection.attempt}
                   />
                 ) : null}
-                {state.error ? (
-                  <Alert tone="danger" title={t("run.error", { code: state.error.code })}>
-                    {state.error.message}
-                  </Alert>
-                ) : null}
+                {state.error ? <RunErrorAlert error={{ ...state.error, nodeId: null }} /> : null}
                 {state.pendingInteraction && state.status === "waiting_input" ? (
                   <PendingPrompt
                     pending={state.pendingInteraction}

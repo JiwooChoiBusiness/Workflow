@@ -17,7 +17,7 @@ import type { NodeInfo } from "@/components/flow/run/NodeRunCard";
 import { NodeTimeline } from "@/components/flow/run/NodeTimeline";
 import { OutputsView } from "@/components/flow/run/OutputsView";
 import { PendingPrompt } from "@/components/flow/run/PendingPrompt";
-import { Alert } from "@/components/ui/alert";
+import { RunErrorAlert } from "@/components/flow/run/RunErrorAlert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { KeyValueList, Panel } from "@/components/ui/layout";
@@ -39,6 +39,7 @@ import "@/features/workflows/i18n";
 import { shortRunId, wfRunDuration } from "@/features/workflows/runLogFilters";
 import { consoleWfRunApi, WfRunController } from "@/features/workflows/wfRunController";
 import { isWfRunOpen, stateFromRun } from "@/features/workflows/wfRunStore";
+import { retryAtOf } from "@/stores/runStore";
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime, formatDuration, formatNumber } from "@/lib/format";
 import { nodeLabel } from "@/components/flow/labels";
@@ -154,10 +155,15 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WfRunDetail }) 
             ]}
           />
           {run.error ? (
-            <Alert tone="danger" title={t("run.error", { code: run.error.code })}>
-              {run.error.node_id ? `${titleOf(run.error.node_id)}: ` : ""}
-              {run.error.message}
-            </Alert>
+            <RunErrorAlert
+              error={{
+                code: run.error.code,
+                message: run.error.message,
+                nodeId: run.error.node_id ?? null,
+                retryAt: retryAtOf(run.ended_at, run.error.retry_after),
+              }}
+              nodeTitle={titleOf}
+            />
           ) : null}
           {meta.connection ? (
             <ConnectionNotice status={meta.connection.status} attempt={meta.connection.attempt} />

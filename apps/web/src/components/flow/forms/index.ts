@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { lazy, type ComponentType } from "react";
 import { AgentForm } from "./AgentForm";
 import { AggregatorForm } from "./AggregatorForm";
 import { AnswerForm } from "./AnswerForm";
@@ -19,6 +19,22 @@ import type { NodeFormProps } from "./shared";
 import { StartForm } from "./StartForm";
 import { TemplateForm } from "./TemplateForm";
 import { ToolForm } from "./ToolForm";
+
+// 지식 노드 폼은 지식 화면 문구(knowledge)와 검색 설정·청크 규칙 폼을 함께 쓴다. 그 노드를 고를 때 따로 받아
+// 편집기 묶음을 키우지 않는다.
+const KnowledgeRetrievalForm = lazy(async () => ({
+  default: (await import("./KnowledgeRetrievalForm")).KnowledgeRetrievalForm,
+}));
+const KnowledgeIndexForm = lazy(async () => ({
+  default: (await import("./KnowledgeIndexForm")).KnowledgeIndexForm,
+}));
+// SQL 노드 폼도 데이터 소스 문구(sql)를 함께 쓴다. 지식 노드 폼처럼 고를 때 받는다.
+const SqlSchemaForm = lazy(async () => ({
+  default: (await import("./SqlSchemaForm")).SqlSchemaForm,
+}));
+const SqlQueryForm = lazy(async () => ({
+  default: (await import("./SqlQueryForm")).SqlQueryForm,
+}));
 
 // 타입별 속성 폼(설계 7.3). 여기 없는 타입은 속성 패널이 config JSON 편집기로 보인다.
 export const NODE_FORMS: Record<string, ComponentType<NodeFormProps>> = {
@@ -41,4 +57,8 @@ export const NODE_FORMS: Record<string, ComponentType<NodeFormProps>> = {
   document_extractor: DocumentExtractorForm,
   tool: ToolForm,
   human_input: HumanInputForm,
+  knowledge_retrieval: KnowledgeRetrievalForm,
+  knowledge_index: KnowledgeIndexForm,
+  sql_schema: SqlSchemaForm,
+  sql_query: SqlQueryForm,
 };

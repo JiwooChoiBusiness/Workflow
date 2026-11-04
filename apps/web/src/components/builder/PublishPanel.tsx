@@ -1,5 +1,5 @@
 import { History, Rocket } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { isApiError } from "@/api/http";
 import type { AgentOut } from "@/api/types";
@@ -34,6 +34,55 @@ export function publishErrorMessage(error: unknown, tc: T): string {
     if (details.length > 0) return [error.message, ...details].join(" ");
   }
   return errorMessage(error, tc);
+}
+
+interface RefusalDetail {
+  msg?: unknown;
+  message?: unknown;
+  type?: unknown;
+  code?: unknown;
+}
+
+// 발행을 막은 이유(422). 유료 키 전용 지식 베이스를 쓰는데 유료 키가 없으면 워크플로우는 paid_key_missing,
+// 에이전트는 draft_invalid의 details(type paid_key_missing, loc sub_agents.i.agent_id 등)로 온다.
+export function publishRefusal(error: unknown): { lines: string[]; paidKey: boolean } | null {
+  if (!isApiError(error, 422)) return null;
+  if (error.code === "paid_key_missing") return { lines: [], paidKey: true };
+  if (error.code !== "draft_invalid" || !Array.isArray(error.details)) return null;
+  const details = error.details as RefusalDetail[];
+  const lines = details
+    .map((detail) =>
+      typeof detail.msg === "string"
+        ? detail.msg
+        : typeof detail.message === "string"
+          ? detail.message
+          : "",
+    )
+    .filter(Boolean);
+  const paidKey = details.some(
+    (detail) => detail.type === "paid_key_missing" || detail.code === "paid_key_missing",
+  );
+  return { lines, paidKey };
+}
+
+const REFUSAL_LINES = 5;
+
+function PublishRefusal({ error }: { error: unknown }) {
+  const { t } = useTranslation("agents");
+  const refusal = publishRefusal(error);
+  if (!refusal) return null;
+  return (
+    <Alert tone="danger" title={t("publish.refused")}>
+      {refusal.lines.length > 0 ? (
+        <ul className="list-disc pl-4">
+          {refusal.lines.slice(0, REFUSAL_LINES).map((line, index) => (
+            <li key={index}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+      {refusal.paidKey ? <p className="mt-1">{t("publish.paidKeyMissing")}</p> : null}
+    </Alert>
+  );
 }
 
 export interface VersionItem {
@@ -80,6 +129,7 @@ export function PublishPanelView({
   beforePublish,
   description,
   pendingText,
+  notice,
   onPublishError,
 }: {
   source: PublishSource;
@@ -88,6 +138,8 @@ export function PublishPanelView({
   beforePublish?: () => Promise<boolean>;
   description?: string;
   pendingText?: string;
+  // 발행 단추 위에 둘 안내(유료 키 전용 지식 베이스를 쓰는 워크플로우 등)
+  notice?: ReactNode;
   onPublishError?: (error: unknown) => void;
 }) {
   const { t } = useTranslation("agents");
@@ -96,6 +148,13 @@ export function PublishPanelView({
   const [note, setNote] = useState("");
   const [restoring, setRestoring] = useState<VersionItem | null>(null);
   const [preparing, setPreparing] = useState(false);
+  const [refused, setRefused] = useState<unknown>(null);
+  // 발행 거부는 초안을 고치기 시작하면(dirty) 내린다. 고친 뒤에도 남아 있으면 아직 막힌 것처럼 보인다.
+  const [wasDirty, setWasDirty] = useState(dirty);
+  if (dirty !== wasDirty) {
+    setWasDirty(dirty);
+    if (dirty) setRefused(null);
+  }
   const blockedByDirty = dirty && !beforePublish;
 
   const published = [...(versions.data ?? [])].sort((a, b) => b.version_number - a.version_number);
@@ -106,6 +165,8 @@ export function PublishPanelView({
       const ready = await beforePublish().finally(() => setPreparing(false));
       if (!ready) return;
     }
+    // 저장까지 됐으면 지난 거부는 이번 발행 결과로 바뀐다.
+    setRefused(null);
     publish.mutate(note.trim() || null, {
       onSuccess: ({ version, warnings }) => {
         setNote("");
@@ -120,7 +181,12 @@ export function PublishPanelView({
       },
       onError: (error) => {
         onPublishError?.(error);
-        toast.error(publishErrorMessage(error, tc));
+        setRefused(error);
+        toast.error(
+          isApiError(error, 422) && error.code === "paid_key_missing"
+            ? t("publish.paidKeyMissing")
+            : publishErrorMessage(error, tc),
+        );
       },
     });
   }
@@ -178,7 +244,9 @@ export function PublishPanelView({
               onChange={(event) => setNote(event.target.value)}
             />
           </Field>
+          {notice}
           {blockedByDirty ? <Alert tone="warn" title={t("publish.saveFirst")} /> : null}
+          <PublishRefusal error={refused} />
           {publish.isPending ? (
             <Alert tone="info" title={pendingText ?? t("publish.pending")} />
           ) : null}

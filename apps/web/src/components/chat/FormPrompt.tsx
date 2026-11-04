@@ -1,5 +1,5 @@
 import { ClipboardList } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { lazy, Suspense, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isApiError } from "@/api/http";
 import type { WorkflowFormData } from "@/api/run-events";
@@ -7,7 +7,9 @@ import type { WfFileOut } from "@/api/types";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { RunInputsForm } from "@/components/flow/run/RunInputsForm";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { isSqlApprovalForm } from "@/features/sql/approval";
 import "@/features/workflows/i18n";
 import {
   formFieldsOf,
@@ -18,15 +20,43 @@ import {
 } from "@/features/workflows/runInputs";
 import { AssistantMessage } from "./AssistantMessage";
 
-// 409로 돌아온 경우. 런이 이미 이어졌거나 끝나서 카드가 곧 사라지므로 알림으로도 남긴다.
-const CLOSED_CODES = ["input_timeout", "run_not_waiting", "wrong_input_kind"] as const;
-type ClosedCode = (typeof CLOSED_CODES)[number];
+// SQL 승인 카드는 SQL 편집기(CodeMirror)와 데이터 소스 문구를 쓴다. 그 폼이 뜰 때 받는다.
+const SqlApprovalPrompt = lazy(async () => ({
+  default: (await import("./SqlApprovalPrompt")).SqlApprovalPrompt,
+}));
 
-function closedCode(error: unknown): ClosedCode | null {
+// 409로 돌아온 경우. 런이 이미 이어졌거나 끝나서 카드가 곧 사라지므로 알림으로도 남긴다.
+export const CLOSED_CODES = ["input_timeout", "run_not_waiting", "wrong_input_kind"] as const;
+export type ClosedCode = (typeof CLOSED_CODES)[number];
+
+export function closedCode(error: unknown): ClosedCode | null {
   if (!isApiError(error, 409)) return null;
   return (CLOSED_CODES as readonly string[]).includes(error.code)
     ? (error.code as ClosedCode)
     : null;
+}
+
+export interface FormPromptProps {
+  form: WorkflowFormData;
+  nodeTitle: string;
+  upload: (file: File) => Promise<WfFileOut>;
+  busy?: boolean;
+  onSubmit: (values: Record<string, unknown>) => Promise<true | unknown>;
+}
+
+/*
+ * 런이 기다리는 폼. sql_query 노드의 승인 폼(안내문 표식과 칸 모양으로 알아본다, 3단계 10.6)은 SQL 승인 카드로,
+ * 그 밖(human_input)은 필드 폼으로 그린다. 둘 다 /input에 {kind: "form", values}를 보낸다.
+ */
+export function FormPrompt(props: FormPromptProps) {
+  if (isSqlApprovalForm(props.form)) {
+    return (
+      <Suspense fallback={<Spinner className="size-4" />}>
+        <SqlApprovalPrompt {...props} />
+      </Suspense>
+    );
+  }
+  return <FieldsFormPrompt {...props} />;
 }
 
 /*
@@ -34,19 +64,7 @@ function closedCode(error: unknown): ClosedCode | null {
  * 이어서 돈다. 필드는 런 입력 폼(start 필드)과 같은 모양이라 RunInputsForm을 그대로 쓰고, 파일 칸은 고르는
  * 즉시 올려 받은 id를 값으로 보낸다. onSubmit은 서버가 받았으면 true, 아니면 그 오류를 돌려준다.
  */
-export function FormPrompt({
-  form,
-  nodeTitle,
-  upload,
-  busy = false,
-  onSubmit,
-}: {
-  form: WorkflowFormData;
-  nodeTitle: string;
-  upload: (file: File) => Promise<WfFileOut>;
-  busy?: boolean;
-  onSubmit: (values: Record<string, unknown>) => Promise<true | unknown>;
-}) {
+function FieldsFormPrompt({ form, nodeTitle, upload, busy = false, onSubmit }: FormPromptProps) {
   const { t } = useTranslation("workflows");
   const titleId = useId();
   const fields = useMemo(() => formFieldsOf(form.fields), [form.fields]);

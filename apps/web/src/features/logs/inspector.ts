@@ -66,6 +66,8 @@ export interface InspectorToolCall {
   outputStored: boolean;
   interaction: InspectorInteraction | null;
   child: InspectorChildRun | null;
+  // 도구 안의 채팅 호출(search_knowledge의 자동 필터·LLM 재순위) 사용량의 합. 스텝의 모델 호출과 따로 센다.
+  usage: InspectorUsage | null;
 }
 
 export interface InspectorMessage {
@@ -155,6 +157,23 @@ function newTool(id: string, name: string): InspectorToolCall {
     outputStored: false,
     interaction: null,
     child: null,
+    usage: null,
+  };
+}
+
+function addUsage(total: InspectorUsage | null, add: InspectorUsage): InspectorUsage {
+  if (total === null) return add;
+  const plus = (a: number | null, b: number | null) =>
+    a === null && b === null ? null : (a ?? 0) + (b ?? 0);
+  return {
+    model: total.model === add.model ? total.model : `${total.model}, ${add.model}`,
+    keyIndex: total.keyIndex ?? add.keyIndex,
+    inputTokens: total.inputTokens + add.inputTokens,
+    outputTokens: total.outputTokens + add.outputTokens,
+    reasoningTokens: plus(total.reasoningTokens, add.reasoningTokens),
+    cachedInputTokens: plus(total.cachedInputTokens, add.cachedInputTokens),
+    costUsd: plus(total.costUsd, add.costUsd),
+    estimated: total.estimated || add.estimated,
   };
 }
 
@@ -279,8 +298,7 @@ export function inspectRun(events: readonly RunEventOut[]): RunInspection {
       }
       case "usage": {
         const usage = dataOf<"usage">(data);
-        const step = result.steps.find((item) => item.step === usage.step) ?? stepForTools();
-        step.usage = {
+        const entry: InspectorUsage = {
           model: usage.model,
           keyIndex: usage.key_index ?? null,
           inputTokens: usage.input_tokens,
@@ -290,6 +308,15 @@ export function inspectRun(events: readonly RunEventOut[]): RunInspection {
           costUsd: usage.cost_usd ?? null,
           estimated: usage.estimated,
         };
+        // 한 스텝에 usage가 여럿일 수 있다(3단계 17.4). 도구 안의 호출은 그 도구에 더하고 스텝의 모델
+        // 호출을 덮지 않는다. 런 합계는 run.completed의 usage_total이 그대로 맞다.
+        if (usage.tool_call_id) {
+          const tool = toolFor(usage.tool_call_id, null);
+          tool.usage = addUsage(tool.usage, entry);
+          break;
+        }
+        const step = result.steps.find((item) => item.step === usage.step) ?? stepForTools();
+        step.usage = entry;
         break;
       }
       case "message.completed": {

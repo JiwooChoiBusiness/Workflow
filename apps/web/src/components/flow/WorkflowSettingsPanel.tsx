@@ -25,6 +25,7 @@ import {
   type T,
 } from "@/lib/formSchemas";
 import { applyServerErrors } from "@/lib/serverErrors";
+import { PaidKnowledgeNotice } from "./PaidKnowledgeNotice";
 
 function basicsSchema(t: T) {
   return z.object({
@@ -261,6 +262,7 @@ export function WorkflowSettingsPanel({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <PaidKnowledgeNotice />
       <BasicsPanel workflow={workflow} />
       <RunSettingsPanel initial={settings} />
     </div>

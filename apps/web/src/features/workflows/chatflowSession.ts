@@ -9,6 +9,7 @@ import {
   EMPTY_HISTORY,
   EMPTY_VIEW,
   historyOf,
+  reuseCitations,
   reuseItems,
   type ChatHistory,
   type ChatTurn,
@@ -307,7 +308,8 @@ export class ChatflowSession {
       state.answerText !== previous.answerText ||
       state.answerResumedAt !== previous.answerResumedAt ||
       state.pendingInteraction !== previous.pendingInteraction ||
-      state.error !== previous.error
+      state.error !== previous.error ||
+      state.retrieverResources !== previous.retrieverResources
     ) {
       this.recompute();
     }
@@ -359,9 +361,11 @@ export class ChatflowSession {
     const next = chatView(history, turn, this.runs.store.getState(), { opening: this.opening });
     const current = this.chat.getState();
     const items = reuseItems(current.items, next.items);
+    const citations = reuseCitations(current.citations, next.citations);
     const pending = samePending(current.pending, next.pending) ? current.pending : next.pending;
     if (
       items !== current.items ||
+      citations !== current.citations ||
       pending !== current.pending ||
       next.form !== current.form ||
       next.pendingNodeId !== current.pendingNodeId ||
@@ -370,8 +374,8 @@ export class ChatflowSession {
       next.liveRunId !== current.liveRunId ||
       next.started !== current.started
     ) {
-      this.chat.setState({ ...next, items, pending }, true);
-      this.view.setState({ items, pendingInteraction: pending, status: next.status });
+      this.chat.setState({ ...next, items, citations, pending }, true);
+      this.view.setState({ items, citations, pendingInteraction: pending, status: next.status });
     }
   }
 }

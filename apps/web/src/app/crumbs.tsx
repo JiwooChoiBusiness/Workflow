@@ -4,7 +4,14 @@ import { api, unwrap } from "@/api/client";
 import { useAgent } from "@/features/agents/api";
 
 type CommonKey =
-  "nav.agents" | "nav.workflows" | "nav.skills" | "nav.logs" | "nav.settings" | "nav.account";
+  | "nav.agents"
+  | "nav.workflows"
+  | "nav.knowledge"
+  | "nav.sqlSources"
+  | "nav.skills"
+  | "nav.logs"
+  | "nav.settings"
+  | "nav.account";
 type SettingsKey = "nav.llm" | "nav.workspace" | "nav.workspaces";
 
 export function CommonCrumb({ k }: { k: CommonKey }) {
@@ -77,4 +84,41 @@ export function WorkflowRunCrumb({ rid }: { rid: string }) {
       {t("workflowRunCrumb")} <span className="font-mono text-xs">{rid.slice(-8)}</span>
     </>
   );
+}
+
+// 지식 API 모듈(features/knowledge/api)을 첫 화면 묶음에 끌어들이지 않으려고 여기서 직접 부른다. 쿼리 키는
+// knowledgeKeys.detail·document와 같아 지식 화면과 캐시를 나눠 쓴다.
+export function KnowledgeCrumb({ id }: { id: string }) {
+  const kb = useQuery({
+    queryKey: ["knowledge", id],
+    queryFn: () =>
+      unwrap(api.GET("/api/console/knowledge/{kb_id}", { params: { path: { kb_id: id } } })),
+  });
+  return <>{kb.data?.name ?? "…"}</>;
+}
+
+export function KnowledgeDocumentCrumb({ id, docId }: { id: string; docId: string }) {
+  const document = useQuery({
+    queryKey: ["knowledge", id, "document", docId],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/console/knowledge/{kb_id}/documents/{document_id}", {
+          params: { path: { kb_id: id, document_id: docId } },
+        }),
+      ),
+  });
+  return <>{document.data?.name ?? "…"}</>;
+}
+
+// 데이터 소스 API 모듈(features/sql/api)을 첫 화면 묶음에 끌어들이지 않으려고 여기서 직접 부른다. 쿼리 키는
+// sqlKeys.detail과 같다.
+export function SqlSourceCrumb({ id }: { id: string }) {
+  const source = useQuery({
+    queryKey: ["sql-sources", id],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/console/sql-sources/{source_id}", { params: { path: { source_id: id } } }),
+      ),
+  });
+  return <>{source.data?.name ?? "…"}</>;
 }

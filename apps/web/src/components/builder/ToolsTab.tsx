@@ -1,4 +1,4 @@
-import { Upload } from "lucide-react";
+import { BookSearch, DatabaseZap, Upload } from "lucide-react";
 import { useRef } from "react";
 import { useWatch, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -31,6 +31,48 @@ function approvalNote(
   if (group === "shell" && mode === "all_shell") return "needsApproval";
   if (group === "http" && mode !== "off") return "writesNeedApproval";
   return null;
+}
+
+// 지식 탭에서 지식 베이스를 붙이면 생기는 search_knowledge(3단계 8.4). 고르는 도구 묶음이 아니다.
+function KnowledgeToolRow({ form }: { form: UseFormReturn<AgentForm> }) {
+  const { t } = useTranslation("agents");
+  const kbIds = useWatch({ control: form.control, name: "knowledge.kb_ids" });
+  if (kbIds.length === 0) return null;
+  return (
+    <li className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+      <span className="grid size-5 shrink-0 place-items-center text-accent">
+        <BookSearch className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-ink">{t("tools.knowledge.label")}</p>
+        <p className="text-xs text-ink-muted">
+          {t("tools.knowledge.description", { count: kbIds.length })}
+        </p>
+      </div>
+      <Badge tone="accent">{t("tools.knowledge.auto")}</Badge>
+    </li>
+  );
+}
+
+// 지식 탭에서 데이터 소스를 붙이면 생기는 describe_sql_source·query_sql(3단계 10.3). 승인 없이 읽기 전용으로 돈다.
+function SqlToolRow({ form }: { form: UseFormReturn<AgentForm> }) {
+  const { t } = useTranslation("agents");
+  const sources = useWatch({ control: form.control, name: "sql_sources" });
+  if (sources.length === 0) return null;
+  return (
+    <li className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+      <span className="grid size-5 shrink-0 place-items-center text-accent">
+        <DatabaseZap className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-ink">{t("tools.sql.label")}</p>
+        <p className="text-xs text-ink-muted">
+          {t("tools.sql.description", { count: sources.length })}
+        </p>
+      </div>
+      <Badge tone="accent">{t("tools.sql.auto")}</Badge>
+    </li>
+  );
 }
 
 function ToolGroupToggles({ form }: { form: UseFormReturn<AgentForm> }) {
@@ -68,6 +110,8 @@ function ToolGroupToggles({ form }: { form: UseFormReturn<AgentForm> }) {
           </li>
         );
       })}
+      <KnowledgeToolRow form={form} />
+      <SqlToolRow form={form} />
     </ul>
   );
 }

@@ -6,6 +6,7 @@ export interface RadioCardOption {
   value: string;
   label: ReactNode;
   description?: ReactNode;
+  disabled?: boolean;
 }
 
 export function RadioCards({
@@ -36,7 +37,8 @@ export function RadioCards({
             key={option.value}
             htmlFor={id}
             className={cn(
-              "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+              "flex items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+              option.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
               value === option.value
                 ? "border-accent bg-accent-soft"
                 : "border-line bg-surface hover:border-line-strong",
@@ -45,6 +47,7 @@ export function RadioCards({
             <RadioGroup.Item
               id={id}
               value={option.value}
+              disabled={option.disabled}
               className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-line-strong bg-surface data-[state=checked]:border-accent"
             >
               <RadioGroup.Indicator className="block size-2 rounded-full bg-accent" />

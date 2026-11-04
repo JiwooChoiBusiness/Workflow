@@ -106,6 +106,22 @@ describe("에이전트 폼 스키마", () => {
     });
   });
 
+  it("지식 검색 설정의 top_k 상한은 서버가 알려 준 값(KB_TOP_K_MAX)을 따른다", () => {
+    const knowledge = {
+      kb_ids: ["kb-1", "kb-2"],
+      custom_retrieval: true,
+      retrieval: { ...form.knowledge.retrieval, top_k: 10 },
+    };
+    const values = { ...form, knowledge };
+    expect(issues(values)).toEqual({});
+    const result = makeAgentFormSchema(t, { maxOutputTokens: 65_536, topKMax: 8 }).safeParse(
+      values,
+    );
+    expect(result.error?.issues.map((issue) => issue.path.join("."))).toEqual([
+      "knowledge.retrieval.top_k",
+    ]);
+  });
+
   it("빈칸으로 둔 필수 숫자 칸(NaN)은 숫자 오류로 막는다", () => {
     expect(issues({ ...form, limits: { ...form.limits, max_steps: Number.NaN } })).toEqual({
       "limits.max_steps": "숫자를 입력하세요",
@@ -200,6 +216,18 @@ describe("초안 저장 본문", () => {
       name: "API_TOKEN",
       secret: true,
       value: "rotated",
+    });
+  });
+
+  it("데이터 소스는 10개까지이고, 모두 뺀 것도 저장되도록 빈 목록이라도 보낸다", () => {
+    const form = agentToForm(agent, { ...draft, sql_sources: ["src-1"] });
+    expect(form.sql_sources).toEqual(["src-1"]);
+    expect(formToDraftUpdate({ ...form, sql_sources: [] }, draft.updated_at).sql_sources).toEqual(
+      [],
+    );
+    const many = Array.from({ length: 11 }, (_, index) => `src-${index}`);
+    expect(issues({ ...form, sql_sources: many })).toEqual({
+      sql_sources: "10개까지만 둘 수 있습니다",
     });
   });
 

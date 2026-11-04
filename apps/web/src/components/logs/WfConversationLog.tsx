@@ -2,6 +2,7 @@ import { Filter, MessagesSquare, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { WfConversationOut, WfConversationSource } from "@/api/types";
+import { CitationChips } from "@/components/chat/CitationChips";
 import { ErrorAlert } from "@/components/common/ErrorAlert";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Panel } from "@/components/ui/layout";
@@ -81,6 +82,9 @@ function Messages({
               {message.text ||
                 (message.role === "assistant" ? t("logs.conversations.emptyAnswer") : "")}
             </p>
+            {message.role === "assistant" ? (
+              <CitationChips citations={message.retriever_resources ?? []} chunkLinks />
+            ) : null}
             {message.files.length > 0 ? (
               <ul className="flex flex-col gap-0.5">
                 {message.files.map((file) => (

@@ -1,0 +1,31 @@
+{
+  "description": "에이전트가 search_knowledge로 붙인 지식 베이스를 찾고 [1]을 달아 답한다(knowledge.spec.ts의 에이전트 시험만 쓴다).",
+  "turns": [
+    [
+      {
+        "type": "tool_call_start",
+        "index": 0,
+        "id": "call_search_knowledge",
+        "name": "search_knowledge"
+      },
+      {
+        "type": "tool_call_delta",
+        "index": 0,
+        "json_fragment": "{\"query\": \"연차 이월\"}"
+      },
+      {
+        "type": "tool_call_end",
+        "index": 0,
+        "id": "call_search_knowledge",
+        "name": "search_knowledge",
+        "arguments": "{\"query\": \"연차 이월\"}"
+      }
+    ],
+    [
+      {
+        "type": "text_delta",
+        "text": "연차는 다음 해로 5일까지 넘길 수 있습니다 [1]."
+      }
+    ]
+  ]
+}

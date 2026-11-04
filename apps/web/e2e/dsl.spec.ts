@@ -122,7 +122,7 @@ test("DSL: 편집기에서 내보낸 YAML을 목록에서 가져오면 노드 �
   await expect(canvas.locator(".react-flow__edge")).toHaveCount(2);
 });
 
-test("DSL: Dify 챗플로우를 가져오면 옮기지 못한 노드가 보이고, 깨진 YAML과 2MB 초과는 이유를 알린다", async ({
+test("DSL: Dify 챗플로우를 가져오면 바꾼 것과 다시 고를 지식 베이스가 보이고, 깨진 YAML과 2MB 초과는 이유를 알린다", async ({
   page,
 }) => {
   await page.goto("/workflows");
@@ -154,19 +154,21 @@ test("DSL: Dify 챗플로우를 가져오면 옮기지 못한 노드가 보이�
   await submit.click();
   await expect(importer.getByText("Dify DSL에서 변환")).toBeVisible();
   await expect(importer.getByText("노드 10개")).toBeVisible();
-  // 도구 노드는 M19부터 내장 도구로 들어오고 지식 검색만 옮기지 못한다.
-  const unsupported = importer.getByRole("region", { name: "옮기지 못한 노드 1개" });
-  await expect(unsupported.getByText("n1730000000003")).toBeVisible();
-  await expect(unsupported.getByText(/knowledge-retrieval/)).toBeVisible();
+  // 도구 노드는 M19부터, 지식 검색은 3단계 M24부터 우리 노드로 들어와 옮기지 못한 노드가 없다. Dify 지식
+  // 베이스는 이을 수 없어 비워 두고 kb_required 검증 오류로 다시 고르게 한다.
+  await expect(importer.getByRole("region", { name: /옮기지 못한 노드/ })).toHaveCount(0);
   const warnings = importer.getByRole("region", { name: /바꾸거나 버린 것/ });
   await expect(warnings.getByText(/폴백 목록의 첫 모델/).first()).toBeVisible();
-  await expect(importer.getByRole("region", { name: /검증 결과/ })).toContainText(
-    "오류 1 · 경고 0",
-  );
+  await expect(warnings.getByText(/Dify 지식 베이스 1개는 이을 수 없다/)).toBeVisible();
+  const issues = importer.getByRole("region", { name: /검증 결과/ });
+  await expect(issues).toContainText("오류 1 · 경고 0");
+  await expect(issues).toContainText("n1730000000003 · kb_ids");
 
   await importer.getByRole("button", { name: "편집기 열기" }).click();
   const canvas = page.getByRole("region", { name: "워크플로우 캔버스" });
-  await expect(canvas.getByTestId("flow-node-n1730000000003")).toBeVisible();
+  const knowledge = canvas.getByTestId("flow-node-n1730000000003");
+  await expect(knowledge).toBeVisible();
+  await expect(knowledge.getByText("지식 베이스를 고르세요")).toBeVisible();
   await expect(page.getByRole("button", { name: "검증 결과: 오류 1" })).toBeVisible();
 });
 

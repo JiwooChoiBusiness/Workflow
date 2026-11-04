@@ -1,9 +1,10 @@
 import { Check, CircleAlert, Info, MessageSquareReply, Paperclip, X } from "lucide-react";
-import { memo, useEffect, useRef, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/ui/alert";
+import type { Citation } from "@/lib/citations";
 import { cn } from "@/lib/cn";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatDateTime } from "@/lib/format";
 import { RECONNECT_MAX_RETRIES } from "@/lib/sse";
 import type { AttachmentView, PendingInteraction, TimelineItem } from "@/stores/runStore";
 import { useRunStore } from "@/stores/runStoreContext";
@@ -99,9 +100,13 @@ function Attachments({ files, fileHref }: { files: AttachmentView[]; fileHref?: 
 const TimelineEntry = memo(function TimelineEntry({
   item,
   fileHref,
+  citations,
+  citationLinks,
 }: {
   item: TimelineItem;
   fileHref?: FileHref;
+  citations?: readonly Citation[];
+  citationLinks?: boolean;
 }) {
   const { t } = useTranslation("chat");
   switch (item.kind) {
@@ -118,7 +123,14 @@ const TimelineEntry = memo(function TimelineEntry({
         </div>
       );
     case "text":
-      return <AssistantMessage text={item.text} streaming={!item.done} />;
+      return (
+        <AssistantMessage
+          text={item.text}
+          streaming={!item.done}
+          citations={citations}
+          citationLinks={citationLinks}
+        />
+      );
     case "thinking":
       return (
         <details className="group text-xs text-ink-muted">
@@ -127,7 +139,13 @@ const TimelineEntry = memo(function TimelineEntry({
         </details>
       );
     case "tool":
-      return <ToolCallCard toolCallId={item.toolCallId} />;
+      return (
+        <ToolCallCard
+          toolCallId={item.toolCallId}
+          citationLinks={citationLinks}
+          fileHref={fileHref}
+        />
+      );
     case "compaction":
       return <CompactionDivider before={item.beforeTokens} after={item.afterTokens} />;
     case "interaction":
@@ -139,16 +157,40 @@ const TimelineEntry = memo(function TimelineEntry({
         <Alert tone="danger" title={t("error.title")}>
           <span className="block font-mono text-xs">{item.code}</span>
           <span className="block">{item.message}</span>
-          {item.retryable ? <span className="block text-xs">{t("error.retryable")}</span> : null}
+          {item.retryAt ? (
+            <span className="block text-xs">
+              {t("error.retryAt", { time: formatDateTime(item.retryAt) })}
+            </span>
+          ) : item.retryable ? (
+            <span className="block text-xs">{t("error.retryable")}</span>
+          ) : null}
         </Alert>
       );
   }
 });
 
+// 런마다 인용 칩을 붙일 항목: 그 런의 마지막 답 글(항목 id → 런 id).
+export function citationAnchors(
+  items: readonly TimelineItem[],
+  citations: Readonly<Record<string, readonly Citation[]>>,
+): Map<string, string> {
+  const anchors = new Map<string, string>();
+  const last = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind === "text" && item.runId && citations[item.runId]?.length) {
+      last.set(item.runId, item.id);
+    }
+  }
+  for (const [runId, itemId] of last) anchors.set(itemId, runId);
+  return anchors;
+}
+
 export function MessageList({
   renderInteraction,
   fileHref,
   footer,
+  citationLinks = false,
+  hideCitations = false,
   className,
 }: {
   renderInteraction: (interaction: PendingInteraction) => ReactNode;
@@ -156,11 +198,20 @@ export function MessageList({
   fileHref?: FileHref;
   // 목록 끝에 둘 카드(챗플로우 human_input 폼처럼 승인·질문이 아닌 대기)
   footer?: ReactNode;
+  // 인용 팝오버에 청크 화면 링크를 둔다(콘솔만).
+  citationLinks?: boolean;
+  // 웹앱 설정(citations_enabled)으로 인용 칩을 감춘다. API 응답에는 그대로 온다.
+  hideCitations?: boolean;
   className?: string;
 }) {
   const { t } = useTranslation("chat");
   const items = useRunStore((state) => state.items);
   const pending = useRunStore((state) => state.pendingInteraction);
+  const citations = useRunStore((state) => state.citations);
+  const anchors = useMemo(
+    () => (hideCitations ? new Map<string, string>() : citationAnchors(items, citations)),
+    [items, citations, hideCitations],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -197,15 +248,26 @@ export function MessageList({
         {items.length === 0 && !pending && !footer ? (
           <p className="py-10 text-center text-sm text-ink-subtle">{t("list.empty")}</p>
         ) : null}
-        {items.map((item) => (
-          <div key={item.id} className="flex flex-col gap-2">
-            <TimelineEntry item={item} fileHref={fileHref} />
-            {/* 승인 카드는 해당 도구 카드 바로 아래에 둔다(설계 3.10). */}
-            {pending && approvalInline && item.kind === "tool" && item.toolCallId === approvalToolId
-              ? renderInteraction(pending)
-              : null}
-          </div>
-        ))}
+        {items.map((item) => {
+          const citedRun = anchors.get(item.id);
+          return (
+            <div key={item.id} className="flex flex-col gap-2">
+              <TimelineEntry
+                item={item}
+                fileHref={fileHref}
+                citations={citedRun ? citations[citedRun] : undefined}
+                citationLinks={citationLinks}
+              />
+              {/* 승인 카드는 해당 도구 카드 바로 아래에 둔다(설계 3.10). */}
+              {pending &&
+              approvalInline &&
+              item.kind === "tool" &&
+              item.toolCallId === approvalToolId
+                ? renderInteraction(pending)
+                : null}
+            </div>
+          );
+        })}
         {pending && !approvalInline ? renderInteraction(pending) : null}
         {footer}
       </div>

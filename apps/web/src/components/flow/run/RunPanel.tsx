@@ -36,6 +36,7 @@ import type { NodeInfo } from "./NodeRunCard";
 import { NodeTimeline } from "./NodeTimeline";
 import { OutputsView } from "./OutputsView";
 import { PendingPrompt } from "./PendingPrompt";
+import { RunErrorAlert } from "./RunErrorAlert";
 import { RunInputsForm } from "./RunInputsForm";
 
 export type CurrentRun = { kind: "draft" } | { kind: "single"; nodeId: string };
@@ -211,12 +212,7 @@ export function RunPanel({
           {meta.connection ? (
             <ConnectionNotice status={meta.connection.status} attempt={meta.connection.attempt} />
           ) : null}
-          {state.error ? (
-            <Alert tone="danger" title={t("run.error", { code: state.error.code })}>
-              {state.error.nodeId ? `${titleOf(state.error.nodeId)}: ` : ""}
-              {state.error.message}
-            </Alert>
-          ) : null}
+          {state.error ? <RunErrorAlert error={state.error} nodeTitle={titleOf} /> : null}
           {state.pendingInteraction && state.status === "waiting_input" ? (
             inCard ? (
               <Alert

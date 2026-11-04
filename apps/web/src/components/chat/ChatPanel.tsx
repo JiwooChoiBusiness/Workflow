@@ -38,6 +38,8 @@ export interface ChatPanelProps {
   stopping?: boolean;
   disabled?: boolean;
   attachments?: boolean;
+  // 인용 팝오버에 청크 화면 링크를 둔다(콘솔 미리보기만).
+  citationLinks?: boolean;
   className?: string;
 }
 
@@ -57,6 +59,7 @@ export function ChatPanel({
   stopping = false,
   disabled = false,
   attachments = false,
+  citationLinks = false,
   className,
 }: ChatPanelProps) {
   const { t } = useTranslation("chat");
@@ -162,7 +165,11 @@ export function ChatPanel({
         </div>
       ) : (
         <ChildScopeContext value={childScope}>
-          <MessageList renderInteraction={renderInteraction} fileHref={fileHref} />
+          <MessageList
+            renderInteraction={renderInteraction}
+            fileHref={fileHref}
+            citationLinks={citationLinks}
+          />
         </ChildScopeContext>
       )}
       <FileChangeList fileHref={fileHref} />

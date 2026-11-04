@@ -1624,6 +1624,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/console/knowledge-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Knowledge Defaults
+         * @description 임베딩 모델·차원 선택지, 새 KB의 기본 규칙과 검색 설정, 지금 돌고 있는 임베딩 리미터 값과
+         *     오늘 사용량, 유료 키 유무, SQLite 버전과 FTS 모드, 색인 파일을 쓸 수 있는지, 업로드·검색 한도.
+         *
+         *     색인 파일을 열지 못했어도 200이고 index_available이 false다.
+         */
+        get: operations["knowledge_defaults_api_console_knowledge_defaults_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/console/knowledge/{kb_id}": {
         parameters: {
             query?: never;
@@ -1649,6 +1672,28 @@ export interface paths {
          *     422 downgrade_not_allowed다.
          */
         patch: operations["patch_knowledge_base_api_console_knowledge__kb_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Knowledge Stats
+         * @description 문서 수(상태별)·청크·유닛 수, 벡터 완료율과 예상 남은 분(일일 한도 제외), index.db 크기,
+         *     추정 임베딩 토큰, 일일 한도로 멈춘 문서 수와 가장 이른 retry_after. 색인 파일을 못 쓰면 색인
+         *     값만 null이다.
+         */
+        get: operations["knowledge_stats_api_console_knowledge__kb_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/console/knowledge/{kb_id}/metadata": {
@@ -1736,6 +1781,28 @@ export interface paths {
          *     415, 파일이 KB_UPLOAD_MAX_MB를 넘으면 413이다.
          */
         post: operations["create_documents_api_console_knowledge__kb_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/indexing-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Documents Indexing Status
+         * @description 올리기 응답의 batch로 묶인 문서들의 색인 상태와 진행(completed/total_segments).
+         *
+         *     서비스 API GET /api/v1/datasets/{id}/documents/{batch}/indexing-status와 같은 계산이다.
+         */
+        get: operations["documents_indexing_status_api_console_knowledge__kb_id__documents_indexing_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1852,6 +1919,28 @@ export interface paths {
          * @description 이름 바꾸기. 보관한 문서는 400 document_archived다.
          */
         patch: operations["patch_document_api_console_knowledge__kb_id__documents__document_id__patch"];
+        trace?: never;
+    };
+    "/api/console/knowledge/{kb_id}/documents/{document_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Document File
+         * @description 원본 내려받기. 원본을 바꾼 문서는 지금 원본, 글로 만든 문서는 저장한 .txt다.
+         *
+         *     늘 attachment로 보내고 nosniff를 단다. html·svg 원본이 이 출처에서 열리지 않게 한다.
+         */
+        get: operations["download_document_file_api_console_knowledge__kb_id__documents__document_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/console/knowledge/{kb_id}/documents/{document_id}/segments": {
@@ -2133,6 +2222,282 @@ export interface paths {
         post?: never;
         /** Revoke Api Key */
         delete: operations["revoke_api_key_api_console_knowledge__kb_id__api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sql Sources
+         * @description 살아 있는 데이터 소스. state는 empty·not_prepared·stale·ready다.
+         */
+        get: operations["list_sql_sources_api_console_sql_sources_get"];
+        put?: never;
+        /**
+         * Create Sql Source
+         * @description data_policy.acknowledged가 참이어야 만든다(422 data_policy_not_acknowledged). key_tier=paid는
+         *     GEMINI_PAID_API_KEY가 있어야 한다(422 paid_key_missing). kind는 만든 뒤 바꿀 수 없다.
+         */
+        post: operations["create_sql_source_api_console_sql_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sql Source */
+        get: operations["get_sql_source_api_console_sql_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Sql Source
+         * @description 소프트 삭제. 질의 파일은 바로 지우고 원본 파일은 매시 정리가 7일 뒤 지운다.
+         */
+        delete: operations["delete_sql_source_api_console_sql_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Sql Source
+         * @description 파일의 표 이름·시트·옵션을 바꾸면 state가 stale이 되고 다시 준비해야 질의할 수 있다.
+         */
+        patch: operations["patch_sql_source_api_console_sql_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Sql Source Files
+         * @description multipart files(X-Requested-With: fetch). files 소스는 csv·tsv·xlsx를 20개까지, sqlite 소스는
+         *     .db·.sqlite 하나(올리면 바꾼다). 표 이름은 파일 이름에서 만든다. 다른 형식은 415, 파일이
+         *     SQL_UPLOAD_MAX_MB를 넘으면 413이다.
+         */
+        post: operations["upload_sql_source_files_api_console_sql_sources__source_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Sql Source File */
+        delete: operations["delete_sql_source_file_api_console_sql_sources__source_id__files__file_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Sql Source
+         * @description 스키마 스냅샷을 뜨고 files 소스는 보이는 열만 담은 질의 파일을 만든다(끝날 때까지 기다린다).
+         *
+         *     files 소스인데 런타임이 없으면 409 sql_runtime_missing, 파일을 읽지 못하면 422
+         *     sql_prepare_failed(details.file_id)다.
+         */
+        post: operations["prepare_sql_source_api_console_sql_sources__source_id__prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Sql Source Annotations
+         * @description 표·열 설명과 숨김을 통째로 바꾼다. files 소스는 숨김이 바뀌면 옛 질의 파일을 지우고(prepare가
+         *     참이면) 다시 준비한다. 다시 준비하지 못하면 status.message에 이유가 있다.
+         */
+        patch: operations["update_sql_source_annotations_api_console_sql_sources__source_id__annotations_patch"];
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Sql Source
+         * @description SQL 시험. 검증 거부와 실행 실패는 200에 ok=false·error{code, message, stage}다. 준비 전은 409
+         *     sql_source_not_prepared, files 소스인데 런타임이 없으면 409 sql_runtime_missing이다.
+         */
+        post: operations["query_sql_source_api_console_sql_sources__source_id__query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/query-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sql Source Query Logs
+         * @description 검증·실행 기록(최근 것부터). 거부도 reject_code와 함께 남는다.
+         */
+        get: operations["sql_source_query_logs_api_console_sql_sources__source_id__query_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sql Source Schema
+         * @description sql_schema 노드·describe_sql_source 도구가 모델에 주는 DDL 글과 같은 것(숨긴 열·표 제외).
+         */
+        get: operations["sql_source_schema_api_console_sql_sources__source_id__schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/export-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Sql Source Schema
+         * @description 보이는 표마다 문서 하나(DDL·설명·샘플값)를 지식 베이스에 넣는다(data_source_type=api).
+         */
+        post: operations["export_sql_source_schema_api_console_sql_sources__source_id__export_schema_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-sources/{source_id}/examples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Sql Example
+         * @description (질문, SQL)을 Q&A 지식 베이스의 문서 하나로 넣는다. Q&A가 아니면 422 kb_not_qa, 같은 쌍을
+         *     다시 넣으면 409 duplicate_document다.
+         */
+        post: operations["save_sql_example_api_console_sql_sources__source_id__examples_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sql Runtime Status
+         * @description DuckDB 런타임 상태(missing·installing·ready·failed). sqlite 소스는 런타임 없이 돈다.
+         */
+        get: operations["sql_runtime_status_api_console_sql_runtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/sql-runtime/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Sql Runtime
+         * @description 샌드박스 pip으로 DuckDB를 받고 excel·encodings 확장을 미리 설치한다. 뒤에서 돌고 GET으로
+         *     상태를 본다. 인터넷 연결이 필요하다(확장만 약 220MB).
+         */
+        post: operations["prepare_sql_runtime_api_console_sql_runtime_prepare_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2887,7 +3252,7 @@ export interface paths {
         };
         /**
          * Get Workflow Run
-         * @description 상태·출력·사용량·대기 중인 승인·질문(폴링용). 챗플로우 런도 run_id로 본다.
+         * @description 상태·출력·사용량·대기 중인 승인·질문·인용(폴링용). 챗플로우 런도 run_id로 본다.
          */
         get: operations["get_workflow_run_api_v1_workflows_run__run_id__get"];
         put?: never;
@@ -3327,7 +3692,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update Document Metadata */
+        /**
+         * Update Document Metadata
+         * @description 문서 메타데이터 값. 콘솔과 같은 모양({document_ids, values, apply_to_all})과 Dify 모양
+         *     ({operation_data: [{document_id, metadata_list: [{id, name, value}], partial_update}]})을 다
+         *     받는다. Dify 모양은 목록에 없는 사용자 필드 값을 지우고(partial_update가 참이면 그대로 둔다)
+         *     기본 필드는 건너뛴다. 응답은 두 모양 모두 바뀐 문서의 메타데이터다.
+         */
         post: operations["update_document_metadata_api_v1_datasets__dataset_id__documents_metadata_post"];
         delete?: never;
         options?: never;
@@ -3434,6 +3805,15 @@ export interface components {
             approval_mode: ("off" | "http_writes" | "all_shell") | null;
             /** Webapp Enabled */
             webapp_enabled: boolean;
+        };
+        /**
+         * AgentKnowledge
+         * @description 에이전트 버전의 지식 베이스(3단계 8.4). 비어 있지 않으면 search_knowledge가 붙는다.
+         */
+        AgentKnowledge: {
+            /** Kb Ids */
+            kb_ids?: string[];
+            retrieval_model?: components["schemas"]["RetrievalSettings"] | null;
         };
         /** AgentList */
         AgentList: {
@@ -3604,6 +3984,9 @@ export interface components {
             file_ids?: string[];
             /** Sub Agents */
             sub_agents?: components["schemas"]["SubAgentRef"][];
+            knowledge?: components["schemas"]["AgentKnowledge"];
+            /** Sql Sources */
+            sql_sources?: string[];
             /**
              * Id
              * Format: uuid
@@ -3674,6 +4057,10 @@ export interface components {
             message: string;
             /** Agent Id */
             agent_id?: string | null;
+            /** Kb Id */
+            kb_id?: string | null;
+            /** Source Id */
+            source_id?: string | null;
         };
         /**
          * ApiFlowRunInput
@@ -3848,6 +4235,7 @@ export interface components {
             status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
             pending_interaction?: components["schemas"]["PendingInteractionOut"] | null;
             error?: components["schemas"]["RunErrorOut"] | null;
+            metadata?: components["schemas"]["MessageMetadataOut"];
         };
         /** ChildChunkCreate */
         ChildChunkCreate: {
@@ -3928,6 +4316,33 @@ export interface components {
              */
             max_tokens: number;
         };
+        /** CitedChildChunk */
+        CitedChildChunk: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Content */
+            content: string;
+            /** Position */
+            position: number;
+            /** Score */
+            score: number;
+        };
+        /** CitedFusion */
+        CitedFusion: {
+            /** Cosine */
+            cosine?: number | null;
+            /** Vector Score */
+            vector_score?: number | null;
+            /** Keyword Score */
+            keyword_score?: number | null;
+            /** Vector Rank */
+            vector_rank?: number | null;
+            /** Keyword Rank */
+            keyword_rank?: number | null;
+        };
         /** CleaningRules */
         CleaningRules: {
             /**
@@ -3940,6 +4355,19 @@ export interface components {
              * @default false
              */
             remove_urls_emails: boolean;
+        };
+        /** ColumnNote */
+        ColumnNote: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
         };
         /** ConversationDetail */
         ConversationDetail: {
@@ -4268,6 +4696,41 @@ export interface components {
             /** Skipped */
             skipped?: components["schemas"]["DocumentStatusSkip"][];
         };
+        /** DifyDocumentMetadata */
+        DifyDocumentMetadata: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Metadata List */
+            metadata_list?: components["schemas"]["DifyMetadataValue"][];
+            /**
+             * Partial Update
+             * @default false
+             */
+            partial_update: boolean;
+        };
+        /**
+         * DifyDocumentMetadataUpdate
+         * @description POST .../documents/metadata의 Dify 본문({operation_data: [...]}). 기본 필드는 건너뛴다.
+         */
+        DifyDocumentMetadataUpdate: {
+            /** Operation Data */
+            operation_data: components["schemas"]["DifyDocumentMetadata"][];
+        };
+        /**
+         * DifyMetadataValue
+         * @description Dify operation_data의 metadata_list 항목. id가 없으면 name으로 필드를 찾는다.
+         */
+        DifyMetadataValue: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Value */
+            value?: number | string | null;
+        };
         /** DocumentMetadataList */
         DocumentMetadataList: {
             /** Items */
@@ -4391,6 +4854,9 @@ export interface components {
             file_ids?: string[];
             /** Sub Agents */
             sub_agents?: components["schemas"]["SubAgentRef"][];
+            knowledge?: components["schemas"]["AgentKnowledge"];
+            /** Sql Sources */
+            sql_sources?: string[];
             /**
              * Updated At
              * Format: date-time
@@ -4448,6 +4914,77 @@ export interface components {
              * @default in
              */
             target_handle: string;
+        };
+        /**
+         * EmbeddingDailyUsage
+         * @description 오늘(태평양 날짜) 임베딩 하루 몫 사용량. 무료 기본값은 하루 1,000건이다.
+         */
+        EmbeddingDailyUsage: {
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "free" | "paid";
+            /** Limit */
+            limit: number;
+            /** Used */
+            used: number;
+            /** Bulk Remaining */
+            bulk_remaining: number | null;
+            /** Reset At */
+            reset_at: string | null;
+            /** Blocked Until */
+            blocked_until: string | null;
+        };
+        /**
+         * EmbeddingLimiterInfo
+         * @description 지금 돌고 있는 임베딩 리미터의 값. 설정 화면과 업로드 대화상자가 같은 값을 본다.
+         */
+        EmbeddingLimiterInfo: {
+            /** Model */
+            model: string;
+            /** Capped */
+            capped: boolean;
+            free: components["schemas"]["EmbeddingLimits"];
+            paid: components["schemas"]["EmbeddingLimits"];
+        };
+        /**
+         * EmbeddingLimits
+         * @description 한 등급의 임베딩 리미터 값(6.6). tpm·rpd가 0이면 그 버킷을 쓰지 않는다.
+         */
+        EmbeddingLimits: {
+            /** Rpm */
+            rpm: number;
+            /** Reserve */
+            reserve: number;
+            /** Tpm */
+            tpm: number;
+            /** Rpd */
+            rpd: number;
+        };
+        /** EmbeddingModelOption */
+        EmbeddingModelOption: {
+            /**
+             * Id
+             * @constant
+             */
+            id: "gemini-embedding-2";
+            /** Dimensions */
+            dimensions: (768 | 1536 | 3072)[];
+            /**
+             * Default Dimensions
+             * @enum {integer}
+             */
+            default_dimensions: 768 | 1536 | 3072;
+            /** Prefixes */
+            prefixes: ("none" | "gemini2")[];
+            /**
+             * Default Prefix
+             * @enum {string}
+             */
+            default_prefix: "none" | "gemini2";
+            /** Input Token Limit */
+            input_token_limit: number;
         };
         /**
          * EmbeddingSettings
@@ -4565,6 +5102,10 @@ export interface components {
             items: components["schemas"]["EvalCaseOut"][];
             /** Total */
             total: number;
+            /** Document Names */
+            document_names?: {
+                [key: string]: string;
+            };
         };
         /** EvalCaseOut */
         EvalCaseOut: {
@@ -4801,6 +5342,7 @@ export interface components {
             status: "queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled";
             pending_interaction?: components["schemas"]["WfPendingOut"] | null;
             error?: components["schemas"]["WfRunErrorOut"] | null;
+            metadata?: components["schemas"]["MessageMetadataOut"];
         };
         /** FlowConversationDetail */
         FlowConversationDetail: {
@@ -5079,6 +5621,28 @@ export interface components {
             /** Field */
             field?: string | null;
         };
+        /**
+         * KbDocumentCounts
+         * @description 지우지 않은 문서 수와 목록 필터 값(display_status)별 수.
+         */
+        KbDocumentCounts: {
+            /** Total */
+            total: number;
+            /** Queuing */
+            queuing: number;
+            /** Indexing */
+            indexing: number;
+            /** Paused */
+            paused: number;
+            /** Error */
+            error: number;
+            /** Available */
+            available: number;
+            /** Disabled */
+            disabled: number;
+            /** Archived */
+            archived: number;
+        };
         /** KbDocumentList */
         KbDocumentList: {
             /** Items */
@@ -5311,6 +5875,129 @@ export interface components {
             search_while_indexing?: boolean | null;
             data_policy?: components["schemas"]["DataPolicyIn"] | null;
         };
+        /**
+         * KnowledgeBaseStats
+         * @description KB 화면의 요약(12.1). 유닛·벡터 수는 index.db에서 센다.
+         */
+        KnowledgeBaseStats: {
+            /**
+             * Kb Id
+             * Format: uuid
+             */
+            kb_id: string;
+            /**
+             * Indexing Technique
+             * @enum {string}
+             */
+            indexing_technique: "high_quality" | "economy";
+            /**
+             * Key Tier
+             * @enum {string}
+             */
+            key_tier: "free" | "paid";
+            documents: components["schemas"]["KbDocumentCounts"];
+            /** Segment Count */
+            segment_count: number;
+            /** Unit Count */
+            unit_count: number | null;
+            /** Vector Count */
+            vector_count: number | null;
+            /** Vector Ratio */
+            vector_ratio: number | null;
+            /** Vector State */
+            vector_state: ("ready" | "stale" | "missing") | null;
+            /** Pending Vector Units */
+            pending_vector_units: number | null;
+            /** Estimated Minutes */
+            estimated_minutes: number | null;
+            /** Index Bytes */
+            index_bytes: number | null;
+            /** Embedded Tokens Estimated */
+            embedded_tokens_estimated: number;
+            /** Daily Limited Documents */
+            daily_limited_documents: number;
+            /** Daily Retry After */
+            daily_retry_after: string | null;
+            /** Index Available */
+            index_available: boolean;
+            /** Index Error */
+            index_error?: string | null;
+        };
+        /**
+         * KnowledgeDefaults
+         * @description KB 만들기·설정·업로드 화면이 쓰는 기본값과 한도(12.1).
+         */
+        KnowledgeDefaults: {
+            /** Embedding Models */
+            embedding_models: components["schemas"]["EmbeddingModelOption"][];
+            embedding: components["schemas"]["EmbeddingSettingsIn"];
+            process_rule: components["schemas"]["ProcessRule"];
+            retrieval_model: components["schemas"]["RetrievalSettings"];
+            limiter: components["schemas"]["EmbeddingLimiterInfo"];
+            /** Daily */
+            daily: components["schemas"]["EmbeddingDailyUsage"][];
+            /** Paid Key */
+            paid_key: boolean;
+            /** Sqlite Version */
+            sqlite_version: string;
+            /** Fts Mode */
+            fts_mode: ("contentless" | "stored") | null;
+            /** Index Available */
+            index_available: boolean;
+            /** Index Error */
+            index_error?: string | null;
+            /** Top K Max */
+            top_k_max: number;
+            /** Upload Max Files */
+            upload_max_files: number;
+            /** Upload Max Mb */
+            upload_max_mb: number;
+            /** Doc Max Text Mb */
+            doc_max_text_mb: number;
+            /** Query Log Days */
+            query_log_days: number;
+        };
+        /**
+         * KnowledgeNodeOptions
+         * @description knowledge_retrieval·knowledge_index 노드 폼이 쓰는 값(3단계 12.1).
+         *
+         *     지식 베이스 목록은 여기 없고 GET /api/console/knowledge로 받는다.
+         */
+        KnowledgeNodeOptions: {
+            /** Max Kbs */
+            max_kbs: number;
+            /** Top K Max */
+            top_k_max: number;
+            default_retrieval: components["schemas"]["RetrievalSettings"];
+            /** Search Methods */
+            search_methods: string[];
+            /** Reranking Modes */
+            reranking_modes: string[];
+            /** Rerank Candidates Max */
+            rerank_candidates_max: number;
+            /** Filter Modes */
+            filter_modes: string[];
+            /** Max Conditions */
+            max_conditions: number;
+            /** Operators */
+            operators: {
+                [key: string]: string[];
+            };
+            /** Retrieval Timeout Sec */
+            retrieval_timeout_sec: number;
+            /** Duplicate Policies */
+            duplicate_policies: string[];
+            /** Index Statuses */
+            index_statuses: string[];
+            /** Index Wait Default Sec */
+            index_wait_default_sec: number;
+            /** Index Wait Max Sec */
+            index_wait_max_sec: number;
+            /** Tool Query Max Chars */
+            tool_query_max_chars: number;
+            /** Paid Key Configured */
+            paid_key_configured: boolean;
+        };
         /** LlmAttempt */
         LlmAttempt: {
             /** Key Index */
@@ -5499,6 +6186,14 @@ export interface components {
             /** Has More */
             has_more: boolean;
         };
+        /**
+         * MessageMetadataOut
+         * @description chat-messages blocking 응답의 metadata(Dify와 같은 자리).
+         */
+        MessageMetadataOut: {
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
+        };
         /** MessageOut */
         MessageOut: {
             /**
@@ -5534,6 +6229,8 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             } | null;
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
             /**
              * Created At
              * Format: date-time
@@ -5739,6 +6436,8 @@ export interface components {
              * @default false
              */
             retryable: boolean;
+            /** Retry After */
+            retry_after?: number | null;
         };
         /**
          * NodeType
@@ -5774,6 +6473,8 @@ export interface components {
             items: components["schemas"]["NodeType"][];
             /** Tools */
             tools?: components["schemas"]["ToolSpecOut"][];
+            kb_options?: components["schemas"]["KnowledgeNodeOptions"] | null;
+            sql_options?: components["schemas"]["SqlNodeOptions"] | null;
         };
         /** OutputSpecOut */
         OutputSpecOut: {
@@ -6147,6 +6848,64 @@ export interface components {
             status: string;
             document: components["schemas"]["RetrieveDocument"];
         };
+        /**
+         * RetrieverResourceData
+         * @description 인용 하나. position은 런 전체에서 세그먼트마다 하나이고, 모델이 본 [n]과 같다.
+         */
+        RetrieverResourceData: {
+            /** Position */
+            position: number;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Dataset Name */
+            dataset_name: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Document Name */
+            document_name: string;
+            /** Data Source Type */
+            data_source_type: string;
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /** Segment Position */
+            segment_position: number;
+            /** Score */
+            score: number;
+            /**
+             * Hit Count
+             * @default 0
+             */
+            hit_count: number;
+            /**
+             * Word Count
+             * @default 0
+             */
+            word_count: number;
+            /** Content */
+            content: string;
+            /** Answer */
+            answer?: string | null;
+            /** Doc Metadata */
+            doc_metadata?: {
+                [key: string]: unknown;
+            };
+            /** Child Chunks */
+            child_chunks?: components["schemas"]["CitedChildChunk"][] | null;
+            fusion?: components["schemas"]["CitedFusion"] | null;
+            /** Fusion Score */
+            fusion_score?: number | null;
+            /** Indexing Status */
+            indexing_status?: string | null;
+        };
         /** RetryPolicy */
         RetryPolicy: {
             /**
@@ -6209,6 +6968,8 @@ export interface components {
              * @default false
              */
             retryable: boolean;
+            /** Retry After */
+            retry_after?: number | null;
         };
         /** RunEventList */
         RunEventList: {
@@ -6502,6 +7263,8 @@ export interface components {
             message_id: string | null;
             /** Files */
             files: components["schemas"]["SessionFileOut"][];
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
         };
         /** RunningExec */
         RunningExec: {
@@ -7003,6 +7766,612 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * SqlAnnotations
+         * @description 표·열 설명과 숨김. 키는 스냅샷의 표·열 이름 그대로다.
+         */
+        SqlAnnotations: {
+            /** Tables */
+            tables?: {
+                [key: string]: components["schemas"]["TableNote"];
+            };
+        };
+        /**
+         * SqlAnnotationsUpdate
+         * @description 표·열 설명과 숨김 전체를 바꾼다. 숨김이 바뀌면 files 소스는 질의 파일을 다시 만든다.
+         */
+        SqlAnnotationsUpdate: {
+            /** Tables */
+            tables: {
+                [key: string]: components["schemas"]["TableNote"];
+            };
+            /** Glossary */
+            glossary?: string | null;
+            /**
+             * Prepare
+             * @default true
+             */
+            prepare: boolean;
+        };
+        /** SqlColumn */
+        SqlColumn: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Samples */
+            samples?: unknown[];
+        };
+        /**
+         * SqlExampleCreate
+         * @description Q&A 지식 베이스에 (질문, SQL) 한 쌍을 문서로 넣는다(10.7).
+         */
+        SqlExampleCreate: {
+            /**
+             * Kb Id
+             * Format: uuid
+             */
+            kb_id: string;
+            /** Question */
+            question: string;
+            /** Sql */
+            sql: string;
+        };
+        /** SqlExampleOut */
+        SqlExampleOut: {
+            /**
+             * Kb Id
+             * Format: uuid
+             */
+            kb_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Name */
+            name: string;
+        };
+        /** SqlExportFailure */
+        SqlExportFailure: {
+            /** Table */
+            table: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** SqlExportSchemaOut */
+        SqlExportSchemaOut: {
+            /**
+             * Kb Id
+             * Format: uuid
+             */
+            kb_id: string;
+            /** Documents */
+            documents: components["schemas"]["SqlExportedDocument"][];
+            /** Removed */
+            removed?: string[];
+            /** Failed */
+            failed?: components["schemas"]["SqlExportFailure"][];
+        };
+        /** SqlExportSchemaRequest */
+        SqlExportSchemaRequest: {
+            /**
+             * Kb Id
+             * Format: uuid
+             */
+            kb_id: string;
+        };
+        /** SqlExportedDocument */
+        SqlExportedDocument: {
+            /** Table */
+            table: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Name */
+            name: string;
+        };
+        /** SqlFailure */
+        SqlFailure: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "validate" | "execute";
+        };
+        /** SqlFileOptions */
+        SqlFileOptions: {
+            /**
+             * Header
+             * @default true
+             */
+            header: boolean;
+            /**
+             * Encoding
+             * @default auto
+             * @enum {string}
+             */
+            encoding: "auto" | "utf-8" | "utf-16" | "latin-1" | "cp949" | "euc-kr";
+            /**
+             * All Varchar
+             * @default false
+             */
+            all_varchar: boolean;
+        };
+        /** SqlFilePatch */
+        SqlFilePatch: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Table */
+            table?: string | null;
+            /** Sheet */
+            sheet?: string | null;
+            options?: components["schemas"]["SqlFileOptions"] | null;
+        };
+        /** SqlLimits */
+        SqlLimits: {
+            /**
+             * Max Rows
+             * @default 200
+             */
+            max_rows: number;
+            /**
+             * Timeout Sec
+             * @default 30
+             */
+            timeout_sec: number;
+            /**
+             * Memory Mb
+             * @default 512
+             */
+            memory_mb: number;
+            /**
+             * Llm Rows
+             * @default 50
+             */
+            llm_rows: number;
+            /**
+             * Llm Bytes
+             * @default 65536
+             */
+            llm_bytes: number;
+        };
+        /**
+         * SqlMaterialized
+         * @description files 소스의 질의 파일(DATA_DIR/cache/kb-sql/<id>.duckdb).
+         */
+        SqlMaterialized: {
+            /** Filename */
+            filename: string;
+            /**
+             * Built At
+             * Format: date-time
+             */
+            built_at: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Bytes */
+            bytes: number;
+        };
+        /**
+         * SqlNodeOptions
+         * @description sql_schema·sql_query 노드 폼이 쓰는 기본값과 상한(10.3). 데이터 소스 목록은 따로 받는다.
+         */
+        SqlNodeOptions: {
+            /** Max Rows Max */
+            max_rows_max: number;
+            /** Timeout Max */
+            timeout_max: number;
+            /** Default Max Rows */
+            default_max_rows: number;
+            /** Default Timeout Sec */
+            default_timeout_sec: number;
+            /** Default Llm Rows */
+            default_llm_rows: number;
+            /** Default Llm Bytes */
+            default_llm_bytes: number;
+            /** Llm Bytes Max */
+            llm_bytes_max: number;
+            /** Default Schema Tokens */
+            default_schema_tokens: number;
+            /** Approvals */
+            approvals: ("none" | "always")[];
+        };
+        /** SqlQueryLogList */
+        SqlQueryLogList: {
+            /** Items */
+            items: components["schemas"]["SqlQueryLogOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Limit */
+            limit: number;
+        };
+        /** SqlQueryLogOut */
+        SqlQueryLogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "node" | "tool" | "test" | "api";
+            /** Sql */
+            sql: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "rejected" | "error" | "timeout";
+            /** Reject Code */
+            reject_code: string | null;
+            /** Row Count */
+            row_count: number | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SqlQueryRequest */
+        SqlQueryRequest: {
+            /** Sql */
+            sql: string;
+            /** Max Rows */
+            max_rows?: number | null;
+        };
+        /** SqlQueryResult */
+        SqlQueryResult: {
+            /** Ok */
+            ok: boolean;
+            /** Sql Executed */
+            sql_executed?: string | null;
+            /** Columns */
+            columns?: string[];
+            /** Rows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Rows Cut
+             * @default false
+             */
+            rows_cut: boolean;
+            /**
+             * Result Text
+             * @default
+             */
+            result_text: string;
+            /**
+             * Elapsed Ms
+             * @default 0
+             */
+            elapsed_ms: number;
+            error?: components["schemas"]["SqlFailure"] | null;
+            /** Log Id */
+            log_id?: string | null;
+        };
+        /** SqlRuntimeFailure */
+        SqlRuntimeFailure: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * SqlRuntimeStatus
+         * @description DuckDB 런타임(10.2). sqlite 소스는 런타임 없이 돈다.
+         */
+        SqlRuntimeStatus: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "missing" | "installing" | "ready" | "failed";
+            /** Packages */
+            packages: string[];
+            /** Extensions */
+            extensions: string[];
+            /** Packages Ready */
+            packages_ready: boolean;
+            /** Extensions Ready */
+            extensions_ready: boolean;
+            /** Bytes */
+            bytes?: number | null;
+            /** Installed At */
+            installed_at?: string | null;
+            error?: components["schemas"]["SqlRuntimeFailure"] | null;
+        };
+        /**
+         * SqlSchemaSnapshot
+         * @description 준비 단계가 뜬 스냅샷(10.2). 숨긴 열도 이름·타입은 남겨 화면에서 다시 보이게 할 수 있다.
+         */
+        SqlSchemaSnapshot: {
+            /** Tables */
+            tables: components["schemas"]["SqlTable"][];
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Warnings */
+            warnings?: components["schemas"]["SqlSchemaWarning"][];
+        };
+        /**
+         * SqlSchemaText
+         * @description sql_schema 노드·describe_sql_source 도구가 내는 것과 같은 글(10.2).
+         */
+        SqlSchemaText: {
+            /** Ddl */
+            ddl: string;
+            /** Tables */
+            tables: {
+                [key: string]: unknown;
+            }[];
+            /** Glossary */
+            glossary: string;
+            /** Truncated */
+            truncated: boolean;
+            /** Tokens */
+            tokens: number;
+        };
+        /** SqlSchemaWarning */
+        SqlSchemaWarning: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Table */
+            table?: string | null;
+        };
+        /** SqlSourceCreate */
+        SqlSourceCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Kind
+             * @default files
+             * @enum {string}
+             */
+            kind: "files" | "sqlite";
+            /**
+             * Approval
+             * @default none
+             * @enum {string}
+             */
+            approval: "none" | "always";
+            limits?: components["schemas"]["SqlLimits"] | null;
+            /**
+             * Glossary
+             * @default
+             */
+            glossary: string;
+            data_policy: components["schemas"]["DataPolicyIn"];
+        };
+        /** SqlSourceFileOut */
+        SqlSourceFileOut: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Filename */
+            filename: string;
+            /** Mime */
+            mime: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "csv" | "tsv" | "xlsx" | "sqlite";
+            /** Table */
+            table: string | null;
+            /** Sheet */
+            sheet: string | null;
+            options: components["schemas"]["SqlFileOptions"];
+        };
+        /** SqlSourceList */
+        SqlSourceList: {
+            /** Items */
+            items: components["schemas"]["SqlSourceSummary"][];
+        };
+        /** SqlSourceOut */
+        SqlSourceOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "files" | "sqlite";
+            /**
+             * Dialect
+             * @enum {string}
+             */
+            dialect: "duckdb" | "sqlite";
+            /** Files */
+            files: components["schemas"]["SqlSourceFileOut"][];
+            schema?: components["schemas"]["SqlSchemaSnapshot"] | null;
+            annotations: components["schemas"]["SqlAnnotations"];
+            /** Glossary */
+            glossary: string;
+            limits: components["schemas"]["SqlLimits"];
+            /**
+             * Approval
+             * @enum {string}
+             */
+            approval: "none" | "always";
+            data_policy: components["schemas"]["DataPolicy"];
+            materialized: components["schemas"]["SqlMaterialized"] | null;
+            status: components["schemas"]["SqlSourceStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SqlSourcePatch
+         * @description 바뀐 칸만 보낸다. 파일의 표 이름·시트·옵션을 바꾸면 다시 준비해야 한다.
+         */
+        SqlSourcePatch: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Approval */
+            approval?: ("none" | "always") | null;
+            limits?: components["schemas"]["SqlLimits"] | null;
+            /** Glossary */
+            glossary?: string | null;
+            data_policy?: components["schemas"]["DataPolicyIn"] | null;
+            /** Files */
+            files?: components["schemas"]["SqlFilePatch"][] | null;
+        };
+        /** SqlSourceStatus */
+        SqlSourceStatus: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "empty" | "not_prepared" | "stale" | "ready";
+            /** Runtime Required */
+            runtime_required: boolean;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
+        /** SqlSourceSummary */
+        SqlSourceSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "files" | "sqlite";
+            /**
+             * Dialect
+             * @enum {string}
+             */
+            dialect: "duckdb" | "sqlite";
+            /** File Count */
+            file_count: number;
+            /** Table Count */
+            table_count: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "empty" | "not_prepared" | "stale" | "ready";
+            /**
+             * Approval
+             * @enum {string}
+             */
+            approval: "none" | "always";
+            /**
+             * Key Tier
+             * @enum {string}
+             */
+            key_tier: "free" | "paid";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SqlTable */
+        SqlTable: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default table
+             * @enum {string}
+             */
+            kind: "table" | "view";
+            /** Columns */
+            columns: components["schemas"]["SqlColumn"][];
+            /** Row Count */
+            row_count?: number | null;
+            /** File Id */
+            file_id?: string | null;
+            /** Encoding */
+            encoding?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /** StopRequest */
         StopRequest: {
             /** User */
@@ -7039,6 +8408,23 @@ export interface components {
              * @enum {string}
              */
             approval_mode: "inherit" | "off";
+        };
+        /** TableNote */
+        TableNote: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
+            /** Columns */
+            columns?: {
+                [key: string]: components["schemas"]["ColumnNote"];
+            };
         };
         /** ToolParamOut */
         ToolParamOut: {
@@ -7299,6 +8685,11 @@ export interface components {
             opening_statement?: string | null;
             /** Suggested Questions */
             suggested_questions?: string[];
+            /**
+             * Citations Enabled
+             * @default true
+             */
+            citations_enabled: boolean;
         };
         /**
          * WfChatResult
@@ -7315,6 +8706,8 @@ export interface components {
             run: components["schemas"]["WfRunOut"];
             /** Answer */
             answer: string;
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
         };
         /** WfConversationCreate */
         WfConversationCreate: {
@@ -7533,6 +8926,8 @@ export interface components {
             } | null;
             /** Status */
             status: ("queued" | "running" | "waiting_input" | "succeeded" | "failed" | "cancelled") | null;
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
             /**
              * Created At
              * Format: date-time
@@ -7791,6 +9186,8 @@ export interface components {
             updated_at: string;
             /** Node Runs */
             node_runs: components["schemas"]["WfNodeRunOut"][];
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
         };
         /** WfRunErrorOut */
         WfRunErrorOut: {
@@ -7805,6 +9202,8 @@ export interface components {
              * @default false
              */
             retryable: boolean;
+            /** Retry After */
+            retry_after?: number | null;
         };
         /**
          * WfRunInput
@@ -8036,7 +9435,9 @@ export interface components {
              * @default blank
              * @enum {string}
              */
-            template: "blank" | "chat_basic";
+            template: "blank" | "chat_basic" | "text_to_sql";
+            /** Sql Source Id */
+            sql_source_id?: string | null;
         };
         /**
          * WorkflowDraftCheck
@@ -8273,6 +9674,8 @@ export interface components {
             created_at: string;
             /** Ended At */
             ended_at?: string | null;
+            /** Retriever Resources */
+            retriever_resources?: components["schemas"]["RetrieverResourceData"][];
         };
         /**
          * WorkflowSettings
@@ -12051,6 +13454,35 @@ export interface operations {
             };
         };
     };
+    knowledge_defaults_api_console_knowledge_defaults_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDefaults"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_knowledge_base_api_console_knowledge__kb_id__get: {
         parameters: {
             query?: never;
@@ -12133,6 +13565,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KnowledgeBaseOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_stats_api_console_knowledge__kb_id__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseStats"];
                 };
             };
             /** @description 오류 */
@@ -12391,6 +13854,39 @@ export interface operations {
             };
         };
     };
+    documents_indexing_status_api_console_knowledge__kb_id__documents_indexing_status_get: {
+        parameters: {
+            query: {
+                batch: string;
+            };
+            header?: never;
+            path: {
+                kb_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetIndexingStatus"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     preview_document_api_console_knowledge__kb_id__documents_preview_post: {
         parameters: {
             query?: never;
@@ -12628,6 +14124,36 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KbDocumentOut"];
                 };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_document_file_api_console_knowledge__kb_id__documents__document_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kb_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 오류 */
             "4XX": {
@@ -13345,6 +14871,530 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_sql_sources_api_console_sql_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_sql_source_api_console_sql_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlSourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_sql_source_api_console_sql_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_sql_source_api_console_sql_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_sql_source_api_console_sql_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlSourcePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_sql_source_files_api_console_sql_sources__source_id__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    files: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_sql_source_file_api_console_sql_sources__source_id__files__file_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    prepare_sql_source_api_console_sql_sources__source_id__prepare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_sql_source_annotations_api_console_sql_sources__source_id__annotations_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlAnnotationsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSourceOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    query_sql_source_api_console_sql_sources__source_id__query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlQueryResult"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sql_source_query_logs_api_console_sql_sources__source_id__query_logs_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlQueryLogList"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sql_source_schema_api_console_sql_sources__source_id__schema_get: {
+        parameters: {
+            query?: {
+                tables?: string[] | null;
+                include_samples?: boolean;
+                max_tokens?: number;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlSchemaText"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    export_sql_source_schema_api_console_sql_sources__source_id__export_schema_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlExportSchemaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlExportSchemaOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_sql_example_api_console_sql_sources__source_id__examples_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlExampleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlExampleOut"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sql_runtime_status_api_console_sql_runtime_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlRuntimeStatus"];
+                };
+            };
+            /** @description 오류 */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    prepare_sql_runtime_api_console_sql_runtime_prepare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SqlRuntimeStatus"];
+                };
             };
             /** @description 오류 */
             "4XX": {
@@ -15984,7 +18034,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DocumentMetadataUpdate"];
+                "application/json": components["schemas"]["DocumentMetadataUpdate"] | components["schemas"]["DifyDocumentMetadataUpdate"];
             };
         };
         responses: {

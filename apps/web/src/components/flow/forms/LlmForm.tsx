@@ -8,6 +8,7 @@ import { CodeEditor } from "@/components/ui/lazy-code-editor";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/toggle";
 import {
+  CONTEXT_ACCEPT,
   llmFromForm,
   llmSchema,
   llmToForm,
@@ -41,6 +42,7 @@ export function LlmForm({ node }: NodeFormProps) {
   const memoryEnabled = useWatch({ control: form.control, name: "memory.enabled" });
   const visionEnabled = useWatch({ control: form.control, name: "vision.enabled" });
   const jsonMode = useWatch({ control: form.control, name: "json_mode" });
+  const contextEnabled = useWatch({ control: form.control, name: "context.enabled" });
   const roleOptions = PROMPT_ROLES.map((role) => ({
     value: role,
     label: t(`forms.llm.roles.${role}`),
@@ -158,6 +160,41 @@ export function LlmForm({ node }: NodeFormProps) {
               )}
             />
           </Field>
+        ) : null}
+      </Section>
+      <Section title={t("forms.llm.context")} hint={t("forms.llm.contextHint")}>
+        <Field inline label={t("forms.llm.contextEnabled")}>
+          <Controller
+            control={form.control}
+            name="context.enabled"
+            render={({ field }) => (
+              <Switch checked={field.value} onCheckedChange={field.onChange} />
+            )}
+          />
+        </Field>
+        {contextEnabled ? (
+          <>
+            <Field
+              label={t("forms.llm.contextVar")}
+              hint={t("forms.llm.contextVarHint")}
+              error={errorAt(form, "context.var", serverIssue)}
+            >
+              {/* 서버가 받는 CONTEXT_TYPES만 맞게 보인다. accept와의 관계는 CONTEXT_ACCEPT에 적었다. */}
+              <Controller
+                control={form.control}
+                name="context.var"
+                render={({ field }) => (
+                  <VariablePicker
+                    nodeId={node.id}
+                    value={field.value}
+                    onChange={field.onChange}
+                    accept={CONTEXT_ACCEPT}
+                  />
+                )}
+              />
+            </Field>
+            <p className="text-xs text-ink-muted">{t("forms.llm.citationNote")}</p>
+          </>
         ) : null}
       </Section>
       <Section title={t("forms.llm.json")}>

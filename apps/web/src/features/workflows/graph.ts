@@ -338,6 +338,8 @@ const SELECTOR_KEYS: ReadonlySet<string> = new Set([
   "output_var",
   "files_var",
   "file_var",
+  "text_var",
+  "sql_var",
   "target",
 ]);
 // 템플릿이 아닌 글: 파이썬 코드와 tool 노드의 고정값 매개변수(아래 childKey가 "const"로 바꿔 넘긴다).
@@ -537,6 +539,31 @@ const FIXED_OUTPUTS: Record<string, [string, VarType][]> = {
   document_extractor: [
     ["text", "string"],
     ["texts", "array[string]"],
+  ],
+  knowledge_retrieval: [
+    ["result", "array[object]"],
+    ["result_text", "string"],
+    ["count", "number"],
+  ],
+  knowledge_index: [
+    ["document_ids", "array[string]"],
+    ["batch", "string"],
+    ["status", "string"],
+  ],
+  sql_schema: [
+    ["ddl", "string"],
+    ["tables", "array[object]"],
+    ["glossary", "string"],
+  ],
+  sql_query: [
+    ["columns", "array[string]"],
+    ["rows", "array[object]"],
+    ["row_count", "number"],
+    ["truncated", "boolean"],
+    ["sql_executed", "string"],
+    ["result_text", "string"],
+    ["file", "file"],
+    ["error", "string"],
   ],
 };
 

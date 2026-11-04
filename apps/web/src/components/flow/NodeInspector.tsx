@@ -1,5 +1,5 @@
 import { CircleAlert, MousePointerClick, Trash2, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { CodeEditor } from "@/components/ui/lazy-code-editor";
 import { EmptyState } from "@/components/ui/layout";
+import { Spinner } from "@/components/ui/spinner";
 import { useNodeTypes, useToolSpecs } from "@/features/workflows/api";
 import { useFlow, useFlowActions } from "@/features/workflows/flowStoreContext";
 import {
@@ -178,7 +179,9 @@ function SingleNode({ node }: { node: FlowNode }) {
             : t("inspector.entry", { id: node.id })}
         </p>
       ) : Form ? (
-        <Form key={`form:${node.id}:${formEpoch}`} node={node} />
+        <Suspense fallback={<Spinner className="size-4" label={t("inspector.loadingForm")} />}>
+          <Form key={`form:${node.id}:${formEpoch}`} node={node} />
+        </Suspense>
       ) : (
         <JsonConfigForm key={`json:${node.id}:${formEpoch}`} node={node} />
       )}

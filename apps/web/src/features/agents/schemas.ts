@@ -19,12 +19,32 @@ import {
   SLUG_PATTERN,
   type T,
 } from "@/lib/formSchemas";
+import {
+  DEFAULT_RETRIEVAL,
+  fromRetrievalForm,
+  retrievalErrors,
+  toRetrievalForm,
+  type RetrievalForm,
+} from "@/features/knowledge/retrievalSettings";
 import { formToSubAgents, subAgentsSchema, subAgentsToForm } from "./subAgents";
 
 // 능력표를 모를 때 쓰는 출력 상한(설계 4.3의 보수적 기본값)
 export const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
 // 서버 app/schemas/agent_version.py와 같은 값
 const MAX_INSTRUCTIONS_CHARS = 100_000;
+export const MAX_AGENT_KBS = 5;
+// 서버 MAX_AGENT_SQL_SOURCES. 목록이 도구 설명과 시스템 프롬프트에 들어간다(3단계 10.3).
+export const MAX_AGENT_SQL_SOURCES = 10;
+// 지식 탭이 보이는 저장 경고(3단계 8.4, 10.3). 하위 에이전트 때문인 paid_key_required는 agent_id가, 데이터
+// 소스 때문이면 source_id가 있다.
+export const KNOWLEDGE_WARNING_CODES: ReadonlySet<string> = new Set([
+  "knowledge_base_not_found",
+  "paid_key_required",
+  "retrieval_settings_required",
+  "sql_source_not_found",
+]);
+// KB_TOP_K_MAX 기본값. 화면은 지식 기본값(GET /knowledge-defaults)의 top_k_max를 넘긴다.
+export const DEFAULT_TOP_K_MAX = 20;
 const MAX_ENV_VALUE_CHARS = 32 * 1024;
 
 const toolGroup = z.enum(["shell", "files", "http", "ask_user"]) satisfies z.ZodType<ToolGroup>;
@@ -58,7 +78,26 @@ export function makeAgentCreateSchema(t: T) {
   });
 }
 
-export function makeAgentFormSchema(t: T, options: { maxOutputTokens: number }) {
+// 에이전트의 지식 베이스(3단계 8.4). 검색 설정을 끄면(이어받기) 서버에 null을 보낸다.
+function knowledgeSchema(t: T, topKMax: number) {
+  return z
+    .object({
+      kb_ids: z
+        .array(z.string())
+        .max(MAX_AGENT_KBS, { error: t("validation.maxItems", { max: MAX_AGENT_KBS }) }),
+      custom_retrieval: z.boolean(),
+      retrieval: z.custom<RetrievalForm>(),
+    })
+    .superRefine((value, ctx) => {
+      if (!value.custom_retrieval) return;
+      // 칸별 문구는 검색 설정 폼이 보인다. 여기서는 저장만 막는다.
+      for (const field of Object.keys(retrievalErrors(value.retrieval, topKMax))) {
+        ctx.addIssue({ code: "custom", path: ["retrieval", field], message: field });
+      }
+    });
+}
+
+export function makeAgentFormSchema(t: T, options: { maxOutputTokens: number; topKMax?: number }) {
   return z.object({
     meta: z.object({
       name: requiredText(t, 100),
@@ -130,6 +169,10 @@ export function makeAgentFormSchema(t: T, options: { maxOutputTokens: number }) 
     skill_version_ids: z.array(z.string()),
     file_ids: z.array(z.string()),
     sub_agents: subAgentsSchema(t),
+    knowledge: knowledgeSchema(t, options.topKMax ?? DEFAULT_TOP_K_MAX),
+    sql_sources: z.array(z.string()).max(MAX_AGENT_SQL_SOURCES, {
+      error: t("validation.maxItems", { max: MAX_AGENT_SQL_SOURCES }),
+    }),
   });
 }
 
@@ -181,6 +224,12 @@ export function agentToForm(agent: AgentOut, draft: AgentVersionOut): AgentForm 
     skill_version_ids: draft.skill_version_ids ?? [],
     file_ids: draft.file_ids ?? [],
     sub_agents: subAgentsToForm(draft.sub_agents),
+    knowledge: {
+      kb_ids: draft.knowledge?.kb_ids ?? [],
+      custom_retrieval: Boolean(draft.knowledge?.retrieval_model),
+      retrieval: toRetrievalForm(draft.knowledge?.retrieval_model ?? DEFAULT_RETRIEVAL),
+    },
+    sql_sources: draft.sql_sources ?? [],
   };
 }
 
@@ -202,6 +251,14 @@ export function formToDraftUpdate(form: AgentForm, updatedAt: string): DraftUpda
     file_ids: form.file_ids,
     // 키가 빠지면 서버가 저장된 목록을 그대로 둔다. 모두 뺀 것도 저장되도록 늘 보낸다.
     sub_agents: formToSubAgents(form.sub_agents),
+    knowledge: {
+      kb_ids: form.knowledge.kb_ids,
+      retrieval_model: form.knowledge.custom_retrieval
+        ? fromRetrievalForm(form.knowledge.retrieval)
+        : null,
+    },
+    // 지식 베이스처럼 늘 보낸다. 빠지면 서버가 저장된 목록을 그대로 둬서 모두 뺀 것이 저장되지 않는다.
+    sql_sources: form.sql_sources,
     allow_unlisted_model: form.allow_unlisted_model,
     updated_at: updatedAt,
   };

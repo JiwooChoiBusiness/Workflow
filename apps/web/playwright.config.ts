@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { AUTH_STATE } from "./e2e/auth-state.ts";
 
 // 스모크는 8502에 띄운 시험용 서버(따로 둔 DATA_DIR)를 대상으로 한다. 평소 쓰는 8500의 데이터는 건드리지 않는다.
 // 서버가 없으면 각 테스트가 스스로 건너뛴다(e2e/*.spec.ts).
@@ -9,6 +10,8 @@ export default defineConfig({
   timeout: 30_000,
   workers: 1,
   reporter: "list",
+  // 로그인은 여기서 한 번 하고 모든 시험이 그 세션으로 시작한다. login.spec.ts만 빈 세션으로 화면 로그인을 한다.
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL,
     // 브라우저를 따로 내려받지 않고 Windows에 깔린 Edge를 쓴다. 다른 환경은 E2E_BROWSER_CHANNEL로 바꾼다.
@@ -16,5 +19,6 @@ export default defineConfig({
     headless: true,
     locale: "ko-KR",
     trace: "retain-on-failure",
+    storageState: AUTH_STATE,
   },
 });

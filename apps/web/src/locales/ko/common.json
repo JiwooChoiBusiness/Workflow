@@ -4,6 +4,8 @@
     "main": "주 메뉴",
     "agents": "에이전트",
     "workflows": "워크플로우",
+    "knowledge": "지식",
+    "sqlSources": "데이터 소스",
     "skills": "스킬",
     "logs": "로그",
     "settings": "설정",

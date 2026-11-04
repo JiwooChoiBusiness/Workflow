@@ -4,6 +4,7 @@
  * 노드 config가 바뀌면 픽스처를 다시 받고 이 테스트가 어긋난 곳을 알려 준다.
  */
 import { describe, expect, it } from "vitest";
+import { VAR_TYPES } from "@/api/types";
 import "@/features/workflows/i18n";
 import i18n from "@/i18n";
 import nodeTypeList from "@/test/fixtures/contract/node-types.json";
@@ -25,8 +26,12 @@ import {
   classifierToForm,
   codeFromForm,
   codeToForm,
+  CONTEXT_ACCEPT,
+  CONTEXT_TYPES,
+  DEFAULT_KNOWLEDGE_LIMITS,
   documentExtractorFromForm,
   documentExtractorToForm,
+  DUPLICATE_POLICIES,
   endFromForm,
   endSchema,
   endToForm,
@@ -48,6 +53,12 @@ import {
   ITERATION_ERROR_MODES,
   iterationFromForm,
   iterationToForm,
+  knowledgeIndexFromForm,
+  knowledgeIndexSchema,
+  knowledgeIndexToForm,
+  knowledgeRetrievalFromForm,
+  knowledgeRetrievalSchema,
+  knowledgeRetrievalToForm,
   LIST_SORT_ORDERS,
   listOperatorFromForm,
   listOperatorSchema,
@@ -61,6 +72,14 @@ import {
   opsFor,
   PARAM_TYPES,
   PROMPT_ROLES,
+  SQL_APPROVALS,
+  SQL_QUERY_MAX_ROWS,
+  sqlQueryFromForm,
+  sqlQuerySchema,
+  sqlQueryToForm,
+  sqlSchemaFromForm,
+  sqlSchemaSchema,
+  sqlSchemaToForm,
   START_FIELD_TYPES,
   startFromForm,
   startSchema,
@@ -73,7 +92,24 @@ import {
   toolToForm,
   VAR_TYPE_OPTIONS,
 } from "./configSchemas";
-import { DEFAULT_SYSTEM_PROMPT, defaultConfig, PALETTE_ORDER } from "./nodeTypes";
+import {
+  FILTER_MODES,
+  MAX_FILTER_CONDITIONS,
+  type FilterField,
+} from "@/features/knowledge/metadataFilter";
+import { DEFAULT_RULE, toProcessRule } from "@/features/knowledge/processRule";
+import {
+  RERANK_CANDIDATES_MAX,
+  RERANKING_MODES,
+  SEARCH_METHODS,
+} from "@/features/knowledge/retrievalSettings";
+import { assignable } from "./graph";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  defaultConfig,
+  INDEX_WAIT_DEFAULT_SEC,
+  PALETTE_ORDER,
+} from "./nodeTypes";
 
 const t = i18n.getFixedT("ko", "common");
 const tw = i18n.getFixedT("ko", "workflows");
@@ -221,6 +257,10 @@ const tools = nodeTypeList.tools;
 
 const labels = { className: (n: number) => `분류 ${n}` };
 const AGENT_ID = "01a1391c-6458-7b30-9a21-310217cd8e29";
+const KB_ID = "019a4b2c-1111-7000-8000-000000000001";
+const KB_ID_2 = "019a4b2c-2222-7000-8000-000000000002";
+const SOURCE_ID = "019a4b2c-3333-7000-8000-000000000003";
+const kbOptions = nodeTypeList.kb_options;
 
 // 화면에서 사용자가 다 채웠을 때 나올 법한 config. 폼 값으로 바꿨다가 되돌린 결과를 서버 스키마로 본다.
 const SAMPLES: Record<
@@ -313,8 +353,73 @@ const SAMPLES: Record<
       vision: { enabled: true, var: "start.doc" },
       json_mode: true,
       output_schema: { type: "object", properties: { a: { type: "string" } } },
+      context: { var: "knowledge_retrieval_1.result" },
     },
     (c) => llmFromForm(llmToForm(c)),
+  ],
+  knowledge_retrieval: [
+    {
+      kb_ids: [KB_ID, KB_ID_2],
+      query_var: "start.q",
+      retrieval: {
+        search_method: "hybrid_search",
+        top_k: 6,
+        score_threshold_enabled: true,
+        score_threshold: 0.4,
+        reranking_mode: "llm",
+        weights: { vector_weight: 0.6, keyword_weight: 0.4 },
+        rerank: { model_id: "gemini-3.8-flash", candidates: 12 },
+      },
+      metadata_filter: {
+        mode: "manual",
+        logical_operator: "or",
+        conditions: [
+          { name: "category", comparison_operator: "is", value: "규정" },
+          { name: "year", comparison_operator: "≥", value: 2024 },
+          { name: "tags", comparison_operator: "in", value: ["a", "b"] },
+          { name: "owner", comparison_operator: "is", value: { var: "start.q" } },
+          { name: "note", comparison_operator: "empty", value: null },
+        ],
+        model: { model_id: null },
+      },
+    },
+    (c) => knowledgeRetrievalFromForm(knowledgeRetrievalToForm(c)),
+  ],
+  knowledge_index: [
+    {
+      kb_id: KB_ID,
+      source: { text_var: null, files_var: "start.docs" },
+      name: "{{ sys.now }} 답",
+      process_rule: toProcessRule(DEFAULT_RULE),
+      metadata: [{ name: "source_url", value: "{{ start.q }}" }],
+      on_duplicate: "skip",
+      wait: true,
+      timeout_sec: 120,
+    },
+    (c) => knowledgeIndexFromForm(knowledgeIndexToForm(c)),
+  ],
+  sql_schema: [
+    {
+      source_id: SOURCE_ID,
+      tables: ["customers", "orders"],
+      include_samples: false,
+      max_tokens: 12000,
+    },
+    (c) => sqlSchemaFromForm(sqlSchemaToForm(c)),
+  ],
+  sql_query: [
+    {
+      source_id: SOURCE_ID,
+      sql: "{{ write_sql.text }}",
+      sql_var: null,
+      max_rows: 500,
+      timeout_sec: 20,
+      approval: "always",
+      llm_rows: 30,
+      llm_bytes: 32768,
+      export_file: false,
+    },
+    (c) => sqlQueryFromForm(sqlQueryToForm(c)),
   ],
   http_request: [
     {
@@ -509,6 +614,38 @@ describe("서버 config_schema 계약", () => {
     same(LIST_SORT_ORDERS, enumAt("list_operator", "sort", "order"));
     same(TOOL_ARG_MODES, enumAt("tool", "params", "*", "mode"));
     same(START_FIELD_TYPES, enumAt("human_input", "fields", "[]", "type"));
+    same(DUPLICATE_POLICIES, enumAt("knowledge_index", "on_duplicate"));
+    same(FILTER_MODES, enumAt("knowledge_retrieval", "metadata_filter", "mode"));
+    same(SEARCH_METHODS, enumAt("knowledge_retrieval", "retrieval", "search_method"));
+    same(RERANKING_MODES, enumAt("knowledge_retrieval", "retrieval", "reranking_mode"));
+  });
+
+  it("지식 노드 폼의 선택지와 상한이 kb_options와 같다", () => {
+    const same = (mine: readonly unknown[], server: readonly unknown[]) =>
+      expect([...mine].map(String).sort()).toEqual([...server].map(String).sort());
+    same(DUPLICATE_POLICIES, kbOptions.duplicate_policies);
+    same(FILTER_MODES, kbOptions.filter_modes);
+    same(SEARCH_METHODS, kbOptions.search_methods);
+    same(RERANKING_MODES, kbOptions.reranking_modes);
+    expect(DEFAULT_KNOWLEDGE_LIMITS).toEqual({
+      maxKbs: kbOptions.max_kbs,
+      topKMax: kbOptions.top_k_max,
+      waitMaxSec: kbOptions.index_wait_max_sec,
+    });
+    expect(INDEX_WAIT_DEFAULT_SEC).toBe(kbOptions.index_wait_default_sec);
+    expect(RERANK_CANDIDATES_MAX).toBe(kbOptions.rerank_candidates_max);
+    expect(MAX_FILTER_CONDITIONS).toBe(kbOptions.max_conditions);
+    // 필드 타입마다 고르는 연산자는 모두 조건 config가 받는 이름이다.
+    const accepted = enumAt(
+      "knowledge_retrieval",
+      "metadata_filter",
+      "conditions",
+      "[]",
+      "comparison_operator",
+    );
+    for (const list of Object.values(kbOptions.operators)) {
+      for (const operator of list) expect(accepted).toContain(operator);
+    }
   });
 
   it("고정값으로 채운 도구 매개변수가 그 도구의 params_schema를 지킨다", () => {
@@ -776,6 +913,186 @@ describe("폼 검증", () => {
     ]);
     expect(Object.keys(toolFromForm(form, tools).params).sort()).toEqual(["path", "text"]);
     expect(toolSchema(t, tw, tools).safeParse({ tool: "", params: {} }).success).toBe(false);
+  });
+
+  it("지식 검색은 지식 베이스·질의 변수가 있어야 하고 여럿이면 검색 설정을 정해야 한다", () => {
+    const schema = knowledgeRetrievalSchema(t, tw, DEFAULT_KNOWLEDGE_LIMITS);
+    const empty = knowledgeRetrievalToForm(
+      defaultConfig("knowledge_retrieval", "workflow", labels),
+    );
+    expect(schema.safeParse(empty).error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "kb_ids",
+      "query_var",
+    ]);
+    const two = { ...empty, kb_ids: [KB_ID, KB_ID_2], query_var: "start.q" };
+    expect(schema.safeParse(two).error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "custom_retrieval",
+    ]);
+    expect(schema.safeParse({ ...two, custom_retrieval: true }).success).toBe(true);
+    // 챗플로우의 새 노드는 sys.query를 질의로 쓰고 검색 설정은 KB 것을 이어받는다.
+    const chat = defaultConfig("knowledge_retrieval", "chatflow", labels);
+    expect(chat).toMatchObject({ query_var: "sys.query", retrieval: null });
+    expect(knowledgeRetrievalFromForm(knowledgeRetrievalToForm(chat))).toEqual(chat);
+  });
+
+  it("지식 검색의 수동 조건은 빈 값·고르지 않은 변수·숫자 아닌 값을 막고, 값은 필드 타입으로 보낸다", () => {
+    const fields: FilterField[] = [
+      { name: "category", type: "string" },
+      { name: "year", type: "number" },
+    ];
+    const operators = nodeTypeList.kb_options.operators as Record<string, string[]>;
+    const schema = knowledgeRetrievalSchema(t, tw, DEFAULT_KNOWLEDGE_LIMITS, { operators, fields });
+    const values = knowledgeRetrievalToForm({
+      kb_ids: [KB_ID],
+      query_var: "start.q",
+      metadata_filter: {
+        mode: "manual",
+        conditions: [
+          { name: "category", comparison_operator: "is", value: { var: "" } },
+          { name: "category", comparison_operator: "is", value: "" },
+          { name: "year", comparison_operator: "≥", value: { var: "start.min" } },
+        ],
+      },
+    });
+    const [noVar, noValue, byVar] = values.metadata_filter.conditions;
+    // 변수 값 조건은 괜찮다. 상수로 바꿔 숫자가 아닌 값을 넣으면 숫자 필드라 막는다.
+    const text = { ...byVar!, source: "const" as const, value_text: "올해" };
+    const withConditions = (conditions: (typeof values.metadata_filter.conditions)[number][]) => ({
+      ...values,
+      metadata_filter: { ...values.metadata_filter, conditions },
+    });
+    expect(schema.safeParse(values).error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "metadata_filter.conditions.0.value",
+      "metadata_filter.conditions.1.value",
+    ]);
+    const issues = schema.safeParse(withConditions([noVar!, noValue!, text])).error!.issues;
+    expect(issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([
+      ["metadata_filter.conditions.0.value", "변수를 고르세요"],
+      ["metadata_filter.conditions.1.value", "필수 항목입니다"],
+      ["metadata_filter.conditions.2.value", "숫자를 입력하세요"],
+    ]);
+    // 필터를 끄면 조건을 보지 않지만 config에는 남아 다시 켜면 그대로다.
+    const off = withConditions([noVar!, noValue!, text]);
+    off.metadata_filter.mode = "disabled";
+    expect(schema.safeParse(off).success).toBe(true);
+    expect(knowledgeRetrievalFromForm(off).metadata_filter.conditions).toHaveLength(3);
+    // 저장된 값만으로는 글로 짐작했던 조건도 필드 타입(number)으로 보낸다.
+    const year = withConditions([{ ...text, value_text: "2024" }]);
+    expect(knowledgeRetrievalFromForm(year, fields).metadata_filter.conditions).toEqual([
+      { name: "year", comparison_operator: "≥", value: 2024 },
+    ]);
+  });
+
+  it("llm 컨텍스트 선택기는 서버 CONTEXT_TYPES와 같은 변수만 맞게 본다", () => {
+    const block = /CONTEXT_TYPES = frozenset\(\{([^}]*)\}\)/.exec(llmSource)?.[1] ?? "";
+    const server = [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect([...CONTEXT_TYPES].sort()).toEqual(server.sort());
+    const fits = VAR_TYPES.filter((type) =>
+      CONTEXT_ACCEPT.some((target) => assignable(type, target) !== "no"),
+    );
+    expect([...fits].sort()).toEqual([...CONTEXT_TYPES].sort());
+  });
+
+  it("지식 쓰기는 고른 쪽 변수만 보내고 메타데이터 이름이 겹치면 막는다", () => {
+    const schema = knowledgeIndexSchema(t, tw, DEFAULT_KNOWLEDGE_LIMITS);
+    const values = knowledgeIndexToForm({
+      kb_id: KB_ID,
+      source: { text_var: "llm_1.text", files_var: null },
+      metadata: [
+        { name: "topic", value: "a" },
+        { name: "topic", value: "b" },
+      ],
+      timeout_sec: 5000,
+    });
+    expect(schema.safeParse(values).error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "metadata.1.name",
+      "timeout_sec",
+    ]);
+    const files = knowledgeIndexFromForm({
+      ...values,
+      source_kind: "files",
+      files_var: "start.docs",
+    });
+    expect(files.source).toEqual({ text_var: null, files_var: "start.docs" });
+    const missing = schema.safeParse({
+      ...values,
+      source_kind: "files",
+      metadata: [],
+      timeout_sec: 60,
+    });
+    expect(missing.error!.issues[0]?.path).toEqual(["files_var"]);
+  });
+
+  it("llm 컨텍스트는 켜고 변수를 고른 때만 보낸다", () => {
+    const values = llmToForm({
+      prompt: [{ role: "user", text: "q" }],
+      context: { var: "k.result" },
+    });
+    expect(values.context).toEqual({ enabled: true, var: "k.result" });
+    const off = llmFromForm({ ...values, context: { enabled: false, var: "k.result" } });
+    expect(off.context).toBeNull();
+    const result = llmSchema(t, tw).safeParse({ ...values, context: { enabled: true, var: "" } });
+    expect(result.error!.issues.map((issue) => issue.path.join("."))).toEqual(["context.var"]);
+  });
+
+  it("SQL 스키마는 데이터 소스를 골라야 하고 토큰 상한은 500~64000이다", () => {
+    const schema = sqlSchemaSchema(t, tw);
+    const empty = sqlSchemaToForm(defaultConfig("sql_schema", "chatflow", labels));
+    expect(empty).toEqual({ source_id: "", tables: [], include_samples: true, max_tokens: 8000 });
+    const issues = schema.safeParse({ ...empty, max_tokens: 100 }).error!.issues;
+    expect(issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([
+      ["source_id", "데이터 소스를 고르세요."],
+      ["max_tokens", "500 이상이어야 합니다"],
+    ]);
+    expect(sqlSchemaFromForm({ ...empty, source_id: SOURCE_ID }).source_id).toBe(SOURCE_ID);
+    expect(sqlSchemaFromForm(empty).source_id).toBeNull();
+  });
+
+  it("SQL 실행은 템플릿이나 변수 중 고른 쪽이 있어야 하고, 비운 한도·승인은 null로 데이터 소스 값을 따른다", () => {
+    const schema = sqlQuerySchema(t, tw, { maxRowsMax: 1000, timeoutMax: 60, llmBytesMax: 65536 });
+    const empty = sqlQueryToForm(defaultConfig("sql_query", "chatflow", labels));
+    expect(empty).toMatchObject({ sql_mode: "template", approval: "inherit", max_rows: null });
+    expect(schema.safeParse(empty).error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "source_id",
+      "sql",
+    ]);
+    const byVar = { ...empty, source_id: SOURCE_ID, sql_mode: "var" as const, sql_var: "llm 1" };
+    expect(schema.safeParse(byVar).error!.issues.map((issue) => issue.message)).toEqual([
+      "변수 선택자 형식이 아닙니다",
+    ]);
+    // 행 상한은 실행 상한(maxRowsMax 1000)이 아니라 서버 SqlQueryConfig처럼 10,000까지 받는다.
+    const withVar = { ...byVar, sql_var: "llm_1.text" };
+    expect(schema.safeParse({ ...withVar, max_rows: SQL_QUERY_MAX_ROWS }).success).toBe(true);
+    expect(
+      problems("sql_query", sqlQueryFromForm({ ...withVar, max_rows: SQL_QUERY_MAX_ROWS })),
+    ).toEqual([]);
+    expect(
+      problems("sql_query", sqlQueryFromForm({ ...withVar, max_rows: SQL_QUERY_MAX_ROWS + 1 })),
+    ).not.toEqual([]);
+    const tooMany = { ...withVar, max_rows: SQL_QUERY_MAX_ROWS + 1, timeout_sec: 90 };
+    expect(schema.safeParse(tooMany).error!.issues.map((issue) => issue.path.join("."))).toEqual([
+      "max_rows",
+      "timeout_sec",
+    ]);
+    // 변수 쪽이면 sql_var만 쓰이고 템플릿 글은 남겨 둔다. 상속은 null이다.
+    expect(sqlQueryFromForm({ ...byVar, sql: "SELECT 1", sql_var: "llm_1.text" })).toEqual({
+      source_id: SOURCE_ID,
+      sql: "SELECT 1",
+      sql_var: "llm_1.text",
+      max_rows: null,
+      timeout_sec: null,
+      approval: null,
+      llm_rows: null,
+      llm_bytes: null,
+      export_file: true,
+    });
+    expect(sqlQueryFromForm({ ...byVar, sql_mode: "template" }).sql_var).toBeNull();
+    // 승인 선택지는 상속(null) + 서버 enum이다.
+    for (const value of SQL_APPROVALS) {
+      const sent = sqlQueryFromForm({ ...byVar, sql_var: "llm_1.text", approval: value });
+      expect(problems("sql_query", sent)).toEqual([]);
+    }
+    expect(problems("sql_query", { approval: "inherit" })).not.toEqual([]);
   });
 
   it("human_input은 필드가 하나 이상이어야 한다", () => {
