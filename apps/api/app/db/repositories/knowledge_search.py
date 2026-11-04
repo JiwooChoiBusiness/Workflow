@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Collection, Mapping
 from typing import Any, cast
 
-from sqlalchemy import ColumnElement, and_, exists, func, or_, select, true
+from sqlalchemy import ColumnElement, and_, case, exists, func, or_, select, true
 
 from app.db.models import (
     KbChildChunk,
@@ -21,6 +21,7 @@ from app.db.models import (
 )
 from app.db.models.enums import KbIndexingStatus
 from app.db.repositories.base import WorkspaceScopedRepository
+from app.db.repositories.knowledge import IN_PROGRESS_STATUSES
 from app.knowledge.retrieval.filters import FilterClause, FilterPlan
 
 # IN 목록 한 번의 크기. SQLite 바인드 변수 상한(32766)보다 한참 아래로 둔다.
@@ -112,21 +113,22 @@ def filter_condition(
     return and_(*parts) if plan.logical_operator == "and" else or_(*parts)
 
 
+def searchable_documents(kb_id: uuid.UUID, *, completed_only: bool) -> list[ColumnElement[bool]]:
+    # 보관·끈·지운 문서는 검색하지 않는다(4.4). search_while_indexing이 꺼져 있으면 색인이 끝난
+    # 문서만이다(6.7).
+    conditions = [
+        KbDocument.kb_id == kb_id,
+        KbDocument.deleted_at.is_(None),
+        KbDocument.enabled.is_(True),
+        KbDocument.archived.is_(False),
+    ]
+    if completed_only:
+        conditions.append(KbDocument.indexing_status == KbIndexingStatus.COMPLETED)
+    return conditions
+
+
 class KbSearchDocumentRepository(WorkspaceScopedRepository[KbDocument]):
     model = KbDocument
-
-    def _searchable(self, kb_id: uuid.UUID, *, completed_only: bool) -> list[ColumnElement[bool]]:
-        # 보관·끈·지운 문서는 검색하지 않는다(4.4). search_while_indexing이 꺼져 있으면 색인이 끝난
-        # 문서만이다(6.7).
-        conditions = [
-            KbDocument.kb_id == kb_id,
-            KbDocument.deleted_at.is_(None),
-            KbDocument.enabled.is_(True),
-            KbDocument.archived.is_(False),
-        ]
-        if completed_only:
-            conditions.append(KbDocument.indexing_status == KbIndexingStatus.COMPLETED)
-        return conditions
 
     async def searchable(
         self,
@@ -138,12 +140,28 @@ class KbSearchDocumentRepository(WorkspaceScopedRepository[KbDocument]):
     ) -> dict[uuid.UUID, str]:
         """검색할 문서 id → indexing_status. plan이 있으면 메타데이터 조건에 맞는 것만."""
         statement = self._select(KbDocument.id, KbDocument.indexing_status).where(
-            *self._searchable(kb_id, completed_only=completed_only)
+            *searchable_documents(kb_id, completed_only=completed_only)
         )
         if plan is not None and plan.clauses:
             statement = statement.where(filter_condition(plan, field_ids or {}, self.workspace_id))
         rows = await self._execute(statement)
         return {doc_id: status for doc_id, status in rows.all()}
+
+    async def summary(self, kb_id: uuid.UUID, *, completed_only: bool) -> tuple[int, int, bool]:
+        """(검색할 문서 수, 지우는 중인 것까지 센 문서 행 수, 검색할 문서 중 색인이 진행 중인 것이
+        있는지). 질의마다 문서 목록을 읽지 않으려고 개수만 센다."""
+        searchable = and_(*searchable_documents(kb_id, completed_only=completed_only))
+        running = and_(searchable, KbDocument.indexing_status.in_(list(IN_PROGRESS_STATUSES)))
+        row = (
+            await self._execute(
+                self._select(
+                    func.coalesce(func.sum(case((searchable, 1), else_=0)), 0),
+                    func.count(KbDocument.id),
+                    func.coalesce(func.sum(case((running, 1), else_=0)), 0),
+                ).where(KbDocument.kb_id == kb_id)
+            )
+        ).one()
+        return int(row[0]), int(row[1]), int(row[2]) > 0
 
     async def in_batch(self, kb_id: uuid.UUID, batch: str) -> list[KbDocument]:
         # datasets indexing-status. 같은 요청으로 올린 문서 묶음(4.1 batch).
@@ -161,11 +179,6 @@ class KbSearchDocumentRepository(WorkspaceScopedRepository[KbDocument]):
         statement = self._select(func.coalesce(func.sum(KbDocument.word_count), 0)).where(
             KbDocument.kb_id == kb_id, KbDocument.deleted_at.is_(None)
         )
-        return int(await self._scalar(statement) or 0)
-
-    async def count_rows(self, kb_id: uuid.UUID) -> int:
-        # 지우는 중인 문서도 센다. index.db에 아직 그 유닛이 남아 있을 수 있다.
-        statement = self._select(func.count(KbDocument.id)).where(KbDocument.kb_id == kb_id)
         return int(await self._scalar(statement) or 0)
 
     async def get_many(self, document_ids: Collection[uuid.UUID]) -> list[KbDocument]:
@@ -188,16 +201,20 @@ class KbSearchSegmentRepository(WorkspaceScopedRepository[KbSegment]):
     model = KbSegment
 
     async def units(
-        self, kb_id: uuid.UUID, unit_nos: Collection[int]
+        self, kb_id: uuid.UUID, unit_nos: Collection[int], *, completed_only: bool
     ) -> list[tuple[int, uuid.UUID, uuid.UUID]]:
-        """General·Q&A 유닛 → (unit_no, segment_id, document_id). 켜진 청크만."""
+        """General·Q&A 유닛 → (unit_no, segment_id, document_id). 켜진 청크와 검색할 문서만."""
         rows: list[tuple[int, uuid.UUID, uuid.UUID]] = []
         for batch in _batches(unit_nos):
             result = await self._execute(
-                self._select(KbSegment.unit_no, KbSegment.id, KbSegment.document_id).where(
+                self._select(KbSegment.unit_no, KbSegment.id, KbSegment.document_id)
+                .join(KbDocument, KbDocument.id == KbSegment.document_id)
+                .where(
                     KbSegment.kb_id == kb_id,
                     KbSegment.unit_no.in_(batch),
                     KbSegment.enabled.is_(True),
+                    KbDocument.workspace_id == self.workspace_id,
+                    *searchable_documents(kb_id, completed_only=completed_only),
                 )
             )
             rows.extend((int(unit), seg, doc) for unit, seg, doc in result.all())
@@ -222,11 +239,11 @@ class KbSearchChildRepository(WorkspaceScopedRepository[KbChildChunk]):
     model = KbChildChunk
 
     async def units(
-        self, kb_id: uuid.UUID, unit_nos: Collection[int]
+        self, kb_id: uuid.UUID, unit_nos: Collection[int], *, completed_only: bool
     ) -> list[tuple[int, uuid.UUID, uuid.UUID, uuid.UUID]]:
         """Parent-child 유닛 → (unit_no, child_id, 부모 segment_id, document_id).
 
-        부모 청크가 켜진 것만이다.
+        부모 청크가 켜져 있고 검색할 문서인 것만이다.
         """
         rows: list[tuple[int, uuid.UUID, uuid.UUID, uuid.UUID]] = []
         for batch in _batches(unit_nos):
@@ -238,11 +255,14 @@ class KbSearchChildRepository(WorkspaceScopedRepository[KbChildChunk]):
                     KbChildChunk.document_id,
                 )
                 .join(KbSegment, KbSegment.id == KbChildChunk.segment_id)
+                .join(KbDocument, KbDocument.id == KbChildChunk.document_id)
                 .where(
                     KbChildChunk.kb_id == kb_id,
                     KbChildChunk.unit_no.in_(batch),
                     KbSegment.workspace_id == self.workspace_id,
                     KbSegment.enabled.is_(True),
+                    KbDocument.workspace_id == self.workspace_id,
+                    *searchable_documents(kb_id, completed_only=completed_only),
                 )
             )
             rows.extend((int(unit), child, seg, doc) for unit, child, seg, doc in result.all())

@@ -28,7 +28,9 @@ from app.schemas.wf_run import WfNodeRunCreate, WfSingleNodeInputs
 from app.schemas.workflow import VarType
 from app.schemas.workflow import WorkflowKind as WorkflowKindName
 from app.services.errors import ServiceError, not_found
+from app.services.sql_sources import graph_sql_sources
 from app.services.workflow_files import WorkflowFileService, bind_run_uploads
+from app.services.workflow_knowledge import graph_knowledge, workflow_tier
 from app.services.workflow_runs import (
     StartedWfRun,
     enqueue,
@@ -131,7 +133,10 @@ class WorkflowSingleRunService:
             if draft is None:
                 raise not_found("워크플로우 초안")
             agents = await live_agent_ids(session, workspace_id, draft.graph)
-        graph = parse_graph(draft.graph)
+            graph = parse_graph(draft.graph)
+            bases = await graph_knowledge(session, workspace_id, graph)
+            sources = await graph_sql_sources(session, workspace_id, graph)
+            tier = await workflow_tier(session, workspace_id, graph, bases)
         if graph is None:
             raise ServiceError(422, "draft_invalid", "저장된 그래프를 읽지 못했다")
         node = next((item for item in graph.nodes if item.id == node_id), None)
@@ -150,6 +155,9 @@ class WorkflowSingleRunService:
             env_names=[item.name for item in stored_env(draft.env_vars)],
             conversation_vars=conversation,
             agent_ids=agents,
+            knowledge_bases=bases,
+            kb_top_k_max=self._settings.kb_top_k_max,
+            sql_sources=sources,
         )
         inner = analysis.frames.get(node.id)
         scope = {node.id, *(inner.nodes if inner is not None else ())}
@@ -189,7 +197,7 @@ class WorkflowSingleRunService:
             workspace_id, workflow.id, many, body.inputs
         )
         inputs = WfSingleNodeInputs(node_id=node.id, values=values)
-        limits = run_limits(self._settings, parse_settings(draft.settings))
+        limits = run_limits(self._settings, parse_settings(draft.settings), tier)
         async with self._db.write() as session:
             runs = WfRunRepository(session, workspace_id)
             run = runs.add(

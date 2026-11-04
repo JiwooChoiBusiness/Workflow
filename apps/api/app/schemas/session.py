@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.sandbox.base import RunningExec
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.events import MessageFileData
 
 SessionSource = Literal["preview", "webapp", "api", "task"]
@@ -78,6 +79,11 @@ class MessageOut(BaseModel):
     # user 메시지는 첨부(upload), 런의 마지막 assistant 메시지는 그 런이 바꾼 파일(output).
     files: list[MessageFileData]
     usage: dict[str, Any] | None
+    # search_knowledge가 찾은 인용(3단계 8.4). 런이 끝나면 그 런의 마지막 assistant 메시지로
+    # 모인다. 번호(position)는 답의 [번호]와 같다.
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )
     created_at: datetime
 
 

@@ -318,6 +318,53 @@ async def test_node_runs_left_waiting_in_a_crashed_run_fail_with_it(
     assert rows[waiting].status == "waiting_input"
 
 
+@pytest.mark.parametrize(
+    ("run_status", "waiting_to"), [("failed", "failed"), ("cancelled", "cancelled")]
+)
+async def test_an_ended_run_closes_waiting_and_running_node_runs(
+    setup: tuple[Database, EventBus, Seed], run_status: str, waiting_to: str
+) -> None:
+    # 중지·만료·실행 전 실패로 엔진 밖에서 끝난 런도 화면의 closeOpenNodeRuns와 같게 닫는다.
+    # 입력을 기다리던 노드는 실패면 런 오류를 붙인 failed, 돌던 노드(반복 컨테이너 등)는
+    # cancelled다.
+    from app.services.workflow_runs import close_waiting_nodes
+
+    db, _bus, seed = setup
+    run_id = await seed.wf_run(run_status, node_status="waiting_input")
+    error = {"code": "input_timeout", "message": "응답 대기 시간이 지났다", "retryable": False}
+    async with db.write() as session:
+        session.add(
+            WfNodeRun(
+                id=new_id(),
+                workspace_id=seed.workspace_id,
+                wf_run_id=run_id,
+                node_id="iteration_1",
+                node_type="iteration",
+                index=1,
+                status="running",
+                started_at=utcnow(),
+            )
+        )
+        run = await session.get(WfRun, run_id)
+        assert run is not None
+        run.error = error if run_status == "failed" else None
+        await session.flush()
+        await close_waiting_nodes(session, run, utcnow())
+
+    async with db.read() as session:
+        rows = {
+            row.node_id: row
+            for row in (
+                await session.scalars(select(WfNodeRun).where(WfNodeRun.wf_run_id == run_id))
+            ).all()
+        }
+    waiting, running = rows["agent_1"], rows["iteration_1"]
+    assert waiting.status == waiting_to and waiting.ended_at is not None
+    assert waiting.error == (error if run_status == "failed" else None)
+    assert (running.status, running.error) == ("cancelled", None)
+    assert running.ended_at is not None
+
+
 async def test_waiting_run_whose_child_already_moved_on_is_resumed(
     setup: tuple[Database, EventBus, Seed],
 ) -> None:

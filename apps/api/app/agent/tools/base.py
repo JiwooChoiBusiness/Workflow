@@ -6,13 +6,14 @@ interactions.py가 한다.
 """
 
 import json
+import uuid
 from collections import deque
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, cast
 
-from app.llm.types import ToolSpec
+from app.llm.types import ToolSpec, Usage
 from app.sandbox.base import (
     ExecEvent,
     ExecExited,
@@ -23,13 +24,16 @@ from app.sandbox.base import (
     SandboxError,
     WorkspaceHandle,
 )
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.events import ToolCallStatus
 
 if TYPE_CHECKING:
     from jsonschema.protocols import Validator
 
 # system은 에이전트 설정으로 고르는 그룹이 아니다. 과업 모드의 submit_result처럼 러너가 붙인다.
-ToolGroup = Literal["shell", "files", "http", "ask_user", "system"]
+# knowledge도 고르는 그룹이 아니고 버전에 지식 베이스가 있으면 러너가 붙인다(3단계 8.4). sql도 같고
+# 버전에 데이터 소스가 있을 때 붙는다(3단계 10.3).
+ToolGroup = Literal["shell", "files", "http", "ask_user", "system", "knowledge", "sql"]
 OutputStream = Literal["stdout", "stderr"]
 # 실행하지 않고 런을 멈추는 도구의 멈춤 종류(interactions.PendingKind 중 도구가 만드는 것).
 PauseKind = Literal["question", "agent_call"]
@@ -231,6 +235,82 @@ class OutputCapture:
         return self.storage_key
 
 
+class KnowledgeSearchError(Exception):
+    """지식 검색의 실패. 도구가 is_error 결과로 모델에 돌려준다."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+@dataclass(frozen=True)
+class ModelUsage:
+    """도구 안에서 난 채팅 호출 하나(search_knowledge의 자동 필터·LLM 재순위). 루프가 usage
+    이벤트로 내고 런 합계(예산·통계)에 더한다."""
+
+    model: str
+    key_index: int | None
+    usage: Usage
+
+
+@dataclass(frozen=True)
+class KnowledgeResult:
+    # 순위 순서. position은 검색 안의 순위이고 도구가 런 안 번호로 다시 매긴다.
+    resources: list[RetrieverResourceData]
+    # "code: message" 꼴의 검색 경고(partial_index 등).
+    warnings: list[str] = field(default_factory=list[str])
+    # 검색이 부른 채팅 호출.
+    calls: list[ModelUsage] = field(default_factory=list[ModelUsage])
+
+
+class KnowledgePort(Protocol):
+    """search_knowledge가 쓰는 지식 검색(3단계 8.4). 구현(app/services)이 워크스페이스·런의 키
+    등급·버전의 검색 설정을 안다. 실패는 KnowledgeSearchError다."""
+
+    async def search(
+        self, query: str, kb_ids: Sequence[uuid.UUID], *, top_k: int | None
+    ) -> KnowledgeResult: ...
+
+
+class SqlToolError(Exception):
+    """데이터 소스 도구의 실패(검증 거부, 실행 실패, 준비 전). 도구가 is_error 결과로 돌려준다."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+@dataclass(frozen=True)
+class SqlToolResult:
+    # 모델에 보내는 결과 글(데이터 표식으로 감싼 마크다운 표와 행 수 문구).
+    text: str
+    sql_executed: str
+    row_count: int
+    truncated: bool
+    # 잘린 결과를 작업공간에 CSV로 남겼으면 그 상대 경로.
+    csv_path: str | None = None
+
+
+class SqlToolPort(Protocol):
+    """describe_sql_source·query_sql이 쓰는 데이터 소스(3단계 10.3). 구현(app/services)이
+    워크스페이스를 알고 콘솔·노드와 같은 검증·실행 경로를 쓴다. 실패는 SqlToolError다."""
+
+    async def describe(self, source_id: uuid.UUID) -> str: ...
+
+    # 잘리면 전체 결과를 작업공간 csv_path에 쓴다.
+    async def query(
+        self,
+        source_id: uuid.UUID,
+        sql: str,
+        *,
+        max_rows: int | None,
+        handle: WorkspaceHandle,
+        csv_path: str,
+    ) -> SqlToolResult: ...
+
+
 @dataclass(frozen=True)
 class ToolDefaults:
     # 에이전트 버전 limits.tool_timeout_sec. 모델이 timeout_sec를 주면 max까지 받는다(4.6).
@@ -249,6 +329,12 @@ class ToolContext:
     emit_output: Callable[[OutputStream, str], Awaitable[None]]
     memory_limit_mb: int | None = None
     max_processes: int | None = None
+    knowledge: KnowledgePort | None = None
+    # describe_sql_source·query_sql이 쓰는 데이터 소스. 버전에 데이터 소스가 없으면 None.
+    sql: SqlToolPort | None = None
+    # 이 런에서 인용한 세그먼트 id → 번호. 검색을 여러 번 해도 [번호]가 겹치지 않게 루프가 들고
+    # 다닌다. 도구가 새 세그먼트에 다음 번호를 매겨 넣는다.
+    cited: dict[str, int] | None = None
 
 
 @dataclass
@@ -273,6 +359,13 @@ class ToolResult:
     output_storage_key: str | None = None
     # call_agent 결과면 그 자식 런. tool_call.completed에 실린다.
     child_run_id: str | None = None
+    # search_knowledge가 찾은 인용(RetrieverResourceData의 JSON 모양). 루프가 스텝 메시지와
+    # tool_call.completed에 싣는다.
+    retriever_resources: list[dict[str, Any]] | None = None
+    # 도구 안의 채팅 호출. 루프가 usage 이벤트(tool_call_id 포함)로 내고 런 합계에 넣는다.
+    usage: list[ModelUsage] = field(default_factory=list[ModelUsage])
+    # query_sql의 실행 요약 {sql_executed, row_count, truncated}. tool_call.completed.sql에 실린다.
+    sql: dict[str, Any] | None = None
 
     @classmethod
     def ok(cls, content: str) -> "ToolResult":

@@ -21,6 +21,8 @@ from app.schemas.events import NodeError as NodeError
 from app.schemas.events import NodeRunStatus as NodeRunStatus
 from app.schemas.events import WorkflowEndStatus as WorkflowEndStatus
 from app.schemas.events import WorkflowKind as WorkflowKind
+from app.schemas.knowledge import RetrievalSettings
+from app.schemas.sql_source import SqlNodeOptions
 
 ErrorStrategy = Literal["fail", "default", "branch"]
 IssueLevel = Literal["error", "warning"]
@@ -171,7 +173,8 @@ WorkflowName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
 ]
 # blank: workflow는 start→end, chatflow는 start→answer. chat_basic은 chatflow의 start→llm→answer.
-WorkflowTemplate = Literal["blank", "chat_basic"]
+# text_to_sql은 chatflow 템플릿이다(3단계 10.3). 데이터 소스는 만든 뒤 노드에서 고른다.
+WorkflowTemplate = Literal["blank", "chat_basic", "text_to_sql"]
 VarName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
 MAX_CONVERSATION_VARS = 100
 
@@ -187,6 +190,8 @@ class WorkflowCreate(BaseModel):
     icon: Icon | None = None
     description: Description = ""
     template: WorkflowTemplate = "blank"
+    # text_to_sql 템플릿의 세 SQL 노드에 채울 데이터 소스. 비우면 노드에서 고른다.
+    sql_source_id: uuid.UUID | None = None
 
 
 class WorkflowPatch(BaseModel):
@@ -246,6 +251,9 @@ class WebappSettings(BaseModel):
     suggested_questions: list[Annotated[str, StringConstraints(max_length=200)]] = Field(
         default_factory=list[str], max_length=10
     )
+    # 챗플로우 답 아래 인용 칩을 웹앱에서 보일지(3단계 8.3, Dify의 Citations and Attributions).
+    # 화면 표시 설정이라 API 응답의 retriever_resources는 그대로 나간다.
+    citations_enabled: bool = True
 
 
 class WorkflowSettings(BaseModel):
@@ -382,10 +390,47 @@ class WorkflowPublishOut(BaseModel):
     version: WorkflowVersionOut
 
 
+class KnowledgeNodeOptions(BaseModel):
+    """knowledge_retrieval·knowledge_index 노드 폼이 쓰는 값(3단계 12.1).
+
+    지식 베이스 목록은 여기 없고 GET /api/console/knowledge로 받는다.
+    """
+
+    # knowledge_retrieval이 함께 검색하는 지식 베이스 수.
+    max_kbs: int
+    # KB_TOP_K_MAX. retrieval.top_k의 상한이다.
+    top_k_max: int
+    # retrieval을 비웠을 때 KB가 하나면 그 KB의 설정을 쓰고, 이 값은 새로 켤 때의 기본값이다.
+    default_retrieval: RetrievalSettings
+    search_methods: list[str]
+    reranking_modes: list[str]
+    rerank_candidates_max: int
+    filter_modes: list[str]
+    max_conditions: int
+    # 메타데이터 필드 타입(string·number·time) → 쓸 수 있는 연산자(Dify API 이름).
+    operators: dict[str, list[str]]
+    # knowledge_retrieval의 시간 상한(초).
+    retrieval_timeout_sec: int
+    # knowledge_index의 on_duplicate가 받는 값(skip·replace·add)과 출력 status가 갖는 값.
+    duplicate_policies: list[str]
+    index_statuses: list[str]
+    # knowledge_index wait의 기본·최대 시간(초).
+    index_wait_default_sec: int
+    index_wait_max_sec: int
+    # 에이전트 search_knowledge의 질의 길이 상한.
+    tool_query_max_chars: int
+    # GEMINI_PAID_API_KEY가 있는지. 없으면 유료 전용 지식 베이스를 쓰는 워크플로우가 돌지 않는다.
+    paid_key_configured: bool
+
+
 class NodeTypeList(BaseModel):
     items: list[NodeType]
     # tool 노드의 내장 도구.
     tools: list[ToolSpecOut] = Field(default_factory=list[ToolSpecOut])
+    # 지식 노드 폼의 선택지와 상한.
+    kb_options: KnowledgeNodeOptions | None = None
+    # SQL 노드 폼의 기본값과 상한(3단계 10.3).
+    sql_options: SqlNodeOptions | None = None
 
 
 class WorkflowImportRequest(BaseModel):

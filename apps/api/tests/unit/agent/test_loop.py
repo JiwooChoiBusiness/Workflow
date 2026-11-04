@@ -603,6 +603,24 @@ async def test_model_error_fails_the_run(harness: Harness) -> None:
     assert outcome.status == "failed"
     assert outcome.error is not None
     assert (outcome.error.code, outcome.error.retryable) == ("model_unavailable", True)
+    # 일일 한도가 아니면 retry_after가 없고 run.error에도 싣지 않는다.
+    assert outcome.error.model_dump() == {
+        "code": "model_unavailable",
+        "message": "모든 키가 429",
+        "retryable": True,
+    }
+
+
+async def test_daily_limit_failure_carries_retry_after(harness: Harness) -> None:
+    daily = ErrorEvent(
+        code="model_unavailable", message="일일 한도", retryable=True, retry_after=3600.0
+    )
+    run = harness([[daily]])
+
+    outcome = await run.run()
+
+    assert outcome.error is not None
+    assert outcome.error.model_dump()["retry_after"] == 3600.0
 
 
 async def test_token_budget_stops_the_run(harness: Harness) -> None:

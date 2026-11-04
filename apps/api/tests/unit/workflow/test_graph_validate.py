@@ -234,11 +234,11 @@ def test_node_ids_types_and_config(kit: Any) -> None:
         {"id": "Bad-Id", "type": "template", "config": {}},
         {"id": "sys", "type": "template", "config": {}},
         {"id": "template_1", "type": "template", "config": {}},
-        {"id": "knowledge_1", "type": "knowledge_retrieval", "config": {}},
+        {"id": "mystery_1", "type": "mystery", "config": {}},
         {"id": "template_v2", "type": "template", "version": 2, "config": {}},
         {"id": "if_else_9", "type": "if_else", "config": {"cases": []}},
     ]
-    for node_id in ("Bad-Id", "sys", "knowledge_1", "template_v2", "if_else_9"):
+    for node_id in ("Bad-Id", "sys", "mystery_1", "template_v2", "if_else_9"):
         raw["edges"].append({"id": f"to_{node_id}", "source": "start", "target": node_id})
 
     issues = found(validate(Graph.model_validate(raw), "workflow"))
@@ -247,7 +247,7 @@ def test_node_ids_types_and_config(kit: Any) -> None:
         ("invalid_node_id", "Bad-Id", "id"),
         ("invalid_node_id", "sys", "id"),
         ("duplicate_node_id", "template_1", "id"),
-        ("unknown_node_type", "knowledge_1", "type"),
+        ("unknown_node_type", "mystery_1", "type"),
         ("unsupported_node_version", "template_v2", None),
         ("invalid_config", "if_else_9", "cases"),
     ]

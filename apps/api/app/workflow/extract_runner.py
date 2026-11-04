@@ -35,8 +35,8 @@ from app.sandbox.base import (
 )
 
 DocumentKind = Literal["pdf", "docx"]
-# 버전을 바꾸면 해시가 바뀌어 새 폴더에 다시 설치한다.
-PARSER_SPECS: tuple[str, ...] = ("pypdf>=6,<7", "python-docx>=1.1,<2")
+# 시험한 버전으로 고정한다. 바꾸면 해시가 바뀌어 새 폴더에 다시 설치한다.
+PARSER_SPECS: tuple[str, ...] = ("pypdf==6.21.4", "python-docx==1.2.0")
 INSTALL_TIMEOUT_SEC = 300
 EXTRACT_TIMEOUT_SEC = 60
 INSTALL_MEMORY_MB = 1024

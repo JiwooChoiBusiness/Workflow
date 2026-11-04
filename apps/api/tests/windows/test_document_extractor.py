@@ -161,6 +161,8 @@ class Ports:
     model: None = None
     http: None = None
     tasks: None = None
+    knowledge: None = None
+    sql: None = None
     checkpoints: list[Checkpoint] = field(default_factory=list[Checkpoint])
 
     def now(self) -> datetime:

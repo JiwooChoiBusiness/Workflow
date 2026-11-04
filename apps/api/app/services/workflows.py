@@ -5,14 +5,20 @@
 암호문 그대로 옮긴다. 챗플로우 초안을 저장할 때는 answer 노드마다 미리 흘릴 수 있는 llm을
 계산해 ui.prestream_sources로 둔다(3.8, 캔버스의 "스트리밍 가능" 표시). 런(workflow_runs.py)과
 실행기(workflow_executor.py)도 여기의 버전 해석 함수(그래프·env·대화 변수·설정)를 쓴다.
+
+지식 노드가 가리키는 지식 베이스와 SQL 노드가 가리키는 데이터 소스는 에이전트와 같은 방식으로 살아
+있는 목록을 넘겨 검증한다(지운 KB는 knowledge_base_not_found, 지운 데이터 소스는
+sql_source_not_found, 유료 전용이면 경고 paid_key_required, 3단계 8.1·11장). 유료 전용을 쓰는데
+유료 키가 없으면 발행하지 않는다.
 """
 
 import copy
 import hashlib
 import json
 import uuid
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import datetime, timedelta
+from importlib import resources
 from typing import Any
 
 import structlog
@@ -57,12 +63,15 @@ from app.schemas.workflow import (
 from app.security.crypto import CryptoError, SecretCipher, cipher_from_settings
 from app.services.agents import slugify
 from app.services.errors import Problems, ServiceError, not_found
+from app.services.run_tier import require_paid_key
+from app.services.sql_sources import graph_sql_sources, sql_node_options, sql_source_refs
+from app.services.workflow_knowledge import graph_knowledge, node_options, workflow_tier
 from app.workflow import graph as graph_check
 from app.workflow.answer_stream import prestream_sources
 from app.workflow.graph import MAX_GRAPH_BYTES
 from app.workflow.memory import MemoryConfig
 from app.workflow.nodes import default_registry
-from app.workflow.nodes.base import NodeRegistry
+from app.workflow.nodes.base import KnowledgeBaseRef, NodeRegistry, SqlSourceRef
 from app.workflow.nodes.llm import DEFAULT_SYSTEM_PROMPT, LlmConfig, PromptMessage
 from app.workflow.tools import describe_tools
 
@@ -166,6 +175,9 @@ def version_issues(
     *,
     registry: NodeRegistry | None = None,
     agent_ids: Collection[uuid.UUID] | None = None,
+    knowledge_bases: Mapping[uuid.UUID, KnowledgeBaseRef] | None = None,
+    kb_top_k_max: int | None = None,
+    sql_sources: Mapping[uuid.UUID, SqlSourceRef] | None = None,
 ) -> list[Issue]:
     graph = parse_graph(version.graph)
     if graph is None:
@@ -179,6 +191,9 @@ def version_issues(
         conversation=conversation_vars(version.conversation_vars),
         registry=registry,
         agent_ids=agent_ids,
+        knowledge_bases=knowledge_bases,
+        kb_top_k_max=kb_top_k_max,
+        sql_sources=sql_sources,
     )
 
 
@@ -190,8 +205,14 @@ def check_graph(
     conversation: Sequence[ConversationVar],
     registry: NodeRegistry | None = None,
     agent_ids: Collection[uuid.UUID] | None = None,
+    knowledge_bases: Mapping[uuid.UUID, KnowledgeBaseRef] | None = None,
+    kb_top_k_max: int | None = None,
+    sql_sources: Mapping[uuid.UUID, SqlSourceRef] | None = None,
 ) -> list[Issue]:
-    """agent_ids(live_agent_ids)를 주면 agent 노드가 없는 에이전트를 가리킬 때 agent_not_found다."""
+    """agent_ids(live_agent_ids)를 주면 agent 노드가 없는 에이전트를 가리킬 때 agent_not_found,
+    knowledge_bases(graph_knowledge)를 주면 지식 노드가 없는 KB를 가리킬 때
+    knowledge_base_not_found, sql_sources(graph_sql_sources)를 주면 SQL 노드가 없는 데이터 소스를
+    가리킬 때 sql_source_not_found다."""
     workflow_kind: WorkflowKindName = "chatflow" if kind == WorkflowKind.CHATFLOW else "workflow"
     return graph_check.validate(
         graph,
@@ -200,6 +221,9 @@ def check_graph(
         env_names=env_names,
         conversation_vars=conversation_types(kind, conversation),
         agent_ids=agent_ids,
+        knowledge_bases=knowledge_bases,
+        kb_top_k_max=kb_top_k_max,
+        sql_sources=sql_sources,
     )
 
 
@@ -252,8 +276,26 @@ def _node(node_id: str, node_type: str, title: str, x: float, config: dict[str, 
     }
 
 
-def default_graph(kind: str, template: WorkflowTemplate) -> Graph:
-    """새 워크플로우의 초안 그래프. 그대로 실행할 수 있는 최소 모양이다."""
+def template_graph(name: str, *, sql_source_id: uuid.UUID | None = None) -> Graph:
+    """app/workflow/templates/<name>.yaml의 그래프. SQL 노드에는 sql_source_id를 채운다."""
+    # PyYAML은 템플릿·DSL을 다룰 때만 불러온다(2단계 설계 8장 메모리 예산).
+    import yaml
+
+    text = resources.files("app.workflow").joinpath("templates", f"{name}.yaml").read_text("utf-8")
+    raw: dict[str, Any] = yaml.safe_load(text)
+    if sql_source_id is not None:
+        for node in raw.get("nodes", []):
+            if node.get("type") in ("sql_schema", "sql_query"):
+                node.setdefault("config", {})["source_id"] = str(sql_source_id)
+    return Graph.model_validate(raw)
+
+
+def default_graph(
+    kind: str, template: WorkflowTemplate, *, sql_source_id: uuid.UUID | None = None
+) -> Graph:
+    """새 워크플로우의 초안 그래프. text_to_sql은 데이터 소스를 고르기 전에는 검증 오류가 남는다."""
+    if template == "text_to_sql":
+        return template_graph("text_to_sql", sql_source_id=sql_source_id)
     start = _node("start", "start", "시작", 0, {"fields": []})
     if kind == WorkflowKind.WORKFLOW:
         nodes = [start, _node("end_1", "end", "끝", 300, {"outputs": []})]
@@ -340,7 +382,12 @@ class WorkflowService:
 
     def node_types(self) -> NodeTypeList:
         registry = self._registry or default_registry()
-        return NodeTypeList(items=registry.describe(), tools=describe_tools())
+        return NodeTypeList(
+            items=registry.describe(),
+            tools=describe_tools(),
+            kb_options=node_options(self._settings),
+            sql_options=sql_node_options(self._settings),
+        )
 
     async def list_workflows(
         self, workspace_id: uuid.UUID, *, kind: str | None = None
@@ -366,13 +413,26 @@ class WorkflowService:
             return workflow_out(workflow, await self._published(session, workspace_id, workflow))
 
     async def create_workflow(self, workspace_id: uuid.UUID, body: WorkflowCreate) -> WorkflowOut:
-        if body.template == "chat_basic" and body.kind != WorkflowKind.CHATFLOW:
+        if body.template in ("chat_basic", "text_to_sql") and body.kind != WorkflowKind.CHATFLOW:
             raise ServiceError(
-                422, "template_kind_mismatch", "chat_basic 템플릿은 chatflow에만 쓴다"
+                422, "template_kind_mismatch", f"{body.template} 템플릿은 chatflow에만 쓴다"
             )
+        if body.sql_source_id is not None:
+            if body.template != "text_to_sql":
+                raise ServiceError(
+                    422, "template_kind_mismatch", "sql_source_id는 text_to_sql 템플릿에만 준다"
+                )
+            async with self._db.read() as session:
+                found = await sql_source_refs(session, workspace_id, [body.sql_source_id])
+            if body.sql_source_id not in found:
+                raise ServiceError(
+                    422, "sql_source_not_found", "데이터 소스를 찾을 수 없다. 지웠거나 다른 id다"
+                )
         # 템플릿의 answer 노드도 저장한 초안처럼 ui.prestream_sources(캔버스 표시)를 갖고 시작한다.
         graph = with_prestream(
-            default_graph(body.kind, body.template), body.kind, registry=self._registry
+            default_graph(body.kind, body.template, sql_source_id=body.sql_source_id),
+            body.kind,
+            registry=self._registry,
         )
         try:
             async with self._db.write() as session:
@@ -460,7 +520,12 @@ class WorkflowService:
             workflow = await self._active(session, workspace_id, workflow_id)
             draft = await self._draft(session, workspace_id, workflow)
             agents = await live_agent_ids(session, workspace_id, draft.graph)
-        return self._version_out(workflow, draft, agent_ids=agents)
+            parsed = parse_graph(draft.graph)
+            bases = await graph_knowledge(session, workspace_id, parsed)
+            sources = await graph_sql_sources(session, workspace_id, parsed)
+        return self._version_out(
+            workflow, draft, agent_ids=agents, knowledge_bases=bases, sql_sources=sources
+        )
 
     async def save_draft(
         self, workspace_id: uuid.UUID, workflow_id: uuid.UUID, body: WorkflowDraftUpdate
@@ -502,7 +567,11 @@ class WorkflowService:
             draft.updated_at = next_stamp(self._clock, draft.updated_at)
             await WfVersionRepository(session, workspace_id).flush()
             agents = await live_agent_ids(session, workspace_id, graph)
-        return self._version_out(workflow, draft, agent_ids=agents)
+            bases = await graph_knowledge(session, workspace_id, graph)
+            sources = await graph_sql_sources(session, workspace_id, graph)
+        return self._version_out(
+            workflow, draft, agent_ids=agents, knowledge_bases=bases, sql_sources=sources
+        )
 
     async def validate_draft(
         self, workspace_id: uuid.UUID, workflow_id: uuid.UUID, body: WorkflowDraftCheck | None
@@ -512,8 +581,19 @@ class WorkflowService:
             draft = await self._draft(session, workspace_id, workflow)
             graph = draft.graph if body is None else body.graph
             agents = await live_agent_ids(session, workspace_id, graph)
+            parsed = parse_graph(graph) if isinstance(graph, dict) else graph
+            bases = await graph_knowledge(session, workspace_id, parsed)
+            sources = await graph_sql_sources(session, workspace_id, parsed)
         if body is None:
-            issues = version_issues(draft, workflow.kind, registry=self._registry, agent_ids=agents)
+            issues = version_issues(
+                draft,
+                workflow.kind,
+                registry=self._registry,
+                agent_ids=agents,
+                knowledge_bases=bases,
+                kb_top_k_max=self._settings.kb_top_k_max,
+                sql_sources=sources,
+            )
         else:
             env_names = (
                 [item.name for item in body.env_vars]
@@ -532,6 +612,9 @@ class WorkflowService:
                 conversation=conversation,
                 registry=self._registry,
                 agent_ids=agents,
+                knowledge_bases=bases,
+                kb_top_k_max=self._settings.kb_top_k_max,
+                sql_sources=sources,
             )
         return ValidationOut(ok=not has_errors(issues), issues=issues)
 
@@ -542,7 +625,18 @@ class WorkflowService:
             workflow = await self._active(session, workspace_id, workflow_id)
             draft = await self._draft(session, workspace_id, workflow)
             agents = await live_agent_ids(session, workspace_id, draft.graph)
-            issues = version_issues(draft, workflow.kind, registry=self._registry, agent_ids=agents)
+            graph = parse_graph(draft.graph)
+            bases = await graph_knowledge(session, workspace_id, graph)
+            sources = await graph_sql_sources(session, workspace_id, graph)
+            issues = version_issues(
+                draft,
+                workflow.kind,
+                registry=self._registry,
+                agent_ids=agents,
+                knowledge_bases=bases,
+                kb_top_k_max=self._settings.kb_top_k_max,
+                sql_sources=sources,
+            )
             if has_errors(issues):
                 raise ServiceError(
                     422,
@@ -550,6 +644,11 @@ class WorkflowService:
                     "초안에 검증 오류가 있다. 고쳐 저장한 뒤 다시 발행한다",
                     details=issue_details(issues),
                 )
+            # 유료 전용 지식 베이스·데이터 소스를 쓰는데(agent 노드가 부르는 에이전트의 것도) 유료
+            # 키가 없으면 발행해도 돌지 않는다(3단계 14.4).
+            require_paid_key(
+                self._settings, await workflow_tier(session, workspace_id, graph, bases)
+            )
             versions = WfVersionRepository(session, workspace_id)
             version = versions.add(
                 WfVersion(
@@ -613,7 +712,12 @@ class WorkflowService:
             if version is None:
                 raise not_found("워크플로우 버전")
             agents = await live_agent_ids(session, workspace_id, version.graph)
-        return self._version_out(workflow, version, agent_ids=agents)
+            parsed = parse_graph(version.graph)
+            bases = await graph_knowledge(session, workspace_id, parsed)
+            sources = await graph_sql_sources(session, workspace_id, parsed)
+        return self._version_out(
+            workflow, version, agent_ids=agents, knowledge_bases=bases, sql_sources=sources
+        )
 
     async def restore_version(
         self, workspace_id: uuid.UUID, workflow_id: uuid.UUID, version_id: uuid.UUID
@@ -704,11 +808,19 @@ class WorkflowService:
         *,
         issues: list[Issue] | None = None,
         agent_ids: Collection[uuid.UUID] | None = None,
+        knowledge_bases: Mapping[uuid.UUID, KnowledgeBaseRef] | None = None,
+        sql_sources: Mapping[uuid.UUID, SqlSourceRef] | None = None,
     ) -> WorkflowVersionOut:
         graph = parse_graph(version.graph) or Graph()
         if issues is None:
             issues = version_issues(
-                version, workflow.kind, registry=self._registry, agent_ids=agent_ids
+                version,
+                workflow.kind,
+                registry=self._registry,
+                agent_ids=agent_ids,
+                knowledge_bases=knowledge_bases,
+                kb_top_k_max=self._settings.kb_top_k_max,
+                sql_sources=sql_sources,
             )
         return WorkflowVersionOut(
             id=version.id,

@@ -224,6 +224,29 @@ async def test_economy_kb_makes_no_embedding_calls(
     assert hits and hits[0].unit_no == items[2]["unit_no"]
 
 
+async def test_upgrading_an_economy_kb_indexes_vectors_through_the_lane(
+    logged_in: AsyncClient, app: FastAPI, embedder: FakeEmbedder
+) -> None:
+    # K8: High Quality로 올리면 문서가 다시 색인을 거쳐 벡터가 생긴다. 전문 색인은 그대로 쓴다.
+    kb = await create_kb(logged_in, indexing_technique="economy")
+    document, items = await completed(logged_in, kb["id"], paragraphs(3, 100))
+    assert embedder.calls == []
+
+    upgraded = await logged_in.patch(
+        f"{BASE}/{kb['id']}", json={"indexing_technique": "high_quality"}
+    )
+    assert upgraded.status_code == 200, upgraded.text
+    done = await wait_document(logged_in, kb["id"], document["id"], ("completed",))
+
+    kb_id = uuid.UUID(kb["id"])
+    runtime = runtime_of(app)
+    assert done["completed_segments"] == len(items)
+    assert await runtime.vectors.count(kb_id) == len(items)
+    assert embedder.embedded_items == len(items)
+    after = await segments(logged_in, kb["id"], document["id"])
+    assert all(item["index_state"]["vector"] == "ok" for item in after)
+
+
 async def test_parent_child_and_qa_documents(
     logged_in: AsyncClient, app: FastAPI, embedder: FakeEmbedder
 ) -> None:
@@ -335,6 +358,167 @@ async def test_disabling_moves_the_vector_to_the_cache_and_enabling_restores_it(
     assert on.json()["index_state"]["vector"] == "ok" and on.json()["enabled"] is True
     assert await runtime.vectors.get(kb_id, target["unit_no"]) == before
     assert len(embedder.calls) == calls
+
+
+async def test_the_same_text_in_another_kb_is_copied_without_calls(
+    logged_in: AsyncClient, app: FastAPI, embedder: FakeEmbedder
+) -> None:
+    # K9: 같은 색인 설정의 다른 KB에 같은 글을 넣으면 살아 있는 유닛의 벡터를 복사한다(6.6).
+    body = paragraphs(4, 120)
+    first = await create_kb(logged_in, name="원본")
+    _, source = await completed(logged_in, first["id"], body)
+    calls = embedder.embedded_items
+
+    second = await create_kb(logged_in, name="사본")
+    done, copies = await completed(logged_in, second["id"], body)
+
+    assert embedder.embedded_items == calls
+    assert done["completed_segments"] == len(copies) == len(source)
+    assert all(item["index_state"]["vector"] == "ok" for item in copies)
+    runtime = runtime_of(app)
+    for original, copy in zip(source, copies, strict=True):
+        assert await runtime.vectors.get(
+            uuid.UUID(second["id"]), copy["unit_no"]
+        ) == await runtime.vectors.get(uuid.UUID(first["id"]), original["unit_no"])
+    # 같은 글로 고친 청크도 API를 부르지 않는다(청크 편집은 interactive 경로).
+    target = copies[0]
+    url = f"{BASE}/{second['id']}/documents/{done['id']}/segments/{target['id']}"
+    edited = await logged_in.patch(url, json={"content": source[1]["content"]})
+    assert edited.json()["index_state"]["vector"] == "ok"
+    assert embedder.embedded_items == calls
+
+
+async def test_other_embedding_settings_and_stale_tables_are_not_copied(
+    logged_in: AsyncClient, app: FastAPI, embedder: FakeEmbedder, db: Database
+) -> None:
+    body = paragraphs(3, 100)
+    first = await create_kb(logged_in, name="원본")
+    _, source = await completed(logged_in, first["id"], body)
+    calls = embedder.embedded_items
+
+    # 차원이 다르면 config_key가 달라 복사하지 않는다.
+    wide = await create_kb(logged_in, name="넓은 차원", embedding={"dimensions": 1536})
+    await completed(logged_in, wide["id"], body)
+    assert embedder.embedded_items == calls + len(source)
+
+    # app.db의 색인 설정(version)과 index.db가 어긋난 KB의 벡터는 믿지 않는다(5.4).
+    async with db.write() as session:
+        await session.execute(
+            text(
+                "UPDATE knowledge_base SET embedding = json_set(embedding, '$.version', 9)"
+                " WHERE id = :id"
+            ),
+            {"id": first["id"]},
+        )
+    calls = embedder.embedded_items
+    third = await create_kb(logged_in, name="세 번째")
+    await completed(logged_in, third["id"], body)
+    assert embedder.embedded_items == calls + len(source)
+
+
+async def test_parent_child_chunks_are_copied_between_kbs(
+    logged_in: AsyncClient, app: FastAPI, embedder: FakeEmbedder
+) -> None:
+    body = paragraphs(3, 120)
+    first = await create_kb(logged_in, name="원본 부모 자식", doc_form="hierarchical_model")
+    _, parents = await completed(logged_in, first["id"], body)
+    calls = embedder.embedded_items
+
+    second = await create_kb(logged_in, name="사본 부모 자식", doc_form="hierarchical_model")
+    _, copies = await completed(logged_in, second["id"], body)
+
+    assert embedder.embedded_items == calls
+    originals = [child for parent in parents for child in parent["child_chunks"]]
+    children = [child for parent in copies for child in parent["child_chunks"]]
+    assert len(children) == len(originals) > 0
+    runtime = runtime_of(app)
+    for original, copy in zip(originals, children, strict=True):
+        assert await runtime.vectors.get(
+            uuid.UUID(second["id"]), copy["unit_no"]
+        ) == await runtime.vectors.get(uuid.UUID(first["id"]), original["unit_no"])
+
+
+async def test_live_copy_skips_off_deleted_reembedding_and_foreign_units(
+    logged_in: AsyncClient, app: FastAPI, db: Database
+) -> None:
+    # 원본은 같은 워크스페이스의 켜져 있고 색인이 끝난 유닛뿐이다. 끈 청크, 지우는 중인 문서,
+    # 재임베딩을 기다리는 청크(waiting)의 벡터는 남아 있어도 복사하지 않는다.
+    from app.db.repositories.workspaces import WorkspaceRepository
+    from app.services.knowledge_runtime import LiveUnitVectors
+
+    kb = await create_kb(logged_in)
+    document, items = await completed(logged_in, kb["id"], paragraphs(2, 60))
+    live = LiveUnitVectors(db, runtime_of(app).vectors)
+    key = EmbeddingConfig().key()
+    target = items[0]
+    digest = content_hash(target["content"])
+    async with db.read() as session:
+        workspace = await WorkspaceRepository(session).get_default()
+        assert workspace is not None
+        workspace_id = workspace.id
+
+    async def found() -> bool:
+        return digest in await live(key, [digest], workspace_id)
+
+    async def update(sql: str, **values: Any) -> None:
+        async with db.write() as session:
+            await session.execute(text(sql), values)
+
+    assert await found()
+    assert await live(key, [digest], uuid.uuid4()) == {}
+    # 끈 청크(색인 행이 남아 있어도), 재임베딩을 기다리는 청크.
+    for change, back in (
+        (
+            "UPDATE kb_segment SET enabled = 0 WHERE id = :id",
+            "UPDATE kb_segment SET enabled = 1 WHERE id = :id",
+        ),
+        (
+            "UPDATE kb_segment SET status = 'waiting' WHERE id = :id",
+            "UPDATE kb_segment SET status = 'completed' WHERE id = :id",
+        ),
+    ):
+        await update(change, id=target["id"])
+        assert not await found(), change
+        await update(back, id=target["id"])
+    await update(
+        "UPDATE kb_document SET deleted_at = :at WHERE id = :id",
+        at="2026-11-04T00:00:00.000000Z",
+        id=document["id"],
+    )
+    assert not await found()
+    await update("UPDATE kb_document SET deleted_at = NULL WHERE id = :id", id=document["id"])
+    assert await found()
+
+
+async def test_text_in_another_workspace_is_not_copied(
+    logged_in: AsyncClient, app: FastAPI, embedder: FakeEmbedder, db: Database
+) -> None:
+    # 워크스페이스 격리. 다른 워크스페이스의 KB에 같은 글이 있어도 API로 임베딩한다.
+    from app.db.repositories.workspaces import WorkspaceRepository
+
+    body = paragraphs(3, 100)
+    other = await create_kb(logged_in, name="다른 곳")
+    _, source = await completed(logged_in, other["id"], body)
+    async with db.write() as session:
+        moved = WorkspaceRepository(session).add(
+            name="다른 워크스페이스", slug="other", settings={}
+        )
+        await session.flush()
+        for table, column in (
+            ("knowledge_base", "id"),
+            ("kb_document", "kb_id"),
+            ("kb_segment", "kb_id"),
+        ):
+            await session.execute(
+                text(f"UPDATE {table} SET workspace_id = :ws WHERE {column} = :kb"),  # noqa: S608
+                {"ws": str(moved.id), "kb": other["id"]},
+            )
+    calls = embedder.embedded_items
+
+    here = await create_kb(logged_in, name="여기")
+    await completed(logged_in, here["id"], body)
+
+    assert embedder.embedded_items == calls + len(source)
 
 
 async def test_adding_and_deleting_chunks(logged_in: AsyncClient, app: FastAPI) -> None:
@@ -837,6 +1021,195 @@ async def test_backup_with_the_index_keeps_knn_working_and_without_it_rebuilds(
         assert await runtime.fts.count(uuid.UUID(kb["id"])) == len(items)
     assert done["completed_segments"] == len(items)
     assert embedder.embedded_items == len(items)
+
+
+async def test_doctor_reports_the_knowledge_index(
+    logged_in: AsyncClient, app: FastAPI, fast_settings: Settings, db: Database
+) -> None:
+    # platform doctor의 지식 항목(5.4): 열림·확장·SQLite 모드, 설정 불일치, 고아.
+    import sqlite3
+
+    from app.knowledge_doctor import knowledge_checks
+
+    kb = await create_kb(logged_in)
+    await completed(logged_in, kb["id"], paragraphs(3, 60))
+
+    healthy = {
+        check.name: check for check in await asyncio.to_thread(knowledge_checks, fast_settings)
+    }
+
+    assert all(check.ok for check in healthy.values()), healthy
+    assert "sqlite-vec" in healthy["지식 색인"].detail
+    assert healthy["SQLite·전문 색인"].detail.startswith(f"SQLite {sqlite3.sqlite_version}")
+    assert "kb-work" in healthy["지식 작업 폴더"].detail
+
+    await runtime_of(app).fts.upsert(uuid.UUID(kb["id"]), [FtsRow(9_000_000, "고아 행")])
+    async with db.write() as session:
+        await session.execute(
+            text(
+                "UPDATE knowledge_base SET embedding = json_set(embedding, '$.dimensions', 1536)"
+                " WHERE id = :id"
+            ),
+            {"id": kb["id"]},
+        )
+
+    broken = {
+        check.name: check for check in await asyncio.to_thread(knowledge_checks, fast_settings)
+    }
+
+    assert not broken["색인 설정"].ok
+    assert "설정 불일치 1개" in broken["색인 설정"].detail
+    assert not broken["색인 고아"].ok
+    assert "전문 1행" in broken["색인 고아"].detail
+
+
+async def test_rebuild_index_restores_full_text_first_and_the_server_fills_vectors(
+    fast_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.knowledge_doctor import knowledge_checks
+    from app.services.knowledge_rebuild import index_files, rebuild_index
+
+    async with (
+        serve(fast_settings, FakeEmbedder(), monkeypatch) as application,
+        signed_in(application) as client,
+    ):
+        kb = await create_kb(client)
+        economy = await create_kb(client, name="전문만", indexing_technique="economy")
+        document, items = await completed(client, kb["id"], paragraphs(4, 60))
+        _, plain = await completed(client, economy["id"], paragraphs(2, 60))
+        gone, _ = await completed(client, kb["id"], paragraphs(3, 50), name="지울 글")
+        # 지우는 중인 문서(행은 아직 남음)는 다시 색인할 양과 새 전문 색인에서 빠진다.
+        async with application.state.db.write() as session:
+            await session.execute(
+                text("UPDATE kb_document SET deleted_at = :at WHERE id = :id"),
+                {"at": "2026-11-04T00:00:00.000000Z", "id": gone["id"]},
+            )
+
+    for path in index_files(fast_settings):
+        path.unlink(missing_ok=True)
+    missing = {check.name: check for check in knowledge_checks(fast_settings)}
+    # index.db가 없으면 다시 색인할 양을 알려 준다(5.5).
+    assert not missing["지식 색인"].ok
+    assert f"유닛 {len(items) + len(plain)}개" in missing["지식 색인"].detail
+
+    result = await rebuild_index(fast_settings)
+
+    assert (result.kbs, result.units, result.vector_units, result.daily_usage) == (
+        2,
+        len(items) + len(plain),
+        len(items),
+        "none",
+    )
+    embedder = FakeEmbedder()
+    async with (
+        serve(fast_settings, embedder, monkeypatch) as application,
+        signed_in(application) as client,
+    ):
+        runtime = runtime_of(application)
+        kb_id = uuid.UUID(kb["id"])
+        # 전문 색인은 서버가 뜨자마자 다 있다. 벡터는 레인이 다시 채운다.
+        assert await runtime.fts.count(kb_id) == len(items)
+        assert await runtime.fts.count(uuid.UUID(economy["id"])) == len(plain)
+        done = await wait_document(client, kb["id"], document["id"], ("completed",))
+        assert await runtime.vectors.count(kb_id) == len(items)
+    assert done["completed_segments"] == len(items)
+    assert embedder.embedded_items == len(items)
+
+
+async def test_rebuild_index_swaps_only_after_success_and_keeps_todays_usage(
+    fast_settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # 새 색인은 옆 파일에 다 만든 뒤 바꿔 끼운다. 확장을 못 불러오거나, 중간에 실패하거나, 다른
+    # 프로세스가 파일을 쥐고 있으면 원래 index.db가 그대로다. 성공하면 오늘 사용량(meta)을 옮긴다.
+    import hashlib
+    import os
+    import sqlite3
+    import sys
+
+    from app.knowledge.fts_index import SqliteFtsIndex
+    from app.knowledge.index_db import IndexDb
+    from app.services import knowledge_rebuild
+    from app.services.knowledge_rebuild import RebuildError, index_files, rebuild_index
+
+    async with (
+        serve(fast_settings, FakeEmbedder(), monkeypatch) as application,
+        signed_in(application) as client,
+    ):
+        kb = await create_kb(client)
+        economy = await create_kb(client, name="전문만", indexing_technique="economy")
+        await completed(client, kb["id"], paragraphs(3, 60))
+        await completed(client, economy["id"], paragraphs(2, 60))
+    index = index_files(fast_settings)[0]
+    usage = '{"reset_at": "2099-01-01T08:00:00.000000Z", "bulk": 7, "interactive": 2}'
+    conn = sqlite3.connect(index)
+    try:
+        conn.execute("INSERT INTO meta (key, value) VALUES ('embed_daily_free', ?)", (usage,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    def fingerprint() -> str:
+        return hashlib.sha256(index.read_bytes()).hexdigest()
+
+    def leftovers() -> list[str]:
+        return sorted(path.name for path in index.parent.glob("index.db.rebuild*"))
+
+    original = fingerprint()
+
+    class NoVec(IndexDb):
+        def __init__(self, path: Path, **kwargs: Any) -> None:
+            super().__init__(path, extension_path=lambda: str(tmp_path / "no-vec0"), **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(knowledge_rebuild, "IndexDb", NoVec)
+        with pytest.raises(RebuildError, match="원래 index.db는 그대로"):
+            await rebuild_index(fast_settings)
+    assert fingerprint() == original and leftovers() == []
+
+    real_upsert = SqliteFtsIndex.upsert
+    calls: list[int] = []
+
+    async def failing(self: SqliteFtsIndex, kb_id: uuid.UUID, rows: Any) -> None:
+        calls.append(len(rows))
+        if len(calls) > 1:
+            raise sqlite3.OperationalError("disk I/O error")
+        await real_upsert(self, kb_id, rows)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SqliteFtsIndex, "upsert", failing)
+        with pytest.raises(RebuildError, match="disk I/O error"):
+            await rebuild_index(fast_settings)
+    assert fingerprint() == original and leftovers() == []
+
+    def busy(source: Any, target: Any) -> None:
+        raise PermissionError(32, "The process cannot access the file")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "replace", busy)
+        with pytest.raises(RebuildError, match="바꾸지 못했다"):
+            await rebuild_index(fast_settings)
+    assert fingerprint() == original and leftovers() == []
+    if sys.platform == "win32":
+        # Windows는 연 파일을 바꿔 끼울 수 없다(다른 포트로 뜬 서버가 쥔 경우).
+        with index.open("rb"), pytest.raises(RebuildError):
+            await rebuild_index(fast_settings)
+        assert fingerprint() == original and leftovers() == []
+
+    result = await rebuild_index(fast_settings)
+
+    assert result.daily_usage == "kept" and result.kbs == 2
+    assert fingerprint() != original and leftovers() == []
+    conn = sqlite3.connect(index)
+    try:
+        kept = conn.execute("SELECT value FROM meta WHERE key = 'embed_daily_free'").fetchone()
+        tables = {
+            str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+    finally:
+        conn.close()
+    assert kept == (usage,)
+    assert f"fts_{uuid.UUID(kb['id']).hex}" in tables
+    assert f"vec_{uuid.UUID(kb['id']).hex}" not in tables
 
 
 async def test_interactive_permits_are_not_blocked_by_bulk_ingest(

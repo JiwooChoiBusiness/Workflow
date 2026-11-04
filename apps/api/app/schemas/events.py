@@ -11,6 +11,11 @@ nullable로 바꿨다. 워크플로우 런은 session_id가 null이고 챗플로
 안에서 하위 에이전트 호출의 child_run.*과 tool_call.completed.child_run_id를 더했다. human_input
 노드(M19)의 폼 대기는 workflow.waiting_input에 kind=form과 form으로 싣고 그때 interaction은
 null이다. loop 노드도 iteration.* 이벤트를 쓰고 total은 max_iterations다.
+
+3단계(M24)도 같은 v2 안에서 선택 필드만 더했다. workflow.completed·tool_call.completed의
+retriever_resources(인용, 20개까지이고 글은 500자로 자른다), run.error·workflow.error·노드 오류의
+retry_after(일일 한도처럼 기다리면 풀리는 실패의 남은 초), usage의 tool_call_id(search_knowledge
+안의 채팅 호출이면 그 도구 호출. 한 스텝에 usage가 여럿일 수 있다)다.
 """
 
 import uuid
@@ -19,9 +24,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.common import ApprovalMode
 
 SCHEMA_VERSION = 2
+
+
+def _none(value: object) -> bool:
+    return value is None
+
 
 ToolCallStatus = Literal["ok", "error", "timeout", "cancelled", "rejected"]
 InteractionKind = Literal["question", "approval"]
@@ -92,6 +103,15 @@ class ToolCallOutputDeltaData(BaseModel):
     text: str
 
 
+class ToolSqlSummary(BaseModel):
+    # LIMIT을 넣고 * 를 풀어 쓴 뒤 실제로 돌린 SQL.
+    sql_executed: str
+    # 받은 행 수(max_rows까지).
+    row_count: int
+    # max_rows를 넘어 잘렸는지. 잘렸으면 전체가 작업공간 sql/<호출>.csv에 있다.
+    truncated: bool
+
+
 class ToolCallCompletedData(BaseModel):
     tool_call_id: str
     status: ToolCallStatus
@@ -106,6 +126,10 @@ class ToolCallCompletedData(BaseModel):
     output_storage_key: str | None = None
     # call_agent 호출이면 그 자식 런. duration_ms는 자식의 벽시계 시간이다(오케스트레이션 3.4).
     child_run_id: uuid.UUID | None = None
+    # search_knowledge가 찾은 인용. 전문은 런이 끝난 뒤 메시지의 retriever_resources로 받는다.
+    retriever_resources: list[RetrieverResourceData] | None = None
+    # query_sql의 실행 요약(3단계 12.4). 결과 표는 output_excerpt에 있다.
+    sql: ToolSqlSummary | None = None
 
 
 class FileChangedData(BaseModel):
@@ -174,6 +198,9 @@ class UsageData(BaseModel):
     estimated: bool
     # 가격표(workspace.settings.model_prices)에 그 모델이 있을 때만 값이 있다.
     cost_usd: float | None = None
+    # 도구 안의 채팅 호출(search_knowledge의 자동 필터·LLM 재순위)이면 그 도구 호출. 스텝의 모델
+    # 호출이면 싣지 않는다.
+    tool_call_id: str | None = Field(default=None, exclude_if=_none)
 
 
 class MessageFileData(BaseModel):
@@ -210,6 +237,8 @@ class RunErrorData(BaseModel):
     code: str
     message: str
     retryable: bool = False
+    # 모델이 모두 일일 한도에 걸린 것처럼 기다리면 풀리는 실패면 남은 초. 없으면 싣지 않는다.
+    retry_after: float | None = Field(default=None, exclude_if=_none)
 
 
 class RunCompletedData(BaseModel):
@@ -351,6 +380,8 @@ class NodeError(BaseModel):
     code: str
     message: str
     retryable: bool = False
+    # 일일 한도처럼 기다리면 풀리는 실패면 남은 초. 없으면 직렬화하지 않아 저장 모양이 그대로다.
+    retry_after: float | None = Field(default=None, exclude_if=_none)
 
 
 class NodeCompletedData(BaseModel):
@@ -446,6 +477,8 @@ class WorkflowErrorData(BaseModel):
     message: str
     node_id: str | None = None
     retryable: bool = False
+    # 일일 한도(rate_limited_daily)처럼 기다리면 풀리는 실패면 남은 초. 없으면 싣지 않는다.
+    retry_after: float | None = Field(default=None, exclude_if=_none)
 
 
 class WorkflowCompletedData(BaseModel):
@@ -458,6 +491,8 @@ class WorkflowCompletedData(BaseModel):
     node_runs: int
     duration_ms: int
     error: WorkflowErrorData | None = None
+    # llm 노드가 context로 받은 지식 검색 결과(인용). 전문은 wf_run·assistant 메시지에 있다.
+    retriever_resources: list[RetrieverResourceData] | None = None
 
 
 # 1단계 에이전트 런의 이벤트. run_event에 남는다.

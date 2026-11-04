@@ -229,6 +229,7 @@ class ExtractorRunner(NodeRunner[ExtractorConfig]):
             messages=messages,
             params=params,
             metadata={"run_id": str(ctx.run_id)},
+            tier=ctx.ports.node_settings.tier,
         )
         warnings: list[str] = []
         attempts: list[dict[str, Any]] = []

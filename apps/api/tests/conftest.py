@@ -1,12 +1,27 @@
+import os
 from collections.abc import AsyncGenerator, Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import pytest
 
 from app.config import Settings
+from app.knowledge import index_db
 from app.llm.errors import TransportError
 from app.llm.fake_adapter import FakeEmbedder
 from app.llm.gemini_adapter import GeminiAdapter, OpenAICompatTransport
+
+# 1이면 index.db가 SQLite 3.43 미만 경로(본문을 저장하는 FTS5, 3.38 미만의 rowid 문서 필터)로 돈다.
+# 이 PC와 CI 러너의 SQLite는 새 버전이라 CI ubuntu 잡이 지식 통합 시험을 이 값으로 한 번 더 돌린다
+# (3단계 5.3). 두 모드를 직접 고르는 단위 시험(tests/unit/knowledge)에는 쓰지 않는다.
+OLD_SQLITE_ENV = "KB_TEST_OLD_SQLITE"
+
+
+@pytest.fixture(autouse=True)
+def _old_sqlite_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    if os.environ.get(OLD_SQLITE_ENV) != "1":
+        return
+    monkeypatch.setattr(index_db, "CONTENTLESS_MIN_SQLITE", (999, 0, 0))
+    monkeypatch.setattr(index_db, "DOC_FILTER_IN_MIN_SQLITE", (999, 0, 0))
 
 
 @pytest.fixture(autouse=True)

@@ -43,7 +43,9 @@ from app.db.repositories.workflows import (
 )
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
+from app.llm.key_pool import KeyTier
 from app.runner.supervisor import Supervisor, SupervisorClosed
+from app.schemas.citations import RetrieverResourceData, stored_resources
 from app.schemas.events import TERMINAL_EVENT_TYPES, NodeError, UsageTotal
 from app.schemas.run import RunEventList
 from app.schemas.wf_run import (
@@ -62,8 +64,11 @@ from app.schemas.wf_run import (
 from app.schemas.workflow import WorkflowSettings
 from app.services.access import FlowScope, scoped_wf_run
 from app.services.errors import ServiceError, not_found
+from app.services.run_tier import require_paid_key, with_tier
 from app.services.runs import event_out, run_key
+from app.services.sql_sources import graph_sql_sources
 from app.services.workflow_files import WorkflowFileService, bind_run_uploads
+from app.services.workflow_knowledge import graph_knowledge, workflow_tier
 from app.services.workflows import (
     conversation_types,
     conversation_vars,
@@ -173,10 +178,17 @@ def node_run_detail(row: WfNodeRun) -> WfNodeRunDetail:
     )
 
 
-async def settle_message(session: AsyncSession, run: WfRun, *, text: str | None = None) -> None:
+async def settle_message(
+    session: AsyncSession,
+    run: WfRun,
+    *,
+    text: str | None = None,
+    resources: list[dict[str, Any]] | None = None,
+) -> None:
     """런이 맡은 assistant 메시지의 상태·사용량을 런에 맞춘다. 대화가 없는 런은 건너뛴다.
 
     text를 주면 글도 바꾼다(실행기가 런을 끝낼 때의 답 글). 주지 않으면 멈춘 데까지의 글을 둔다.
+    resources를 주면 인용(3단계 8.3)도 바꾼다.
     """
     if run.message_id is None:
         return
@@ -187,14 +199,18 @@ async def settle_message(session: AsyncSession, run: WfRun, *, text: str | None 
     message.usage = UsageTotal.model_validate(run.usage or {}).model_dump(mode="json")
     if text is not None:
         message.text = text
+    if resources is not None:
+        message.retriever_resources = resources or None
 
 
 async def close_waiting_nodes(session: AsyncSession, run: WfRun, now: datetime) -> None:
-    """끝난 런에서 아직 입력을 기다리던 노드 런을 런과 같은 상태로 닫는다.
+    """끝난 런에 열린 채 남은 노드 런(입력 대기·실행 중)을 닫는다. 화면의 closeOpenNodeRuns와 같은
+    규칙이다.
 
-    중지면 cancelled, 실패(대기 만료 input_timeout, 종료 shutdown 등)면 런의 오류를 붙인 failed다.
-    그러지 않으면 런 상세의 노드 줄에 "입력 대기"가 남는다. 행만 고치고 노드 이벤트는 내지 않는다.
-    런의 끝은 workflow.completed가 알린다.
+    중지면 둘 다 cancelled다. 실패(대기 만료 input_timeout, 종료 shutdown 등)면 입력을 기다리던
+    노드는 런의 오류를 붙인 failed이고, 돌던 노드는 프로세스와 함께 끊긴 것으로 보아 cancelled다.
+    그러지 않으면 런 상세의 노드 줄에 "입력 대기"나 "실행 중"이 남는다. 행만 고치고 노드 이벤트는
+    내지 않는다. 런의 끝은 workflow.completed가 알린다.
     """
     if run.status == RunStatus.CANCELLED:
         status, error = WfNodeRunStatus.CANCELLED, None
@@ -203,9 +219,9 @@ async def close_waiting_nodes(session: AsyncSession, run: WfRun, now: datetime) 
         error = NodeError.model_validate(run.error).model_dump(mode="json") if run.error else None
     else:
         return
-    await WfNodeRunRepository(session, run.workspace_id).close_waiting(
-        run.id, now, status=status, error=error
-    )
+    nodes = WfNodeRunRepository(session, run.workspace_id)
+    await nodes.close_running(run.id, now)
+    await nodes.close_waiting(run.id, now, status=status, error=error)
 
 
 def elapsed_ms(run: WfRun) -> int:
@@ -228,17 +244,26 @@ def completed_data(run: WfRun, *, status: str, duration_ms: int | None = None) -
     }
 
 
-def run_limits(settings: Settings, workflow_settings: WorkflowSettings) -> dict[str, Any]:
-    """런을 만들 때 적용하는 한도. 실행기가 그대로 EngineLimits로 바꾼다."""
+def run_limits(
+    settings: Settings, workflow_settings: WorkflowSettings, tier: KeyTier = "free"
+) -> dict[str, Any]:
+    """런을 만들 때 적용하는 한도와 키 등급. 실행기가 그대로 EngineLimits·NodeSettings로 바꾼다.
+
+    tier가 paid인데 유료 키가 없으면 paid_key_missing(422)이다(3단계 14.4).
+    """
+    require_paid_key(settings, tier)
     limits = workflow_settings.limits
-    return {
-        "max_run_seconds": limits.max_run_seconds,
-        "max_total_tokens": limits.max_total_tokens,
-        "max_cost_usd": limits.max_cost_usd,
-        "max_parallel_nodes": settings.wf_max_parallel_nodes,
-        "pool_max_bytes": settings.wf_variable_pool_max_mb * 2**20,
-        "checkpoint_interval_sec": settings.wf_checkpoint_interval_sec,
-    }
+    return with_tier(
+        {
+            "max_run_seconds": limits.max_run_seconds,
+            "max_total_tokens": limits.max_total_tokens,
+            "max_cost_usd": limits.max_cost_usd,
+            "max_parallel_nodes": settings.wf_max_parallel_nodes,
+            "pool_max_bytes": settings.wf_variable_pool_max_mb * 2**20,
+            "checkpoint_interval_sec": settings.wf_checkpoint_interval_sec,
+        },
+        tier,
+    )
 
 
 async def enqueue(
@@ -501,7 +526,10 @@ class WorkflowRunService:
             if draft is None:
                 raise not_found("워크플로우 초안")
             agents = await live_agent_ids(session, workspace_id, draft.graph)
-        graph = parse_graph(draft.graph)
+            graph = parse_graph(draft.graph)
+            bases = await graph_knowledge(session, workspace_id, graph)
+            sources = await graph_sql_sources(session, workspace_id, graph)
+            tier = await workflow_tier(session, workspace_id, graph, bases)
         if graph is None:
             raise ServiceError(422, "draft_invalid", "저장된 그래프를 읽지 못했다")
         analysis = graph_check.analyze(
@@ -513,6 +541,9 @@ class WorkflowRunService:
                 workflow.kind, conversation_vars(draft.conversation_vars)
             ),
             agent_ids=agents,
+            knowledge_bases=bases,
+            kb_top_k_max=self._settings.kb_top_k_max,
+            sql_sources=sources,
         )
         if not analysis.ok:
             raise ServiceError(
@@ -534,7 +565,7 @@ class WorkflowRunService:
             raise ServiceError(
                 422, "invalid_inputs", "런 입력이 올바르지 않다", details=exc.errors
             ) from None
-        limits = run_limits(self._settings, parse_settings(draft.settings))
+        limits = run_limits(self._settings, parse_settings(draft.settings), tier)
         now = self._clock()
         async with self._db.write() as session:
             runs = WfRunRepository(session, workspace_id)
@@ -618,7 +649,6 @@ class WorkflowRunService:
                 run.status = RunStatus.CANCELLED
                 run.state = None
                 run.ended_at = now
-                await WfNodeRunRepository(session, ref.workspace_id).close_running(run.id, now)
                 await close_waiting_nodes(session, run, now)
                 await settle_message(session, run)
             out = wf_run_out(run)
@@ -817,8 +847,18 @@ class WorkflowRunService:
                 raise not_found("워크플로우 런")
             rows = await WfNodeRunRepository(session, workspace_id).list_for_run(run.id)
         return WfRunDetail(
-            **wf_run_out(run).model_dump(), node_runs=[node_run_out(row) for row in rows]
+            **wf_run_out(run).model_dump(),
+            node_runs=[node_run_out(row) for row in rows],
+            retriever_resources=stored_resources(run.retriever_resources),
         )
+
+    async def resources(
+        self, workspace_id: uuid.UUID, run_id: uuid.UUID
+    ) -> list[RetrieverResourceData]:
+        """런에서 모은 인용(서비스 API의 workflows/run 결과에 싣는다)."""
+        async with self._db.read() as session:
+            run = await WfRunRepository(session, workspace_id).get(run_id)
+        return stored_resources(run.retriever_resources) if run is not None else []
 
     async def list_runs(
         self,

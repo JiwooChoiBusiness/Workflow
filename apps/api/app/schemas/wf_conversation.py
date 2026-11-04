@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.run import RunStatus
 from app.schemas.session import MAX_MESSAGE_CHARS, MAX_MESSAGE_FILES, SessionTitle
 from app.schemas.wf_run import WfRunOut
@@ -88,6 +89,10 @@ class WfMessageOut(BaseModel):
     usage: dict[str, Any] | None
     # assistant 메시지만. 런 상태를 따라간다.
     status: RunStatus | None
+    # assistant 메시지만. context를 쓴 llm 노드의 인용(3단계 8.3). 번호는 답의 [번호]와 같다.
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )
     created_at: datetime
 
 
@@ -105,6 +110,9 @@ class WfChatResult(BaseModel):
     message_id: uuid.UUID | None
     run: WfRunOut
     answer: str
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )
 
 
 class ConversationVariableOut(BaseModel):

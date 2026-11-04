@@ -48,6 +48,8 @@ class AgentVersion(TimestampMixin, Base):
     )
     # {kb_ids[], retrieval_model?}(3단계 8.4). 비어 있으면 지식 도구가 붙지 않는다.
     knowledge: Mapped[dict[str, Any] | None] = mapped_column(JSONValue)
+    # 데이터 소스 id 목록(3단계 10.3, 0008). 비어 있으면 null이고 SQL 도구가 붙지 않는다.
+    sql_sources: Mapped[list[str] | None] = mapped_column(JSONValue)
     # 스냅샷 쪽이 agent_version_id로 이 행을 가리키므로 외래 키를 두지 않는다.
     snapshot_id: Mapped[uuid.UUID | None]
     published_at: Mapped[datetime | None]

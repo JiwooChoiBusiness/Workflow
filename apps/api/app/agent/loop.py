@@ -11,6 +11,10 @@ HTTP와 DB를 모른다. 이벤트·메시지 저장·도구 출력 저장·파�
 call_agent(오케스트레이션)도 같은 방식으로 멈춘다. 자식 과업 런은 LoopPorts.start_child가 만들고
 루프는 child_run.started를 낸 뒤 waiting_input(agent_call)으로 끝난다. 자식이 끝나면 그 요약이 재개
 값으로 와서 같은 호출의 tool_result가 된다.
+
+모델 호출은 런의 키 등급(LoopConfig.tier)으로 간다(3단계 14.4). search_knowledge의 인용은 그 스텝
+메시지와 tool_call.completed에 싣고, 번호는 런 안에서 이어 매긴다(LoopConfig.cited). 도구 안의 채팅
+호출(재순위·자동 필터)은 usage 이벤트(tool_call_id)로 내고 런 예산·합계에 넣는다.
 """
 
 import asyncio
@@ -48,9 +52,12 @@ from app.agent.interactions import (
 )
 from app.agent.prompt_builder import load_prompt
 from app.agent.tools.base import (
+    KnowledgePort,
+    ModelUsage,
     OutputCapture,
     OutputSink,
     OutputStream,
+    SqlToolPort,
     Tool,
     ToolContext,
     ToolDefaults,
@@ -83,6 +90,7 @@ from app.llm.types import (
     ToolUseBlock,
 )
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
+from app.schemas.citations import event_resources, merge_resources
 from app.schemas.common import ApprovalMode, RunLimits
 from app.schemas.events import MessageFileData, UsageTotal
 
@@ -208,12 +216,26 @@ class LoopConfig:
     # 과업 모드(4.10)에서 결과를 내는 종료형 도구(submit_result). 이 도구 없이 턴을 끝내면 그 도구를
     # 강제한 스텝으로 한 번 독촉하고, 그래도 없으면 output_missing으로 실패한다.
     submit_tool: str | None = None
+    # 런의 키 등급(run.limits.tier). 모든 모델 호출의 ChatRequest.tier가 된다.
+    tier: Literal["free", "paid"] = "free"
+    # search_knowledge가 쓰는 지식 검색. 버전에 지식 베이스가 없으면 None.
+    knowledge: KnowledgePort | None = None
+    # describe_sql_source·query_sql이 쓰는 데이터 소스. 버전에 데이터 소스가 없으면 None.
+    sql: SqlToolPort | None = None
+    # 재개한 런이 이미 인용한 세그먼트 id → 번호.
+    cited: dict[str, int] = field(default_factory=dict[str, int])
+
+
+def _none(value: object) -> bool:
+    return value is None
 
 
 class LoopError(BaseModel):
     code: str
     message: str
     retryable: bool = False
+    # 모델이 모두 일일 한도에 걸렸을 때 풀리기까지 남은 초. 없으면 run.error에 싣지 않는다.
+    retry_after: float | None = Field(default=None, exclude_if=_none)
 
 
 class LoopOutcome(BaseModel):
@@ -289,6 +311,7 @@ class AgentLoop:
         self._tracker = ContextTracker(model.estimate_tokens)
         self._nudged = False
         self._forced_tool: str | None = None
+        self._cited = dict(config.cited)
 
     async def run(
         self, history: Sequence[CanonicalMessage], open_step: StepMessage | None = None
@@ -375,12 +398,15 @@ class AgentLoop:
         message: str,
         *,
         retryable: bool = False,
+        retry_after: float | None = None,
         interrupted: InterruptKind | None = None,
     ) -> LoopOutcome:
         log.warning("agent.run_failed", run_id=str(self._config.run_id), code=code)
         return self._outcome(
             "failed",
-            error=LoopError(code=code, message=message, retryable=retryable),
+            error=LoopError(
+                code=code, message=message, retryable=retryable, retry_after=retry_after
+            ),
             interrupted=interrupted,
         )
 
@@ -434,7 +460,12 @@ class AgentLoop:
                         {"step": step, "reason": error.code, "attempt": stream_retries},
                     )
                     continue
-                return self._failed(error.code, error.message, retryable=error.retryable)
+                return self._failed(
+                    error.code,
+                    error.message,
+                    retryable=error.retryable,
+                    retry_after=error.retry_after,
+                )
             end = reply.end
             usage = await self._record_usage(step, end, sent_messages=reply.sent_messages)
             if end.stop_reason == "max_tokens" and reply.calls:
@@ -580,6 +611,7 @@ class AgentLoop:
                 "session_id": str(self._config.session_id),
                 "step": step,
             },
+            tier=self._config.tier,
         )
         reply = _ModelReply(message_id=new_id(), sent_messages=len(messages))
         task = asyncio.create_task(self._consume(request, reply))
@@ -692,6 +724,37 @@ class AgentLoop:
         await self._ports.save_progress(self._steps, self._usage)
         return {key: value for key, value in data.items() if key != "step"}
 
+    async def _record_tool_usage(self, tool_call_id: str, call: ModelUsage) -> None:
+        """도구 안의 채팅 호출을 usage 이벤트로 내고 런 합계에 더한다(스텝 수는 늘지 않는다)."""
+        usage = call.usage
+        cost = cost_usd(call.model, usage, self._config.model_prices)
+        await self._emit(
+            "usage",
+            {
+                "step": self._steps,
+                "model": call.model,
+                "key_index": call.key_index,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "reasoning_tokens": usage.reasoning_tokens,
+                "cached_input_tokens": usage.cached_input_tokens,
+                "estimated": usage.estimated,
+                "cost_usd": cost,
+                "tool_call_id": tool_call_id,
+            },
+        )
+        total = self._usage
+        total.input_tokens += usage.input_tokens
+        total.output_tokens += usage.output_tokens
+        total.reasoning_tokens += usage.reasoning_tokens or 0
+        total.cached_input_tokens += usage.cached_input_tokens or 0
+        total.estimated = total.estimated or usage.estimated
+        if cost is not None:
+            total.cost_usd = (total.cost_usd or 0.0) + cost
+        if call.model not in self._models:
+            self._models.append(call.model)
+        await self._ports.save_progress(self._steps, self._usage)
+
     def _budget_exceeded(self) -> LoopOutcome | None:
         limits = self._config.limits
         total = self._usage.input_tokens + self._usage.output_tokens
@@ -787,6 +850,11 @@ class AgentLoop:
     async def _after_tool(self, result: ToolResult) -> LoopOutcome | None:
         if result.fatal:
             return self._failed(result.error_code or "tool_failed", result.content[:500])
+        if result.usage:
+            # 도구 안의 채팅 호출(search_knowledge)도 런 예산에 든다.
+            exceeded = self._budget_exceeded()
+            if exceeded is not None:
+                return exceeded
         if result.error_code == "sandbox_unavailable":
             self._sandbox_failures += 1
             if self._sandbox_failures >= MAX_SANDBOX_FAILURES:
@@ -804,7 +872,12 @@ class AgentLoop:
         message.blocks.append(
             ToolResultBlock(tool_use_id=call.id, content=result.content, is_error=result.is_error)
         )
+        resources = result.retriever_resources or []
+        if resources:
+            message.retriever_resources = merge_resources([message.retriever_resources, resources])
         await self._ports.save_message(message)
+        for call_usage in result.usage:
+            await self._record_tool_usage(call.id, call_usage)
         excerpt = result.output_excerpt or result.content
         data: dict[str, Any] = {
             "tool_call_id": call.id,
@@ -819,6 +892,10 @@ class AgentLoop:
         }
         if result.child_run_id is not None:
             data["child_run_id"] = result.child_run_id
+        if resources:
+            data["retriever_resources"] = event_resources(resources)
+        if result.sql is not None:
+            data["sql"] = result.sql
         await self._emit("tool_call.completed", data)
         log.info(
             "agent.tool_completed",
@@ -943,6 +1020,9 @@ class AgentLoop:
             emit_output=emit_output,
             memory_limit_mb=self._config.memory_limit_mb,
             max_processes=self._config.max_processes,
+            knowledge=self._config.knowledge,
+            sql=self._config.sql,
+            cited=self._cited,
         )
         started = self._clock()
         task = asyncio.create_task(tool.execute(context, dict(call.input)))
@@ -986,6 +1066,7 @@ class AgentLoop:
             system=self._config.system_prompt,
             messages=self._messages,
             tools=self._specs,
+            tier=self._config.tier,
         )
 
     async def _maybe_compact(self, step: int) -> None:
@@ -1037,6 +1118,7 @@ class AgentLoop:
                 "step": step,
                 "purpose": "compaction",
             },
+            tier=self._config.tier,
         )
         task = asyncio.create_task(self._collect_text(request))
         kind = await self._wait(task)

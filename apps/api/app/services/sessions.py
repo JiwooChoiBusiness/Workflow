@@ -35,6 +35,7 @@ from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.sandbox.disk import SCAN_BUDGET_SEC, Scanner, largest_dirs
 from app.sandbox.local_workspace import remove_workspace_dir
 from app.sandbox.provisioning import SnapshotSource, WorkspaceProvisioner
+from app.schemas.citations import stored_resources
 from app.schemas.events import MessageFileData
 from app.schemas.run import SessionDetail
 from app.schemas.session import (
@@ -132,6 +133,7 @@ def message_out(row: Message, files: dict[uuid.UUID, SessionFile]) -> MessageOut
         stop_reason=row.stop_reason,
         files=refs,
         usage=row.usage,
+        retriever_resources=stored_resources(row.retriever_resources),
         created_at=row.created_at,
     )
 

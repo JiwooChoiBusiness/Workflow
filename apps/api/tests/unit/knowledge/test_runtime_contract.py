@@ -134,4 +134,5 @@ def test_runtime_fields_are_the_contract() -> None:
         "embeddings",
         "limiter",
         "cache",
+        "fake",
     ]

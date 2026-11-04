@@ -8,6 +8,10 @@ wf_conversation, 메시지는 wf_message이고 블록 대신 text다.
 
 지식 베이스 키는 datasets 경로만 쓴다(3단계 8.5). 목록은 Dify처럼 {data, has_more, limit, total,
 page}로 감싼다.
+
+인용(retriever_resources, 3단계 12.2)은 Dify와 같은 자리에 싣는다. chat-messages blocking 응답은
+metadata.retriever_resources, 메시지 목록은 항목의 retriever_resources, workflows/run은 결과의
+retriever_resources다.
 """
 
 import uuid
@@ -25,6 +29,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.common import ApprovalMode, RunLimits
 from app.schemas.events import UsageTotal, WorkflowKind
 from app.schemas.knowledge import (
@@ -79,6 +84,14 @@ class ChatMessageCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
+class MessageMetadataOut(BaseModel):
+    """chat-messages blocking 응답의 metadata(Dify와 같은 자리)."""
+
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )
+
+
 class ChatMessageResult(BaseModel):
     """blocking 응답. 승인·질문을 기다리면 status=waiting_input이고 pending_interaction이 있다."""
 
@@ -91,6 +104,8 @@ class ChatMessageResult(BaseModel):
     status: RunStatus
     pending_interaction: PendingInteractionOut | None = None
     error: RunErrorOut | None = None
+    # 에이전트가 search_knowledge로 찾은 인용.
+    metadata: MessageMetadataOut = Field(default_factory=MessageMetadataOut)
 
 
 class StopRequest(BaseModel):
@@ -254,6 +269,10 @@ class WorkflowRunResult(BaseModel):
     message_id: uuid.UUID | None = None
     created_at: datetime
     ended_at: datetime | None = None
+    # context를 쓴 llm 노드의 인용(3단계 8.3). 런 목록(/logs)에는 싣지 않는다.
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )
 
 
 class WorkflowRunList(BaseModel):
@@ -275,6 +294,8 @@ class FlowChatMessageResult(BaseModel):
     status: RunStatus
     pending_interaction: WfPendingOut | None = None
     error: WfRunErrorOut | None = None
+    # context를 쓴 llm 노드의 인용.
+    metadata: MessageMetadataOut = Field(default_factory=MessageMetadataOut)
 
 
 class FlowConversationOut(BaseModel):
@@ -502,6 +523,35 @@ class DatasetChildChunkList(BaseModel):
 
 class DatasetChildChunkOut(BaseModel):
     data: ChildChunkOut
+
+
+class DifyMetadataValue(BaseModel):
+    """Dify operation_data의 metadata_list 항목. id가 없으면 name으로 필드를 찾는다."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: uuid.UUID | None = None
+    name: str | None = None
+    value: StrictInt | StrictFloat | StrictStr | None = None
+
+
+class DifyDocumentMetadata(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    document_id: uuid.UUID
+    metadata_list: list[DifyMetadataValue] = Field(
+        default_factory=list[DifyMetadataValue], max_length=50
+    )
+    # 거짓(기본)이면 Dify처럼 목록에 없는 사용자 필드 값을 지운다. 참이면 준 필드만 바꾼다.
+    partial_update: bool = False
+
+
+class DifyDocumentMetadataUpdate(BaseModel):
+    """POST .../documents/metadata의 Dify 본문({operation_data: [...]}). 기본 필드는 건너뛴다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operation_data: list[DifyDocumentMetadata] = Field(min_length=1, max_length=100)
 
 
 def dify_retrieval(raw: dict[str, Any]) -> dict[str, Any]:

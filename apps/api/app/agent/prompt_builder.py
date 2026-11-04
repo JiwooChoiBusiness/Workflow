@@ -17,6 +17,8 @@ from pydantic import BaseModel
 
 from app.agent.child_runs import SubAgentChoice
 from app.agent.tools.call_agent import available_agents_block
+from app.agent.tools.query_sql import SqlSourceChoice, sql_sources_block
+from app.agent.tools.search_knowledge import KnowledgeBaseChoice, knowledge_bases_block
 from app.llm.types import ToolSpec
 from app.schemas.common import ApprovalMode
 
@@ -103,11 +105,15 @@ class PromptBuilder:
         task_block: str | None = None,
         sub_agents: Sequence[SubAgentChoice] | None = None,
         sub_agents_unavailable: bool = False,
+        knowledge_bases: Sequence[KnowledgeBaseChoice] | None = None,
+        sql_sources: Sequence[SqlSourceChoice] | None = None,
     ) -> str:
-        """서문 → 에이전트 지시문 → 스킬 목록 → 과업 지시(M8) → 하위 에이전트 순서.
+        """서문 → 에이전트 지시문 → 스킬 목록 → 과업 지시(M8) → 하위 에이전트 → 지식 베이스 →
+        데이터 소스 순서.
 
         sub_agents는 call_agent가 붙는 런에만 준다. 골라 둔 하위 에이전트가 있는데 깊이·호출 수
-        한도로 도구를 붙이지 않는 런은 sub_agents_unavailable로 한 줄만 남긴다.
+        한도로 도구를 붙이지 않는 런은 sub_agents_unavailable로 한 줄만 남긴다. knowledge_bases는
+        search_knowledge가 붙는 런에만, sql_sources는 SQL 도구가 붙는 런에만 준다(3단계 8.4, 10.3).
         """
         preamble = _fill(
             load_prompt("system_preamble.md"),
@@ -141,6 +147,20 @@ class PromptBuilder:
             )
         elif sub_agents_unavailable:
             parts.append(_SUB_AGENTS_UNAVAILABLE)
+        if knowledge_bases:
+            parts.append(
+                _fill(
+                    load_prompt("knowledge.md"),
+                    {"knowledge_bases": knowledge_bases_block(knowledge_bases)},
+                ).strip()
+            )
+        if sql_sources:
+            parts.append(
+                _fill(
+                    load_prompt("sql_sources.md"),
+                    {"sql_sources": sql_sources_block(sql_sources)},
+                ).strip()
+            )
         return "\n\n".join(parts) + "\n"
 
 

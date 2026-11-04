@@ -16,6 +16,13 @@ task/에 두고 submit_result를 붙여 돌리며, 끝나면 run.output을 채�
 뒤에야 자식을 큐에 넣는다. 저장하는 트랜잭션에서 중지 요청을 보고 중지면 자식도 함께 닫는다(3.3,
 3.6). 자식 런이 끝날 때는 런을 끝내는 같은 트랜잭션에서 기다리던 부모를 queued로 돌리고 트랜잭션
 밖에서 넣는다. 재개된 부모는 루프를 돌리기 전에 자식 결과 파일을 작업공간 agents/로 복사한다(4.2).
+
+지식 베이스(3단계 8.4): 버전의 knowledge.kb_ids 중 살아 있는 것이 있으면 search_knowledge와 시스템
+프롬프트의 지식 베이스 절을 붙인다. 데이터 소스(10.3)도 같아서 sql_sources 중 살아 있는 것이 있으면
+describe_sql_source·query_sql과 데이터 소스 절을 붙인다. 런은 만들 때 정한 키
+등급(run.limits.tier)으로 돌고, 런을 잡을 때마다 지금 KB·데이터 소스 등급(하위 에이전트 포함)으로
+다시 계산해 올리기만 한다. paid인데 유료 키가 없으면
+시작하지 않는다. 스텝마다 흩어진 인용은 런이 끝날 때 마지막 assistant 메시지로 모은다.
 """
 
 import asyncio
@@ -24,8 +31,8 @@ import hashlib
 import json
 import shutil
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, replace
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import IO, Any
@@ -81,8 +88,11 @@ from app.agent.prompt_builder import (
     task_block,
 )
 from app.agent.tools import tools_for_groups
-from app.agent.tools.base import OutputSink, Tool, ToolDefaults
+from app.agent.tools.base import KnowledgePort, OutputSink, SqlToolPort, Tool, ToolDefaults
 from app.agent.tools.call_agent import CallAgentTool
+from app.agent.tools.describe_sql_source import DescribeSqlSourceTool
+from app.agent.tools.query_sql import QuerySqlTool, SqlSourceChoice
+from app.agent.tools.search_knowledge import KnowledgeBaseChoice, SearchKnowledgeTool
 from app.agent.tools.submit_result import SUBMIT_RESULT, SubmitResultTool
 from app.config import Settings
 from app.db.engine import Database
@@ -93,6 +103,7 @@ from app.db.models.enums import (
     SessionFileKind,
     WorkspaceInstanceStatus,
 )
+from app.db.repositories.agent_versions import AgentVersionRepository
 from app.db.repositories.agents import AgentRepository
 from app.db.repositories.messages import MessageRepository
 from app.db.repositories.runs import RunRepository
@@ -102,6 +113,7 @@ from app.db.repositories.workspace_instances import WorkspaceInstanceRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
 from app.llm.base import ModelAdapter
+from app.llm.key_pool import KeyTier
 from app.llm.types import CanonicalMessage, ModelParams, TextBlock
 from app.runner.supervisor import CancelSignal, Supervisor
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
@@ -111,10 +123,12 @@ from app.sandbox.process import IS_WINDOWS
 from app.sandbox.provisioning import ProvisionEvent, SnapshotSource, WorkspaceProvisioner
 from app.sandbox.shell_ps import ShellName, effective_shell
 from app.schemas.agent_version import AgentVersionConfig
+from app.schemas.citations import merge_resources
 from app.schemas.common import ApprovalMode, RunLimits
 from app.schemas.events import MessageFileData, UsageTotal
 from app.schemas.task import TASK_INPUTS_PATH, TaskRunInput
 from app.schemas.workspace import WorkspaceSettings
+from app.services.agent_tree import tree_tier
 from app.services.agents import AgentService, RuntimeVersion, provision_content, snapshot_source
 from app.services.child_runs import (
     ChildRunService,
@@ -124,6 +138,15 @@ from app.services.child_runs import (
     orphan_runs,
 )
 from app.services.errors import ServiceError
+from app.services.knowledge_runtime import KnowledgeRuntime
+from app.services.run_tier import (
+    ERR_PAID_KEY_MISSING,
+    higher,
+    paid_key_configured,
+    run_limits_of,
+    tier_of,
+    with_tier,
+)
 from app.services.runs import (
     parse_run_key,
     pending_of,
@@ -131,6 +154,9 @@ from app.services.runs import (
     task_input_of,
     task_output,
 )
+from app.services.sql_runtime import SqlRuntime
+from app.services.sql_sources import AgentSqlPort, SqlExecutor, sql_choices
+from app.services.workflow_knowledge import AgentKnowledgePort, knowledge_choices
 from app.storage.base import (
     StorageBackend,
     StorageError,
@@ -139,10 +165,77 @@ from app.storage.base import (
     tool_output_key,
 )
 from app.streaming.event_bus import EventBus, RunRef
+from app.workflow.variables import MIN_SECRET_CHARS, Masker, StreamMasker
 
 log = structlog.get_logger("app.runner")
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+# 델타로 흐르는 이벤트 → (글 필드, 스트림을 가르는 필드들).
+_STREAMED_EVENTS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "message.delta": ("text", ("message_id",)),
+    "thinking.delta": ("text", ()),
+    "tool_call.input_delta": ("json_fragment", ("tool_call_id",)),
+    "tool_call.output_delta": ("text", ("tool_call_id", "stream")),
+}
+
+
+class RunMasker:
+    """에이전트 런의 이벤트와 메시지 행에서 비밀값을 ***로 바꾼다(1단계 S8, 3단계 KS9).
+
+    비밀값은 에이전트 버전의 비밀 환경변수와 설정의 키(.env)다. 1단계 S8은 환경변수 값을
+    이벤트에 남기지 않는다고 정했지만 도구 결과(search_knowledge가 찾은 문서, 셸 출력)나 모델
+    답에 섞인 값은 그대로 나갔다. 가리는 곳은 이벤트(실시간·저장), 메시지 행의 글·도구 결과·인용,
+    요약, 과업 결과, 승인 대기 카드(pending_interaction)다. 도구는 원문으로 돌고, 모델은 한 실행
+    구간 안에서만 원문을 본다. 재개·다음 턴·요약·자식 결과는 DB에서 다시 읽어 ***를 본다(2단계
+    체크포인트 마스킹과 같은 절충). tool_use 입력은 승인 뒤 재개할 때 그대로 실행해야 해서 가리지
+    않는다. 델타는 조각 경계에 걸친 값을 놓치지 않게 스트림마다 이어서 본다(2단계 W5와 같은 방식).
+    """
+
+    def __init__(self, secrets: Iterable[str]) -> None:
+        self._masker = Masker(secrets)
+        self._streams: dict[tuple[str, ...], tuple[StreamMasker, dict[str, Any]]] = {}
+
+    def value(self, value: Any) -> Any:
+        return self._masker.mask(value)
+
+    def event(
+        self, event_type: str, data: Mapping[str, Any]
+    ) -> list[tuple[str, Mapping[str, Any]]]:
+        if not self._masker.secrets:
+            return [(event_type, data)]
+        streamed = _STREAMED_EVENTS.get(event_type)
+        if streamed is None or not isinstance(data.get(streamed[0]), str):
+            return [*self.flush(), (event_type, self._masker.mask(dict(data)))]
+        name, keys = streamed
+        key = (event_type, *(str(data.get(part, "")) for part in keys))
+        head = {part: value for part, value in data.items() if part != name}
+        found = self._streams.get(key)
+        stream = found[0] if found is not None else StreamMasker(self._masker)
+        self._streams[key] = (stream, head)
+        text = stream.feed(str(data[name]))
+        return [(event_type, {**head, name: text})] if text else []
+
+    def flush(self) -> list[tuple[str, Mapping[str, Any]]]:
+        """붙잡아 둔 델타 끝부분. 델타가 아닌 이벤트 앞과 런이 끝날 때 낸다."""
+        held: list[tuple[str, Mapping[str, Any]]] = []
+        for key, (stream, head) in self._streams.items():
+            rest = stream.flush()
+            if rest:
+                held.append((key[0], {**head, _STREAMED_EVENTS[key[0]][0]: rest}))
+        self._streams.clear()
+        return held
+
+    def blocks(self, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not self._masker.secrets:
+            return blocks
+        masked: list[dict[str, Any]] = []
+        for block in blocks:
+            if block.get("type") == "text" and isinstance(block.get("text"), str):
+                block = {**block, "text": self._masker.text(block["text"])}
+            elif block.get("type") == "tool_result" and isinstance(block.get("content"), str):
+                block = {**block, "content": self._masker.text(block["content"])}
+            masked.append(block)
+        return masked
 
 
 @dataclass
@@ -185,6 +278,10 @@ class _Job:
     children_created: list[uuid.UUID] | None = None
     # call_agent에 붙일 하위 에이전트와 부모 정보. _loop_config가 채운다.
     parent_info: ParentRun | None = None
+    # 런을 만들 때 정한 키 등급(run.limits.tier, 3단계 14.4).
+    tier: KeyTier = "free"
+    # 재개한 런이 이미 인용한 세그먼트 id → 번호. _history가 채운다.
+    cited: dict[str, int] = field(default_factory=dict[str, int])
 
     @property
     def resumed(self) -> bool:
@@ -240,12 +337,14 @@ class _DbPorts:
         content: StorageProvisionContent,
         *,
         saved: set[uuid.UUID],
+        masker: RunMasker | None = None,
     ) -> None:
         self._x = executor
         self._job = job
         self.handle = handle
         self._content = content
         self._saved = saved
+        self.masker = masker or RunMasker(())
         self._last_assistant = job.assistant_message_id
         self._instance_created_at = job.instance_created_at
         self.collected: FileSummary | None = None
@@ -258,10 +357,18 @@ class _DbPorts:
         return self._job.ref.workspace_id
 
     async def emit(self, event_type: str, data: Mapping[str, Any]) -> None:
-        await self._x.publish(self._job.ref, event_type, data)
+        for kind, payload in self.masker.event(event_type, data):
+            await self._x.publish(self._job.ref, kind, payload)
+
+    async def flush_masked(self) -> None:
+        # 비밀값의 앞부분일 수 있어 붙잡아 둔 델타 끝부분을 낸다. 런을 끝내는 이벤트 전에 부른다.
+        for kind, payload in self.masker.flush():
+            await self._x.publish(self._job.ref, kind, payload)
 
     async def save_message(self, message: StepMessage) -> None:
-        blocks = encode_step(message)
+        blocks = self.masker.blocks(encode_step(message))
+        text = self.masker.value(message.text)
+        resources = self.masker.value(message.retriever_resources) or None
         job = self._job
         async with self._x.db.write() as session:
             messages = MessageRepository(session, self._ws)
@@ -270,9 +377,10 @@ class _DbPorts:
                 if row is None:
                     return
                 row.blocks = blocks
-                row.text = message.text
+                row.text = text
                 row.stop_reason = message.stop_reason
                 row.usage = message.usage
+                row.retriever_resources = resources
                 return
             messages.add(
                 Message(
@@ -282,10 +390,11 @@ class _DbPorts:
                     seq=await messages.next_seq(job.session_id),
                     role=MessageRole.ASSISTANT,
                     blocks=blocks,
-                    text=message.text,
+                    text=text,
                     stop_reason=message.stop_reason,
                     files=[],
                     usage=message.usage,
+                    retriever_resources=resources,
                 )
             )
             await messages.flush()
@@ -302,6 +411,7 @@ class _DbPorts:
     async def save_summary(self, text: str, usage: Mapping[str, Any] | None) -> uuid.UUID:
         job = self._job
         summary_id = new_id()
+        text = self.masker.value(text)
         async with self._x.db.write() as session:
             messages = MessageRepository(session, self._ws)
             messages.add(
@@ -465,6 +575,31 @@ class _DbPorts:
         return started
 
 
+async def _gather_citations(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    run_id: uuid.UUID,
+    final_message_id: uuid.UUID | None,
+) -> None:
+    """스텝 메시지마다 붙은 인용을 런의 마지막 assistant 메시지 하나로 모은다(3단계 8.4).
+
+    같은 세그먼트는 한 번만 남기고 번호순으로 둔다(merge_resources). 다른 스텝 메시지의 것은 비워
+    칩이 두 번 나오지 않게 한다.
+    """
+    if final_message_id is None:
+        return
+    rows = await MessageRepository(session, workspace_id).list_for_run(run_id)
+    groups = [row.retriever_resources for row in rows if row.retriever_resources]
+    if not groups:
+        return
+    merged = merge_resources(groups)
+    for row in rows:
+        if row.id == final_message_id:
+            row.retriever_resources = merged
+        elif row.retriever_resources:
+            row.retriever_resources = None
+
+
 def _stopped_at_pause(outcome: LoopOutcome) -> LoopOutcome:
     return outcome.model_copy(
         update={"status": "cancelled", "pending": None, "interrupted": "cancel"}
@@ -496,6 +631,8 @@ class RunExecutor:
         storage: StorageBackend,
         bus: EventBus,
         clock: Callable[[], datetime] = utcnow,
+        knowledge: KnowledgeRuntime | None = None,
+        sql_runtime: SqlRuntime | None = None,
     ) -> None:
         self.db = db
         self.settings = settings
@@ -504,6 +641,10 @@ class RunExecutor:
         self.storage = storage
         self.bus = bus
         self.now = clock
+        # search_knowledge가 쓰는 지식 실행 객체(app.state.knowledge). 없으면 검색이 503이다.
+        self.knowledge = knowledge
+        # query_sql이 쓰는 Text2SQL 실행 객체(app.state.sql_runtime). 없으면 실행이 sql_failed다.
+        self.sql_runtime = sql_runtime
         self.provisioner = WorkspaceProvisioner(backend)
         self._agents = AgentService(db, settings)
         self._prompts = PromptBuilder()
@@ -600,6 +741,16 @@ class RunExecutor:
                     except ValidationError:
                         log.warning("workspace.settings_invalid", workspace_id=str(workspace_id))
                 resumed = pending if payload is not None else None
+                # 며칠 멈춘 런을 재개하면 그사이 KB 등급이 바뀌었을 수 있다. 지금 등급(하위 에이전트
+                # 포함)으로 올리기만 하고 내리지 않는다(14.4).
+                tier = tier_of(run.limits)
+                version = await AgentVersionRepository(session, workspace_id).get(
+                    run.agent_version_id
+                )
+                if version is not None:
+                    tier = higher(tier, await tree_tier(session, workspace_id, [version]))
+                    if tier != tier_of(run.limits):
+                        run.limits = with_tier(run.limits or {}, tier)
                 run.status = RunStatus.RUNNING
                 run.started_at = run.started_at or now
                 run.pending_interaction = None
@@ -611,7 +762,7 @@ class RunExecutor:
                     user_message_id=run.user_message_id,
                     assistant_message_id=run.assistant_message_id,
                     model_id=(run.model or {}).get("model_id"),
-                    limits=RunLimits.model_validate(run.limits or {}),
+                    limits=run_limits_of(run.limits),
                     approval_mode=run.approval_mode,  # pyright: ignore[reportArgumentType]
                     steps=run.steps,
                     usage=UsageTotal.model_validate(run.usage or {}),
@@ -636,6 +787,7 @@ class RunExecutor:
                     external_user=chat.external_user,
                     api_key_id=chat.api_key_id,
                     parent_run_id=run.parent_run_id,
+                    tier=tier,
                 )
         if cancelled is not None:
             await self.publish(cancelled, "run.completed", completed)
@@ -662,6 +814,13 @@ class RunExecutor:
                 "approval_mode": mode,
             },
         )
+        if job.tier == "paid" and not paid_key_configured(self.settings):
+            # 런을 만든 뒤 .env에서 유료 키를 뺀 경우다. 무료 키로 넘어가지 않는다(14.4).
+            message = (
+                "유료 키 전용 지식 베이스나 데이터 소스를 쓰는 런인데 GEMINI_PAID_API_KEY가 없다"
+            )
+            await self._finish(job, self._early_failure(job, ERR_PAID_KEY_MISSING, message), None)
+            return
         try:
             runtime = await self._agents.load_runtime_version(
                 ref.workspace_id, job.agent_version_id
@@ -716,7 +875,13 @@ class RunExecutor:
             return
         config = await self._loop_config(job, runtime, handle, mode)
         saved = {open_step.id} if open_step is not None else set[uuid.UUID]()
-        ports = _DbPorts(self, job, handle, content, saved=saved)
+        secrets = [runtime.env[name] for name in runtime.secret_names if name in runtime.env]
+        short = sum(1 for value in secrets if 0 < len(value) < MIN_SECRET_CHARS)
+        if short:
+            # 짧은 값은 흔한 글자와 겹쳐 가리지 않는다(2단계 W5와 같은 기준).
+            log.warning("run.secret_too_short", run_id=str(ref.run_id), count=short)
+        masker = RunMasker([*secrets, *self.settings.secret_values()])
+        ports = _DbPorts(self, job, handle, content, saved=saved, masker=masker)
         loop = AgentLoop(
             config=config,
             model=self.llm,
@@ -749,6 +914,13 @@ class RunExecutor:
         choices, available = await self._sub_agents(job, runtime, handle)
         if choices:
             tools.append(CallAgentTool(choices))
+        bases, knowledge = await self._knowledge(job, config)
+        if bases:
+            tools.append(SearchKnowledgeTool(bases))
+        sources, sql = await self._sql_sources(job, config)
+        if sources:
+            tools.append(DescribeSqlSourceTool(sources))
+            tools.append(QuerySqlTool(sources))
         system = self._prompts.build(
             instructions=config.instructions,
             skills=[
@@ -774,6 +946,8 @@ class RunExecutor:
             ),
             sub_agents=choices,
             sub_agents_unavailable=bool(config.sub_agents) and not available,
+            knowledge_bases=bases,
+            sql_sources=sources,
         )
         digest = prompt_hash(system, [tool.spec() for tool in tools])
         if digest != job.prompt_hash:
@@ -816,7 +990,46 @@ class RunExecutor:
                 else None
             ),
             submit_tool=submit.name if submit is not None else None,
+            tier=job.tier,
+            knowledge=knowledge,
+            sql=sql,
+            cited=dict(job.cited),
         )
+
+    async def _knowledge(
+        self, job: _Job, config: AgentVersionConfig
+    ) -> tuple[list[KnowledgeBaseChoice], KnowledgePort | None]:
+        """버전에 고른 지식 베이스 중 살아 있는 것과 그 검색 포트. 없으면 도구를 붙이지 않는다."""
+        kb_ids = config.knowledge.kb_ids
+        if not kb_ids:
+            return [], None
+        async with self.db.read() as session:
+            bases = await knowledge_choices(session, job.ref.workspace_id, kb_ids)
+        if not bases:
+            return [], None
+        port = AgentKnowledgePort(
+            db=self.db,
+            settings=self.settings,
+            workspace_id=job.ref.workspace_id,
+            runtime=self.knowledge,
+            llm=self.llm,
+            retrieval_model=config.knowledge.retrieval_model,
+            tier=job.tier,
+        )
+        return bases, port
+
+    async def _sql_sources(
+        self, job: _Job, config: AgentVersionConfig
+    ) -> tuple[list[SqlSourceChoice], SqlToolPort | None]:
+        """버전에 고른 데이터 소스 중 살아 있는 것과 그 포트. 없으면 SQL 도구를 붙이지 않는다."""
+        if not config.sql_sources:
+            return [], None
+        async with self.db.read() as session:
+            sources = await sql_choices(session, job.ref.workspace_id, config.sql_sources)
+        if not sources:
+            return [], None
+        executor = SqlExecutor(self.db, self.settings, self.sql_runtime, self.storage)
+        return sources, AgentSqlPort(executor, job.ref.workspace_id, self.provisioner)
 
     async def _sub_agents(
         self, job: _Job, runtime: RuntimeVersion, handle: WorkspaceHandle
@@ -855,6 +1068,7 @@ class RunExecutor:
             external_user=job.external_user,
             api_key_id=job.api_key_id,
             workspace_root=handle.root,
+            tier=job.tier,
         )
         return choices, True
 
@@ -983,9 +1197,10 @@ class RunExecutor:
 
     async def _history(self, job: _Job) -> tuple[list[CanonicalMessage], StepMessage | None]:
         async with self.db.read() as session:
-            rows = await MessageRepository(session, job.ref.workspace_id).list_for_history(
-                job.session_id
-            )
+            messages = MessageRepository(session, job.ref.workspace_id)
+            rows = await messages.list_for_history(job.session_id)
+            # 요약 앞의 스텝도 이 런의 인용 번호를 갖고 있을 수 있어 런 단위로 따로 읽는다.
+            own = await messages.list_for_run(job.ref.run_id) if job.pending is not None else []
         stored = [
             StoredMessage(
                 id=row.id,
@@ -995,9 +1210,15 @@ class RunExecutor:
                 text=row.text,
                 stop_reason=row.stop_reason,
                 usage=row.usage,
+                retriever_resources=row.retriever_resources,
             )
             for row in rows
         ]
+        for row in own:
+            for item in row.retriever_resources or []:
+                segment, position = item.get("segment_id"), item.get("position")
+                if isinstance(segment, str) and isinstance(position, int):
+                    job.cited.setdefault(segment, position)
         if job.pending is None:
             return build_history(stored), None
         index = next((i for i, row in enumerate(stored) if row.id == job.pending.message_id), None)
@@ -1036,6 +1257,9 @@ class RunExecutor:
         ports: _DbPorts | None = None,
     ) -> None:
         ref = job.ref
+        masker = ports.masker if ports is not None else RunMasker(())
+        if ports is not None:
+            await ports.flush_masked()
         pending = outcome.pending if outcome.status == "waiting_input" else None
         child_wait = pending is not None and pending.kind == "agent_call"
         if child_wait and await self._stop_requested(job):
@@ -1061,7 +1285,7 @@ class RunExecutor:
             except SandboxError as exc:
                 log.warning("run.stats_failed", run_id=str(ref.run_id), error=exc.message)
         now = self.now()
-        error = outcome.error.model_dump() if outcome.error is not None else None
+        error = masker.value(outcome.error.model_dump()) if outcome.error is not None else None
         output: dict[str, Any] | None = None
         orphaned: list[tuple[RunRef, dict[str, object]]] = []
         claimed: ClaimedParent | None = None
@@ -1081,23 +1305,32 @@ class RunExecutor:
                 if job.task is not None and terminal:
                     # 결과는 submit_result가 받아들인 값뿐이다. 실패·취소면 None.
                     result = outcome.output if outcome.status == "succeeded" else None
-                    output = await task_output(
-                        session, ref.workspace_id, run, status=outcome.status, result=result
+                    masked: dict[str, Any] = masker.value(
+                        await task_output(
+                            session, ref.workspace_id, run, status=outcome.status, result=result
+                        )
                     )
                     if outcome.limit is not None:
                         # 하위 에이전트로 불린 과업이면 부모가 "스텝 한도"를 알아야 한다(3.4).
-                        output["limit"] = outcome.limit
+                        masked["limit"] = outcome.limit
+                    output = masked
                     run.output = output
                 if outcome.status == "waiting_input" and outcome.pending is not None:
                     pending = outcome.pending.model_copy(
                         update={"changes_since": job.changes_since}
                     )
-                    run.pending_interaction = pending.model_dump(mode="json")
+                    # 승인 카드의 명령·질문·보기도 가린다. 재개는 메시지 행의 tool_use 입력을
+                    # 실행하고 이 행의 input·cwd는 보여 주기만 한다. 보기(options)는 답 검증에
+                    # 쓰이지만 화면도 이 가린 값을 보이므로 고른 답과 맞는다.
+                    run.pending_interaction = masker.value(pending.model_dump(mode="json"))
                     run.ended_at = None
                 else:
                     run.pending_interaction = None
                     run.ended_at = now
                 if terminal:
+                    await _gather_citations(
+                        session, ref.workspace_id, run.id, run.assistant_message_id
+                    )
                     # 이번 구간에 만들고 큐에 넣지 못한 자식은 기다릴 부모가 없다(3.3).
                     orphaned = await self._orphan_created(session, job, now)
                     claimed = await claim_parent(session, ref.workspace_id, run, now)

@@ -60,6 +60,7 @@ from app.schemas.service_api import (
     DatasetStatusResult,
     DatasetTextCreate,
     DatasetTextUpdate,
+    DifyDocumentMetadataUpdate,
 )
 from app.services.errors import ServiceError
 from app.services.knowledge_datasets import KnowledgeDatasetService
@@ -485,7 +486,7 @@ async def delete_document(
 
 
 async def _doc_form(datasets: KnowledgeDatasetService, key: Any, kb_id: uuid.UUID) -> Any:
-    return (await datasets.dataset(key.workspace_id, kb_id)).doc_form
+    return await datasets.doc_form(key.workspace_id, kb_id)
 
 
 @router.get("/{dataset_id}/documents/{document_id}/segments", response_model=DatasetSegmentList)
@@ -712,8 +713,16 @@ async def toggle_built_in(
 @router.post("/{dataset_id}/documents/metadata", response_model=DocumentMetadataList)
 async def update_document_metadata(
     dataset_id: uuid.UUID,
-    body: DocumentMetadataUpdate,
+    body: DocumentMetadataUpdate | DifyDocumentMetadataUpdate,
     key: ApiKeyAuth,
     metadata: MetadataServiceDep,
+    datasets: DatasetServiceDep,
 ) -> DocumentMetadataList:
-    return await metadata.update_values(key.workspace_id, dataset_of(key, dataset_id), body)
+    """문서 메타데이터 값. 콘솔과 같은 모양({document_ids, values, apply_to_all})과 Dify 모양
+    ({operation_data: [{document_id, metadata_list: [{id, name, value}], partial_update}]})을 다
+    받는다. Dify 모양은 목록에 없는 사용자 필드 값을 지우고(partial_update가 참이면 그대로 둔다)
+    기본 필드는 건너뛴다. 응답은 두 모양 모두 바뀐 문서의 메타데이터다."""
+    kb_id = dataset_of(key, dataset_id)
+    if isinstance(body, DifyDocumentMetadataUpdate):
+        return await datasets.apply_operations(key.workspace_id, kb_id, body)
+    return await metadata.update_values(key.workspace_id, kb_id, body)

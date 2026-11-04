@@ -14,6 +14,7 @@ from app.api.console import (
     settings,
     setup,
     skills,
+    sql_sources,
     stats,
     wf_conversations,
     wf_runs,
@@ -55,5 +56,6 @@ for module in (
     knowledge,
     knowledge_documents,
     knowledge_search,
+    sql_sources,
 ):
     router.include_router(module.router)

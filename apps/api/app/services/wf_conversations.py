@@ -6,6 +6,8 @@
 않은 런(입력 대기 포함)이 있으면 새 메시지는 409 run_in_progress다.
 
 웹앱·서비스 API는 access.FlowScope로 범위를 확인한 뒤 같은 메서드를 부른다. 콘솔은 범위가 없다.
+
+assistant 메시지의 retriever_resources는 그 턴 런의 인용이다(3단계 8.3). 실행기가 런을 끝낼 때 쓴다.
 """
 
 import asyncio
@@ -39,6 +41,7 @@ from app.db.repositories.workflows import (
 )
 from app.db.types import new_id, utcnow
 from app.runner.supervisor import Supervisor, SupervisorClosed
+from app.schemas.citations import stored_resources
 from app.schemas.events import TERMINAL_EVENT_TYPES, UsageTotal
 from app.schemas.wf_conversation import (
     ConversationVariableOut,
@@ -56,7 +59,9 @@ from app.schemas.wf_conversation import (
 from app.services.access import FlowScope, scoped_conversation
 from app.services.errors import ServiceError, not_found
 from app.services.runs import TITLE_CHARS
+from app.services.sql_sources import graph_sql_sources
 from app.services.workflow_files import WorkflowFileService, bind_run_uploads, wf_file_out
+from app.services.workflow_knowledge import graph_knowledge, workflow_tier
 from app.services.workflow_runs import (
     WorkflowRunService,
     enqueue,
@@ -395,6 +400,7 @@ class WfConversationService:
                     ],
                     usage=row.usage,
                     status=row.status,  # pyright: ignore[reportArgumentType]
+                    retriever_resources=stored_resources(row.retriever_resources),
                     created_at=row.created_at,
                 )
                 for row in rows
@@ -441,8 +447,11 @@ class WfConversationService:
                 previous = await WfMessageRepository(session, workspace_id).last_user(chat.id)
             draft = version.version_number is None
             agents = await live_agent_ids(session, workspace_id, version.graph) if draft else None
+            graph = parse_graph(version.graph)
+            bases = await graph_knowledge(session, workspace_id, graph)
+            sources = await graph_sql_sources(session, workspace_id, graph)
+            tier = await workflow_tier(session, workspace_id, graph, bases)
         invalid = "draft_invalid" if draft else "version_invalid"
-        graph = parse_graph(version.graph)
         if graph is None:
             raise ServiceError(422, invalid, "저장된 그래프를 읽지 못했다")
         analysis = graph_check.analyze(
@@ -454,6 +463,9 @@ class WfConversationService:
                 workflow.kind, conversation_vars(version.conversation_vars)
             ),
             agent_ids=agents,
+            knowledge_bases=bases,
+            kb_top_k_max=self._settings.kb_top_k_max,
+            sql_sources=sources,
         )
         if not analysis.ok:
             raise ServiceError(
@@ -477,7 +489,7 @@ class WfConversationService:
                 422, "invalid_inputs", "런 입력이 올바르지 않다", details=exc.errors
             ) from None
         attached = await self._attachments(workspace_id, workflow.id, chat.id, body.files)
-        limits = run_limits(self._settings, parse_settings(version.settings))
+        limits = run_limits(self._settings, parse_settings(version.settings), tier)
         now = self._clock()
         async with self._db.write() as session:
             chat = await scoped_conversation(session, workspace_id, conversation_id, None)
@@ -667,4 +679,7 @@ class WfConversationService:
                 message_id=run.message_id,
                 run=wf_run_out(run),
                 answer=message.text if message is not None else "",
+                retriever_resources=stored_resources(
+                    message.retriever_resources if message is not None else None
+                ),
             )

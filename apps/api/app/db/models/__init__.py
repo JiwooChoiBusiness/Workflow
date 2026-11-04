@@ -21,6 +21,8 @@ from app.db.models.session_file import SessionFile
 from app.db.models.skill import Skill
 from app.db.models.skill_version import SkillVersion
 from app.db.models.snapshot import Snapshot
+from app.db.models.sql_query_log import SqlQueryLog
+from app.db.models.sql_source import SqlSource
 from app.db.models.wf_conversation import WfConversation
 from app.db.models.wf_file import WfFile
 from app.db.models.wf_message import WfMessage
@@ -57,6 +59,8 @@ __all__ = [
     "Skill",
     "SkillVersion",
     "Snapshot",
+    "SqlQueryLog",
+    "SqlSource",
     "WfConversation",
     "WfFile",
     "WfMessage",

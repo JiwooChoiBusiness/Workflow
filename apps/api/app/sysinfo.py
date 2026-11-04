@@ -32,6 +32,8 @@ DISK_FOLDERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("knowledge_mb", "지식 색인", ("knowledge",)),
     ("kb_work_mb", "지식 작업 폴더", ("kb-work",)),
     ("kb_files_mb", "지식 원본", ("storage", "kb-files")),
+    # 3단계 10.8. 데이터 소스의 질의 파일과 DuckDB 런타임(패키지·확장)이다. 원본에서 다시 만든다.
+    ("kb_sql_mb", "SQL 질의 파일·런타임", ("cache", "kb-sql")),
 )
 
 
@@ -319,6 +321,9 @@ def startup_checks(settings: Settings) -> list[Check]:
 
 
 def doctor_checks(settings: Settings) -> list[Check]:
+    # 지식 색인 점검은 sqlite-vec·pydantic을 끌어오므로 doctor에서만 불러온다.
+    from app.knowledge_doctor import knowledge_checks
+
     return [
         *startup_checks(settings),
         check_execution_policy(settings),
@@ -326,4 +331,5 @@ def doctor_checks(settings: Settings) -> list[Check]:
         asyncio.run(check_subprocess()),
         check_disk(settings),
         check_encryption_key(settings),
+        *knowledge_checks(settings),
     ]

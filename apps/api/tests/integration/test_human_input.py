@@ -20,8 +20,8 @@ from httpx import ASGITransport, AsyncClient
 
 from app import sysinfo
 from app.config import Settings
-from app.db.models import WfFile, WfRun
-from app.db.types import utcnow
+from app.db.models import WfFile, WfNodeRun, WfRun
+from app.db.types import new_id, utcnow
 from app.housekeeping import WorkflowRetention
 from app.logsetup import configure_logging
 from app.main import create_app
@@ -524,6 +524,53 @@ async def test_a_form_waiting_beside_an_expired_one_fails_with_the_run(
         "human_input_a": ("failed", "input_timeout", True),
         "human_input_b": ("failed", "input_timeout", True),
     }
+
+
+async def test_a_running_row_left_in_a_failed_run_is_cancelled(
+    app: FastAPI, logged_in: AsyncClient, sse: Events
+) -> None:
+    # 엔진이 실패로 끝날 때(_finish)도 화면의 closeOpenNodeRuns처럼 돌던 노드 런을 cancelled로,
+    # 기다리던 노드 런은 런 오류를 붙인 failed로 닫는다.
+    workflow = await make_workflow(logged_in, parallel_form_flow())
+    run_id, _ = await start_waiting(logged_in, sse, workflow["id"])
+    async with app.state.db.write() as session:
+        run = await session.get(WfRun, uuid.UUID(run_id))
+        assert run is not None
+        # 반복 컨테이너처럼 running으로 남은 노드 런.
+        session.add(
+            WfNodeRun(
+                id=new_id(),
+                workspace_id=run.workspace_id,
+                wf_run_id=run.id,
+                node_id="ghost",
+                node_type="iteration",
+                index=99,
+                status="running",
+                started_at=utcnow(),
+            )
+        )
+    state = app.state
+    ttl = state.settings.waiting_input_ttl_hours
+    later = WorkflowParents(
+        state.db,
+        state.bus,
+        state.workflow_supervisor,
+        waiting_ttl_hours=ttl,
+        clock=lambda: utcnow() + timedelta(hours=ttl + 1),
+    )
+
+    assert await later.expire_forms() == 1
+
+    ended = await wait_status(logged_in, f"/api/console/wf-runs/{run_id}", "failed")
+    rows = {item["node_id"]: item for item in ended["node_runs"]}
+    ghost = rows["ghost"]
+    assert (ghost["status"], ghost["error"], ghost["ended_at"] is not None) == (
+        "cancelled",
+        None,
+        True,
+    )
+    assert rows["human_input_b"]["status"] == "failed"
+    assert rows["human_input_b"]["error"]["code"] == "input_timeout"
 
 
 async def test_answering_an_expired_form_is_refused(

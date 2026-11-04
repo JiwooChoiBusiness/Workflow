@@ -109,6 +109,48 @@ def _backup(out: str | None, with_workspaces: bool, keep: int | None, no_index: 
     return 0
 
 
+def _rebuild_index(assume_yes: bool) -> int:
+    import asyncio
+
+    from app import sysinfo
+    from app.config import get_settings
+    from app.logsetup import configure_logging
+    from app.services.knowledge_rebuild import RebuildError, index_files, rebuild_index
+
+    settings = get_settings()
+    configure_logging(settings.log_level, secrets=settings.secret_values())
+    # 떠 있는 서버가 index.db를 쥐고 있으면 바꿔 끼울 수 없고, 바꾸더라도 서버가 옛 연결로 쓴다.
+    if not sysinfo.check_port(settings.server_port).ok:
+        print(
+            f"rebuild-index: 127.0.0.1:{settings.server_port}에 서버가 떠 있다. 서버를 끄고 한다",
+            file=sys.stderr,
+        )
+        return 1
+    if not assume_yes:
+        print(
+            f"rebuild-index: 전문 색인을 새로 만들어 {index_files(settings)[0]}와 바꾼다. 옛"
+            " 벡터는 버리고, 서버를 띄우면 모든 청크를 다시 임베딩해 채운다(무료 키는 하루"
+            " 1,000건)."
+        )
+        if input("계속할까? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("rebuild-index: 그만뒀다")
+            return 1
+    try:
+        result = asyncio.run(rebuild_index(settings))
+    except RebuildError as exc:
+        print(f"rebuild-index: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"rebuild-index: 지식 베이스 {result.kbs}개, 전문 색인 유닛 {result.units:,}개를 만들었다."
+        f" 서버를 띄우면 벡터 {result.vector_units:,}개를 다시 임베딩한다"
+    )
+    if result.daily_usage == "kept":
+        print("rebuild-index: 오늘 임베딩 사용량(하루 몫)을 새 파일로 옮겼다")
+    elif result.daily_usage == "reset":
+        print("rebuild-index: 옛 index.db를 읽지 못해 오늘 임베딩 한도는 0부터 다시 센다")
+    return 0
+
+
 def _memcheck(args: list[str]) -> int:
     from app.config import REPO_ROOT
 
@@ -234,8 +276,16 @@ def main(argv: list[str] | None = None) -> int:
         " 떠서 개발 중에만 쓴다",
     )
     commands.add_parser(
-        "doctor", help="셸·파이썬·pip·데이터 경로·실행 정책·포트·암호화 키를 점검한다"
+        "doctor",
+        help="셸·파이썬·pip·데이터 경로·실행 정책·포트·암호화 키·지식 색인을 점검한다",
     )
+    knowledge = commands.add_parser("knowledge", help="지식 색인(knowledge/index.db) 관리")
+    knowledge_commands = knowledge.add_subparsers(dest="knowledge_command", required=True)
+    rebuild = knowledge_commands.add_parser(
+        "rebuild-index",
+        help="서버를 끈 채 전문 색인을 새로 만들어 index.db와 바꾼다. 벡터는 서버가 뜨면 채운다",
+    )
+    rebuild.add_argument("--yes", action="store_true", help="묻지 않고 바로 한다")
     backup = commands.add_parser(
         "backup",
         help="DB·storage·허용 목록을 DATA_DIR과 같은 구조로 복사한다. 서버가 떠 있어도 된다",
@@ -290,6 +340,8 @@ def main(argv: list[str] | None = None) -> int:
         return _backup(args.out, args.with_workspaces, args.keep, args.no_index)
     if args.command == "migrate":
         return _migrate()
+    if args.command == "knowledge":
+        return _rebuild_index(assume_yes=args.yes)
     return _reset_password(from_stdin=args.password_stdin)
 
 

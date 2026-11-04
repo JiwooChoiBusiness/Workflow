@@ -20,6 +20,7 @@ from pydantic import (
 
 from app.llm.types import ReasoningEffort
 from app.schemas.common import ApprovalMode, RunLimits
+from app.schemas.knowledge import RetrievalSettings
 
 ToolGroup = Literal["shell", "files", "http", "ask_user"]
 TOOL_GROUPS: tuple[ToolGroup, ...] = ("shell", "files", "http", "ask_user")
@@ -33,6 +34,11 @@ MAX_FILE_REFERENCES = 200
 # 하위 에이전트 목록이 도구 설명과 시스템 프롬프트에 그대로 들어가므로 길이를 묶는다(오케스트레이션
 # 2.2).
 MAX_SUB_AGENTS = 10
+# search_knowledge가 한 번에 함께 검색하는 지식 베이스 수(3단계 7.6, 8.4).
+MAX_AGENT_KBS = 5
+# describe_sql_source·query_sql이 고를 수 있는 데이터 소스 수(3단계 10.3). 목록이 도구 설명과
+# 시스템 프롬프트에 들어간다.
+MAX_AGENT_SQL_SOURCES = 10
 
 ModelId = Annotated[
     str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
@@ -132,12 +138,31 @@ class SubAgentRef(BaseModel):
     approval_mode: Literal["inherit", "off"] = "inherit"
 
 
+class AgentKnowledge(BaseModel):
+    """에이전트 버전의 지식 베이스(3단계 8.4). 비어 있지 않으면 search_knowledge가 붙는다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kb_ids: list[uuid.UUID] = Field(default_factory=list[uuid.UUID], max_length=MAX_AGENT_KBS)
+    # 비우면 지식 베이스가 하나일 때 그 KB의 설정이고, 둘 이상이면 정해야 한다.
+    retrieval_model: RetrievalSettings | None = None
+
+    @field_validator("kb_ids")
+    @classmethod
+    def _unique_kbs(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        return _unique(value, "knowledge.kb_ids")
+
+
 class AgentWarning(BaseModel):
     """저장·발행을 막지 않는 문제(설명 없는 하위 에이전트, 미발행, 깊이 초과 등)."""
 
     code: str
     message: str
     agent_id: uuid.UUID | None = None
+    # 지식 베이스 경고(knowledge_base_not_found, paid_key_required)면 그 KB.
+    kb_id: uuid.UUID | None = None
+    # 데이터 소스 경고(sql_source_not_found, paid_key_required)면 그 데이터 소스.
+    source_id: uuid.UUID | None = None
 
 
 class AgentVersionConfig(BaseModel):
@@ -160,6 +185,11 @@ class AgentVersionConfig(BaseModel):
     sub_agents: list[SubAgentRef] = Field(
         default_factory=list[SubAgentRef], max_length=MAX_SUB_AGENTS
     )
+    knowledge: AgentKnowledge = Field(default_factory=AgentKnowledge)
+    # 데이터 소스(3단계 10.3). 비어 있지 않으면 describe_sql_source·query_sql이 붙는다.
+    sql_sources: list[uuid.UUID] = Field(
+        default_factory=list[uuid.UUID], max_length=MAX_AGENT_SQL_SOURCES
+    )
 
     @field_validator("tools")
     @classmethod
@@ -181,6 +211,11 @@ class AgentVersionConfig(BaseModel):
     def _unique_sub_agents(cls, value: list[SubAgentRef]) -> list[SubAgentRef]:
         _unique([item.agent_id for item in value], "sub_agents의 agent_id")
         return value
+
+    @field_validator("sql_sources")
+    @classmethod
+    def _unique_sql_sources(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        return _unique(value, "sql_sources")
 
 
 class DraftUpdate(AgentVersionConfig):

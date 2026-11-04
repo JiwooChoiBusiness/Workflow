@@ -215,13 +215,14 @@ DIFY_CASES = [
         {"model_replaced", "dependencies_ignored", "imported_code", "env_value_missing"},
         {"imported_code_unreviewed"},
     ),
-    # tool·list-operator·document-extractor는 M19부터 우리 노드로 들어온다.
+    # tool·list-operator·document-extractor는 M19부터, knowledge-retrieval은 M24부터 우리 노드로
+    # 들어온다. Dify 지식 베이스는 이을 수 없어 kb_required로 고르게 한다.
     (
         "dify/chatflow_support.yaml",
         "chatflow",
-        ["n1730000000003"],
-        {"model_replaced", "unsupported_node", "features_ignored"},
-        {"unsupported_node"},
+        [],
+        {"model_replaced", "knowledge_unlinked", "context_moved", "features_ignored"},
+        {"kb_required"},
     ),
     (
         "dify/workflow_batch.yaml",

@@ -10,6 +10,8 @@ state로 다시 돌리며 응답을 state["reply"]로 넘긴다. 값은 start �
 응답 없이 WAITING_INPUT_TTL_HOURS가 지나면 서비스가 timeout 응답으로 다시 넣고 이 노드는
 input_timeout으로 실패한다. 병렬 가지에서 다른 노드가 먼저 답을 받아 재개되면 이 노드는 같은 폼으로
 다시 멈춘다(pending은 하나씩, 3.7).
+
+폼을 열고 응답을 꺼내는 부분(open_form, take_reply)은 sql_query의 승인 폼(3단계 10.6)도 쓴다.
 """
 
 import uuid
@@ -48,7 +50,7 @@ class HumanInputConfig(BaseModel):
     fields: list[StartField] = Field(min_length=1)
 
 
-class _Waiting(BaseModel):
+class FormWaiting(BaseModel):
     """멈춘 동안의 state. 재개해도 같은 폼 id·안내문·시각으로 다시 묻는다."""
 
     form_id: str
@@ -56,7 +58,40 @@ class _Waiting(BaseModel):
     created_at: datetime
 
 
-def form_of(config: HumanInputConfig, waiting: _Waiting) -> WorkflowFormData:
+def open_form(ctx: NodeContext, description: str) -> FormWaiting:
+    return FormWaiting(
+        form_id=f"form_{uuid.uuid4().hex}", description=description, created_at=ctx.ports.now()
+    )
+
+
+def take_reply[W: FormWaiting](
+    ctx: NodeContext, state: dict[str, Any] | None, model: type[W]
+) -> tuple[W | None, dict[str, Any] | None]:
+    """state에서 기다리던 폼과 그 폼에 온 응답 values.
+
+    처음 도는 것이면 (None, None)이다. 응답이 없거나 다른 폼에 보낸 것이면 values가 None이라 같은
+    폼을 다시 띄운다. 대기 상한이 지나 닫힌 폼이면 NodeFailure(input_timeout)다.
+    """
+    saved = dict(state or {})
+    reply = saved.pop(REPLY_STATE_KEY, None)
+    waiting: W | None = None
+    if saved:
+        try:
+            waiting = model.model_validate(saved)
+        except ValidationError:
+            raise NodeFailure("invalid_state", "기다리던 폼을 다시 읽지 못했다") from None
+    answer = cast(dict[str, Any], reply) if isinstance(reply, dict) else None
+    if waiting is None or answer is None or answer.get("form_id") != waiting.form_id:
+        if reply is not None:
+            ctx.warn("reply_mismatch: 다른 폼에 보낸 응답이라 다시 묻는다")
+        return waiting, None
+    if answer.get("timeout") is True:
+        raise NodeFailure("input_timeout", "정한 시간 안에 폼 응답이 없었다")
+    raw = answer.get("values")
+    return waiting, cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+
+
+def form_of(config: HumanInputConfig, waiting: FormWaiting) -> WorkflowFormData:
     return WorkflowFormData(
         form_id=waiting.form_id,
         description=waiting.description,
@@ -83,34 +118,17 @@ class HumanInputRunner(NodeRunner[HumanInputConfig]):
     async def run(
         self, ctx: NodeContext, config: HumanInputConfig, state: dict[str, Any] | None
     ) -> NodeResult:
-        saved = dict(state or {})
-        reply = saved.pop(REPLY_STATE_KEY, None)
-        if saved:
-            try:
-                waiting = _Waiting.model_validate(saved)
-            except ValidationError:
-                raise NodeFailure("invalid_state", "기다리던 폼을 다시 읽지 못했다") from None
-        else:
-            waiting = _Waiting(
-                form_id=f"form_{uuid.uuid4().hex}",
-                description=ctx.render(config.description),
-                created_at=ctx.ports.now(),
-            )
+        waiting, given = take_reply(ctx, state, FormWaiting)
+        if waiting is None:
+            waiting = open_form(ctx, ctx.render(config.description))
         shown = {"form_id": waiting.form_id, "description": waiting.description}
-        answer = cast(dict[str, Any], reply) if isinstance(reply, dict) else None
-        if answer is None or answer.get("form_id") != waiting.form_id:
-            if reply is not None:
-                ctx.warn("reply_mismatch: 다른 폼에 보낸 응답이라 다시 묻는다")
+        if given is None:
             return NodeResult(
                 status="waiting_input",
                 pending=form_of(config, waiting),
                 state=waiting.model_dump(mode="json"),
                 inputs=shown,
             )
-        if answer.get("timeout") is True:
-            raise NodeFailure("input_timeout", "정한 시간 안에 폼 응답이 없었다")
-        raw = answer.get("values")
-        given = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
         try:
             values = coerce_inputs(config.fields, given)
         except InputError as exc:

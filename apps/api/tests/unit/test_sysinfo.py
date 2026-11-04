@@ -119,17 +119,26 @@ def test_missing_or_malformed_encryption_key_is_a_warning(value: str | None) -> 
     assert sysinfo.encryption_key_fingerprint(settings) is None
 
 
-def test_doctor_ends_with_the_encryption_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_doctor_lists_the_knowledge_index_after_the_encryption_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import knowledge_doctor
+
     async def subprocess_ok() -> sysinfo.Check:
         return sysinfo.Check("서브프로세스", True, "-")
 
-    # PowerShell·pip를 띄우는 점검은 빼고 목록 구성만 본다.
+    # PowerShell·pip를 띄우는 점검과 데이터 폴더를 읽는 지식 점검은 빼고 목록 구성만 본다.
     monkeypatch.setattr(sysinfo, "startup_checks", lambda _settings: [])
     monkeypatch.setattr(
         sysinfo, "check_execution_policy", lambda _settings: sysinfo.Check("실행 정책", True, "-")
     )
     monkeypatch.setattr(sysinfo, "check_subprocess", subprocess_ok)
     monkeypatch.setattr(sysinfo, "check_disk", lambda _settings: sysinfo.Check("디스크", True, "-"))
+    monkeypatch.setattr(
+        knowledge_doctor,
+        "knowledge_checks",
+        lambda _settings: [sysinfo.Check("지식 색인", True, "-")],
+    )
 
     checks = sysinfo.doctor_checks(Settings.model_validate({}))
 
@@ -139,6 +148,7 @@ def test_doctor_ends_with_the_encryption_key(monkeypatch: pytest.MonkeyPatch) ->
         "서브프로세스",
         "디스크",
         "암호화 키",
+        "지식 색인",
     ]
 
 
@@ -150,6 +160,7 @@ def test_disk_check_reports_the_folders_that_grow(tmp_path: Path) -> None:
         (("cache", "wf-extract", "parsers-1", "d.bin"), 10),
         (("knowledge", "index.db"), 5 * 2**20),
         (("storage", "kb-files", "w1", "e.bin"), 2048),
+        (("cache", "kb-sql", "s1.duckdb"), 4 * 2**20),
     ):
         path = tmp_path.joinpath(*parts)
         path.parent.mkdir(parents=True)
@@ -160,7 +171,8 @@ def test_disk_check_reports_the_folders_that_grow(tmp_path: Path) -> None:
     assert check.ok and check.name == "디스크"
     assert check.detail == (
         "작업공간 3MB, pip 캐시 0B, 워크플로우 런 폴더 1KB, 워크플로우 파일 2MB,"
-        " 문서 추출 파서 10B, 지식 색인 5MB, 지식 작업 폴더 0B, 지식 원본 2KB"
+        " 문서 추출 파서 10B, 지식 색인 5MB, 지식 작업 폴더 0B, 지식 원본 2KB,"
+        " SQL 질의 파일·런타임 4MB"
     )
 
 

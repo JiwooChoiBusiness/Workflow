@@ -63,6 +63,7 @@ from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.sandbox.disk import format_size
 from app.sandbox.local_workspace import remove_workspace_dir
 from app.schemas.agent_version import ModelConfig
+from app.schemas.citations import stored_resources
 from app.schemas.common import RunLimits
 from app.schemas.events import TERMINAL_EVENT_TYPES, RunEventOut, UsageTotal
 from app.schemas.run import (
@@ -77,7 +78,9 @@ from app.schemas.session import MessageCreate, SessionFileOut
 from app.schemas.task import SessionFileRef, TaskRunInput
 from app.schemas.workspace import WorkspaceSettings
 from app.services.access import SessionScope, scoped_session
+from app.services.agent_tree import tree_tier
 from app.services.errors import ServiceError, not_found
+from app.services.run_tier import require_paid_key, with_tier
 from app.storage.base import StorageBackend, StorageError
 from app.streaming.event_bus import BusEvent, EventBus, RunRef, Subscription
 
@@ -541,6 +544,9 @@ class RunService:
             raise not_found("에이전트 버전")
         model = ModelConfig.model_validate(version.model or {})
         limits = RunLimits.model_validate(version.limits or {})
+        # 이 버전이나 하위 에이전트에 유료 전용 지식 베이스가 있으면 런 전체가 유료 키로 돈다(14.4).
+        tier = await tree_tier(session, workspace_id, [version])
+        require_paid_key(self._settings, tier)
         files = SessionFileRepository(session, workspace_id)
         uploads = await files.get_many(body.file_ids)
         by_id = {row.id: row for row in uploads}
@@ -607,7 +613,7 @@ class RunService:
                 status=RunStatus.QUEUED,
                 user_message_id=message_id,
                 model={"model_id": model.model_id},
-                limits=limits.model_dump(mode="json"),
+                limits=with_tier(limits.model_dump(mode="json"), tier),
                 approval_mode=version.approval_mode,
                 usage=UsageTotal().model_dump(mode="json"),
                 steps=0,
@@ -991,11 +997,13 @@ class RunService:
             if run is None:
                 raise not_found("런")
             answer = ""
+            resources: object = None
             if run.assistant_message_id is not None:
                 message = await MessageRepository(session, workspace_id).get(
                     run.assistant_message_id
                 )
                 answer = message.text if message is not None else ""
+                resources = message.retriever_resources if message is not None else None
             files = await SessionFileRepository(session, workspace_id).list_for_session(
                 run.session_id, kind=SessionFileKind.OUTPUT, run_id=run.id
             )
@@ -1004,6 +1012,7 @@ class RunService:
                 answer=answer,
                 message_id=run.assistant_message_id,
                 files=[session_file_out(row) for row in files],
+                retriever_resources=stored_resources(resources),
             )
 
     async def tool_output(

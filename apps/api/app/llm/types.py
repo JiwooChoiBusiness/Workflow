@@ -144,6 +144,10 @@ class MessageEnd(_Event):
     provider_extra: dict[str, Any] | None = None
 
 
+def _none(value: object) -> bool:
+    return value is None
+
+
 class ErrorEvent(_Event):
     type: Literal["error"] = "error"
     code: str
@@ -151,6 +155,8 @@ class ErrorEvent(_Event):
     retryable: bool
     model: str | None = None
     status: int | None = None
+    # 고른 모델이 모두 일일 한도에 걸렸으면 가장 먼저 풀리는 모델까지 남은 초(3단계 12.4).
+    retry_after: float | None = Field(default=None, exclude_if=_none)
 
 
 ModelEvent = Annotated[

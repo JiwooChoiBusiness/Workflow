@@ -36,6 +36,7 @@ from app.storage.base import StorageBackend, StorageError
 
 if TYPE_CHECKING:
     from app.services.knowledge_index_executor import KnowledgeMaintenance
+    from app.services.sql_sources import SqlMaintenance
 
 log = structlog.get_logger("app.housekeeping")
 
@@ -520,6 +521,23 @@ class KnowledgeRetention:
         ]
 
 
+class SqlRetention:
+    """Text2SQL 보존 정리(3단계 설계 4.5). 질의 기록(KB_QUERY_LOG_DAYS), cache/kb-sql의 행 없는
+    질의 파일, 행이 가리키지 않는 sql-sources 원본(7일). 일은 SqlMaintenance가 한다.
+    """
+
+    def __init__(self, maintenance: "SqlMaintenance") -> None:
+        self._maintenance = maintenance
+
+    def jobs(self) -> list[tuple[str, Callable[[], Awaitable[Any]]]]:
+        maintenance = self._maintenance
+        return [
+            ("sql_query_logs", maintenance.purge_query_logs),
+            ("sql_cache", maintenance.purge_cache),
+            ("sql_files", maintenance.purge_loose_files),
+        ]
+
+
 async def _uploads_in_use(
     session: AsyncSession, workspace_id: uuid.UUID, workflow_ids: Collection[uuid.UUID | None]
 ) -> set[str]:
@@ -551,6 +569,7 @@ class Housekeeping:
         retention: Retention | None = None,
         workflows: WorkflowRetention | None = None,
         knowledge: KnowledgeRetention | None = None,
+        sql: SqlRetention | None = None,
     ) -> None:
         self._db = db
         self._sessions = SessionStore(db)
@@ -558,6 +577,7 @@ class Housekeeping:
         self._retention = retention
         self._workflows = workflows
         self._knowledge = knowledge
+        self._sql = sql
         self._backend = backend
         self._budget_mb = memory_budget_mb
         self._interval_sec = interval_sec
@@ -636,6 +656,9 @@ class Housekeeping:
                 summary[name] = await _attempt(
                     job, "housekeeping.knowledge_retention_failed", job=name
                 )
+        if self._sql is not None:
+            for name, job in self._sql.jobs():
+                summary[name] = await _attempt(job, "housekeeping.sql_retention_failed", job=name)
         summary["purged_workspaces"] = await _attempt(
             self._backend.purge_deleted, "housekeeping.workspaces_failed"
         )

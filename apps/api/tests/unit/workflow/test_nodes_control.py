@@ -405,6 +405,12 @@ def test_registry_describes_every_type() -> None:
         "document_extractor",
         "tool",
         "human_input",
+        # 3단계 지식 노드(M24)
+        "knowledge_retrieval",
+        "knowledge_index",
+        # 3단계 Text2SQL 노드(M27)
+        "sql_schema",
+        "sql_query",
     }
     assert set(described) == implemented
     assert all(item.implemented for item in described.values())

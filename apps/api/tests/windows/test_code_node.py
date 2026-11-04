@@ -45,6 +45,8 @@ class Ports:
     http: None = None
     files: None = None
     tasks: None = None
+    knowledge: None = None
+    sql: None = None
     node_settings: NodeSettings = NodeSettings()
 
     def now(self) -> datetime:

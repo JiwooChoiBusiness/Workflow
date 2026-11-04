@@ -37,7 +37,14 @@ from app.workflow.frames import (
     build_frames,
 )
 from app.workflow.nodes import default_registry
-from app.workflow.nodes.base import AnyRunner, NodeRegistry, TemplateField, VarRef
+from app.workflow.nodes.base import (
+    AnyRunner,
+    KnowledgeBaseRef,
+    NodeRegistry,
+    SqlSourceRef,
+    TemplateField,
+    VarRef,
+)
 from app.workflow.render import TemplateError, template_names
 from app.workflow.variables import (
     CONV,
@@ -61,6 +68,10 @@ NODE_ID = re.compile(r"[a-z][a-z0-9_]{0,31}")
 END_TYPE = "end"
 ANSWER_TYPE = "answer"
 AGENT_TYPE = "agent"
+KNOWLEDGE_RETRIEVAL_TYPE = "knowledge_retrieval"
+KNOWLEDGE_INDEX_TYPE = "knowledge_index"
+SQL_SCHEMA_TYPE = "sql_schema"
+SQL_QUERY_TYPE = "sql_query"
 # DSL 가져오기가 옮기지 못한 노드(Dify의 2차·미지원 노드)의 자리. 레지스트리에 없어 팔레트에 나오지
 # 않고, 엣지와 원래 설정을 남겨 둔 채 검증 오류로 실행·발행을 막는다.
 UNSUPPORTED_TYPE = "unsupported"
@@ -188,6 +199,9 @@ class _Checker:
         env_names: Collection[str] | None,
         conversation_vars: Mapping[str, VarType] | None,
         agent_ids: Collection[uuid.UUID] | None = None,
+        knowledge_bases: Mapping[uuid.UUID, KnowledgeBaseRef] | None = None,
+        kb_top_k_max: int | None = None,
+        sql_sources: Mapping[uuid.UUID, SqlSourceRef] | None = None,
     ) -> None:
         self.graph = graph
         self.kind: WorkflowKind = kind
@@ -195,6 +209,9 @@ class _Checker:
         self.env_names = frozenset(env_names) if env_names is not None else None
         self.conversation_vars = dict(conversation_vars) if conversation_vars is not None else None
         self.agent_ids = frozenset(agent_ids) if agent_ids is not None else None
+        self.knowledge_bases = dict(knowledge_bases) if knowledge_bases is not None else None
+        self.kb_top_k_max = kb_top_k_max
+        self.sql_sources = dict(sql_sources) if sql_sources is not None else None
         self.issues: list[Issue] = []
         self.nodes: dict[str, Node] = {}
         self.runners: dict[str, AnyRunner] = {}
@@ -682,6 +699,15 @@ class _View:
         known = self._checker.agent_ids
         return None if known is None else agent_id in known
 
+    def knowledge_bases(self) -> Mapping[uuid.UUID, KnowledgeBaseRef] | None:
+        return self._checker.knowledge_bases
+
+    def kb_top_k_max(self) -> int | None:
+        return self._checker.kb_top_k_max
+
+    def sql_sources(self) -> Mapping[uuid.UUID, SqlSourceRef] | None:
+        return self._checker.sql_sources
+
 
 def analyze(
     graph: Graph,
@@ -691,13 +717,28 @@ def analyze(
     env_names: Collection[str] | None = None,
     conversation_vars: Mapping[str, VarType] | None = None,
     agent_ids: Collection[uuid.UUID] | None = None,
+    knowledge_bases: Mapping[uuid.UUID, KnowledgeBaseRef] | None = None,
+    kb_top_k_max: int | None = None,
+    sql_sources: Mapping[uuid.UUID, SqlSourceRef] | None = None,
 ) -> Analysis:
-    """env_names·conversation_vars·agent_ids가 None이면 그 이름·id는 따지지 않는다(모를 때).
+    """env_names·conversation_vars·agent_ids·knowledge_bases가 None이면 그 이름·id는 따지지
+    않는다(모를 때).
 
-    agent_ids는 그래프의 agent 노드가 가리키는 에이전트 중 워크스페이스에 살아 있는 것이다.
+    agent_ids는 그래프의 agent 노드가 가리키는 에이전트 중 워크스페이스에 살아 있는 것이고,
+    knowledge_bases는 지식 노드가 가리키는 지식 베이스 중 살아 있는 것이다(3단계 8.1).
+    kb_top_k_max는 서버 설정 KB_TOP_K_MAX로, 주면 검색 노드의 top_k를 저장 때 본다.
+    sql_sources는 SQL 노드가 가리키는 데이터 소스 중 살아 있는 것이다(3단계 11장).
     """
     checker = _Checker(
-        graph, kind, registry or default_registry(), env_names, conversation_vars, agent_ids
+        graph,
+        kind,
+        registry or default_registry(),
+        env_names,
+        conversation_vars,
+        agent_ids,
+        knowledge_bases,
+        kb_top_k_max,
+        sql_sources,
     )
     return checker.run()
 
@@ -710,6 +751,9 @@ def validate(
     env_names: Collection[str] | None = None,
     conversation_vars: Mapping[str, VarType] | None = None,
     agent_ids: Collection[uuid.UUID] | None = None,
+    knowledge_bases: Mapping[uuid.UUID, KnowledgeBaseRef] | None = None,
+    kb_top_k_max: int | None = None,
+    sql_sources: Mapping[uuid.UUID, SqlSourceRef] | None = None,
 ) -> list[Issue]:
     return analyze(
         graph,
@@ -718,6 +762,9 @@ def validate(
         env_names=env_names,
         conversation_vars=conversation_vars,
         agent_ids=agent_ids,
+        knowledge_bases=knowledge_bases,
+        kb_top_k_max=kb_top_k_max,
+        sql_sources=sql_sources,
     ).issues
 
 
@@ -731,6 +778,43 @@ def agent_references(graph: Graph) -> set[uuid.UUID]:
             found.add(uuid.UUID(str(node.config.get("agent_id"))))
         except ValueError:
             continue
+    return found
+
+
+def _uuid_or_none(value: object) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
+
+
+def knowledge_references(graph: Graph) -> set[uuid.UUID]:
+    """knowledge_retrieval의 kb_ids와 knowledge_index의 kb_id. id가 아닌 값은 건너뛴다."""
+    found: set[uuid.UUID] = set()
+    for node in graph.nodes:
+        raw: list[Any] = []
+        if node.type == KNOWLEDGE_RETRIEVAL_TYPE:
+            value = node.config.get("kb_ids")
+            raw = cast(list[Any], value) if isinstance(value, list) else []
+        elif node.type == KNOWLEDGE_INDEX_TYPE:
+            raw = [node.config.get("kb_id")]
+        for item in raw:
+            kb_id = _uuid_or_none(item) if item is not None else None
+            if kb_id is not None:
+                found.add(kb_id)
+    return found
+
+
+def sql_references(graph: Graph) -> set[uuid.UUID]:
+    """sql_schema·sql_query 노드의 source_id. id가 아닌 값은 건너뛴다."""
+    found: set[uuid.UUID] = set()
+    for node in graph.nodes:
+        if node.type not in (SQL_SCHEMA_TYPE, SQL_QUERY_TYPE):
+            continue
+        value = node.config.get("source_id")
+        source_id = _uuid_or_none(value) if value is not None else None
+        if source_id is not None:
+            found.add(source_id)
     return found
 
 

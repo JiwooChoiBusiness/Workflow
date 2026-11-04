@@ -6,11 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.schemas.agent_version import AgentVersionOut, AgentWarning
 
-# 웹앱 주소(/apps/<slug>)에 쓰인다. 스킬 이름과 같은 규칙.
-Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")]
+# common으로 옮긴 Slug·Icon을 기존 import(app.schemas.agent)도 그대로 쓰도록 다시 내보낸다.
+from app.schemas.common import Icon as Icon
+from app.schemas.common import Slug as Slug
+
 AgentName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-# 이모지나 아이콘 이름. 화면이 해석한다.
-Icon = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 Description = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 
 

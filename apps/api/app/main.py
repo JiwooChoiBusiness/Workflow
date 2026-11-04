@@ -14,7 +14,13 @@ from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import Database
 from app.db.migrate import upgrade_head
-from app.housekeeping import Housekeeping, KnowledgeRetention, Retention, WorkflowRetention
+from app.housekeeping import (
+    Housekeeping,
+    KnowledgeRetention,
+    Retention,
+    SqlRetention,
+    WorkflowRetention,
+)
 from app.llm import make_adapter
 from app.llm.base import ModelAdapter
 from app.logsetup import configure_logging
@@ -36,6 +42,8 @@ from app.services.knowledge_runtime import INDEX_DIR, build_knowledge_runtime
 from app.services.llm_status import LlmStatusService
 from app.services.run_executor import RunExecutor
 from app.services.runs import RunMaintenance, RunService
+from app.services.sql_runtime import SqlRuntime
+from app.services.sql_sources import SqlMaintenance
 from app.services.tasks import TaskService
 from app.services.workflow_executor import WF_WORKSPACES, WorkflowRunExecutor
 from app.services.workflow_runs import WorkflowParents
@@ -108,13 +116,24 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             await http.aclose()
             raise
         llm: ModelAdapter = app.state.llm
-        # index.db를 열지 못해도(확장 로드 실패 등) 기동은 계속하고 지식 API만 503이다(3단계 5.2).
-        knowledge = build_knowledge_runtime(settings, llm)
         db = Database(settings.data_dir / "app.db")
+        # index.db를 열지 못해도(확장 로드 실패 등) 기동은 계속하고 지식 API만 503이다(3단계 5.2).
+        knowledge = build_knowledge_runtime(settings, llm, db=db)
         storage = make_storage(settings)
         bus = EventBus(sqlite_stores(db))
+        # Text2SQL 준비·질의는 지식 작업 폴더(kb-work)의 하위 프로세스에서 한 번에 하나씩 돈다
+        # (3단계 10.5). 콘솔 시험·SQL 노드·query_sql 도구가 같은 객체를 쓴다.
+        sql_runtime = SqlRuntime(settings, kb_backend)
+        # search_knowledge가 지식 실행 객체로 검색한다(3단계 8.4).
         executor = RunExecutor(
-            db=db, settings=settings, llm=llm, backend=backend, storage=storage, bus=bus
+            db=db,
+            settings=settings,
+            llm=llm,
+            backend=backend,
+            storage=storage,
+            bus=bus,
+            knowledge=knowledge,
+            sql_runtime=sql_runtime,
         )
         supervisor = Supervisor(
             executor,
@@ -137,18 +156,21 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         children = ChildRunService(
             db, settings, bus=bus, supervisor=supervisor, storage=storage, backend=backend
         )
+        workflow_executor = WorkflowRunExecutor(
+            db=db,
+            settings=settings,
+            bus=bus,
+            llm=llm,
+            sandbox=wf_backend,
+            http=http,
+            tasks=tasks,
+            children=children,
+            storage=storage,
+            knowledge=knowledge,
+            sql_runtime=sql_runtime,
+        )
         workflow_supervisor = Supervisor(
-            WorkflowRunExecutor(
-                db=db,
-                settings=settings,
-                bus=bus,
-                llm=llm,
-                sandbox=wf_backend,
-                http=http,
-                tasks=tasks,
-                children=children,
-                storage=storage,
-            ),
+            workflow_executor,
             max_concurrent=settings.runner_max_concurrent_workflow_runs,
             grace_sec=settings.shutdown_grace_sec,
             name="workflow",
@@ -177,6 +199,8 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         )
         knowledge_lane = KnowledgeLane(knowledge_supervisor)
         index_executor.lane = knowledge_lane
+        # knowledge_index 노드가 만든 문서를 지식 레인에 넣는다(3단계 8.2).
+        workflow_executor.knowledge_lane = knowledge_lane
         knowledge_maintenance = KnowledgeMaintenance(
             db=db,
             runtime=knowledge,
@@ -199,6 +223,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
                 forms=parents,
             ),
             knowledge=KnowledgeRetention(knowledge_maintenance),
+            sql=SqlRetention(SqlMaintenance(db, settings, storage, sql_runtime)),
         )
         # 종료 훅은 세 레인이 모두 끝난 뒤 등록한 순서로 돈다(2단계 3.6). 콘솔 창 닫기처럼
         # lifespan을 거치지 않는 종료도 같은 순서로 정리되게 여기에 모은다. 런이 다 멈춘 뒤
@@ -209,6 +234,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             housekeeping.stop,
             backend.aclose,
             wf_backend.aclose,
+            sql_runtime.close,
             kb_backend.aclose,
             llm.aclose,
             knowledge.close,
@@ -265,6 +291,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             app.state.sandbox = backend
             app.state.wf_sandbox = wf_backend
             app.state.kb_sandbox = kb_backend
+            app.state.sql_runtime = sql_runtime
             app.state.http = http
             app.state.storage = storage
             app.state.bus = bus

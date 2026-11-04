@@ -10,6 +10,7 @@ import re
 import shutil
 import sqlite3
 import stat
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -36,6 +37,8 @@ _STAMP = re.compile(r"\d{8}-\d{6}")
 # 서버가 체크포인트 중이면 잠깐 기다린다. 서버 쪽 busy_timeout(5초)보다 넉넉하게 둔다.
 BUSY_TIMEOUT_SEC = 30.0
 QUICK_CHECK_MAX_CHARS = 500
+RENAME_ATTEMPTS = 5
+RENAME_RETRY_SEC = 0.3
 
 
 class BackupError(Exception):
@@ -138,7 +141,7 @@ def create_backup(
         (part / MANIFEST_NAME).write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-        os.rename(sysinfo.long_path(part), sysinfo.long_path(target))
+        _rename_when_free(part, target)
     except BaseException:
         _remove_quietly(part)
         raise
@@ -156,6 +159,19 @@ def create_backup(
         pruned=pruned,
         prune_failed=prune_failed,
     )
+
+
+def _rename_when_free(part: Path, target: Path) -> None:
+    # 방금 쓴 파일을 Defender나 검색 색인이 잠깐 열고 있으면 폴더 이름 바꾸기가 WinError 5로
+    # 실패한다. 다 복사한 백업을 지우지 않도록 짧게 몇 번 더 해 본다.
+    for attempt in range(RENAME_ATTEMPTS):
+        try:
+            os.rename(sysinfo.long_path(part), sysinfo.long_path(target))
+            return
+        except PermissionError:
+            if attempt == RENAME_ATTEMPTS - 1:
+                raise
+            time.sleep(RENAME_RETRY_SEC)
 
 
 def prune(root: Path, keep: int, *, protect: Path | None = None) -> tuple[list[Path], list[Path]]:

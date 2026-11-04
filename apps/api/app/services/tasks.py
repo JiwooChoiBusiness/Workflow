@@ -65,7 +65,9 @@ from app.schemas.task import (
     TaskRunInput,
 )
 from app.services.access import SessionScope, scoped_session
+from app.services.agent_tree import tree_tier
 from app.services.errors import ServiceError, not_found
+from app.services.run_tier import higher, require_paid_key, with_tier
 from app.services.runs import RunService, StartedRun, event_out, pending_of, run_out, task_output
 from app.streaming.event_bus import EventBus, RunRef
 from app.workflow.variables import FileRef, is_file
@@ -496,6 +498,14 @@ class TaskService:
             correlation=spec.correlation,
         )
         model = ModelConfig.model_validate(version.model or {})
+        # 부르는 런(부모·워크플로우)과 이 버전(하위 에이전트 포함)의 등급 중 높은 쪽이다(14.4).
+        tier = higher(spec.tier, await tree_tier(session, ws, [version]))
+        require_paid_key(self._settings, tier)
+        limits = merged_limits(
+            version.limits,
+            spec.limits,
+            child_calls_cap=origin.child_calls_cap if origin is not None else None,
+        )
         runs = RunRepository(session, ws)
         runs.add(
             Run(
@@ -506,11 +516,7 @@ class TaskService:
                 status=RunStatus.QUEUED,
                 user_message_id=message_id,
                 model={"model_id": model.model_id},
-                limits=merged_limits(
-                    version.limits,
-                    spec.limits,
-                    child_calls_cap=origin.child_calls_cap if origin is not None else None,
-                ).model_dump(mode="json"),
+                limits=with_tier(limits.model_dump(mode="json"), tier),
                 approval_mode=spec.approval_mode or version.approval_mode,
                 input=task.model_dump(mode="json"),
                 usage=UsageTotal().model_dump(mode="json"),

@@ -311,6 +311,8 @@ class EvalCaseOut(BaseModel):
 class EvalCaseList(BaseModel):
     items: list[EvalCaseOut]
     total: int
+    # 정답 문서 id → 이름. 살아 있는 문서만 담아 여기 없는 id는 지운 문서다.
+    document_names: dict[uuid.UUID, str] = Field(default_factory=dict[uuid.UUID, str])
 
 
 class EvalImportRequest(BaseModel):

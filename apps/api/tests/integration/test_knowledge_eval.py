@@ -19,6 +19,8 @@ from app.db.repositories.knowledge import KbCounterRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.knowledge.units import FtsRow, VecRow, doc_id_of
 from app.llm.embeddings import EmbeddingConfig
+from app.llm.fake_adapter import FakeAdapter
+from app.services.knowledge_eval import RERANK_EVAL_MAX_CASES
 from app.services.knowledge_runtime import KnowledgeRuntime
 
 BASE = "/api/console/knowledge"
@@ -298,3 +300,29 @@ async def test_replace_keeps_the_set_when_nothing_is_importable(
         assert response.json()["error"]["code"] == "eval_import_empty"
     assert [p["line"] for p in unknown_only.json()["error"]["details"]["problems"]] == [2]
     assert [case["question"] for case in cases.json()["items"]] == ["연차?"]
+
+
+async def test_llm_rerank_runs_are_capped_before_any_model_call(
+    logged_in: AsyncClient, app: FastAPI
+) -> None:
+    kb = await create_kb(logged_in)
+    await seed(app, kb, {"규정": "연차는 15일이다"})
+    rows = ["question,expected_document_name"]
+    rows += [f"연차 질문 {index}?,규정" for index in range(RERANK_EVAL_MAX_CASES + 1)]
+    imported = await logged_in.post(
+        f"{BASE}/{kb['id']}/eval/cases/import", json={"csv": "\n".join(rows) + "\n"}
+    )
+    assert imported.json()["created"] == RERANK_EVAL_MAX_CASES + 1
+    chat = FakeAdapter([])
+    app.state.llm = chat
+
+    refused = await logged_in.post(
+        f"{BASE}/{kb['id']}/eval/run",
+        json={"retrieval_model": {"reranking_mode": "llm"}, "save": False},
+    )
+
+    assert refused.status_code == 422, refused.text
+    error = refused.json()["error"]
+    assert error["code"] == "eval_rerank_limit"
+    assert error["details"] == {"max": RERANK_EVAL_MAX_CASES, "cases": RERANK_EVAL_MAX_CASES + 1}
+    assert chat.requests == []

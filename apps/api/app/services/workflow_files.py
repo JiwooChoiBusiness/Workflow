@@ -98,6 +98,34 @@ def _file_id(value: object) -> uuid.UUID | None:
         return None
 
 
+@dataclass(frozen=True)
+class StoredFile:
+    ref: FileRef
+    storage_key: str
+    size_bytes: int
+
+
+async def stored_file(
+    db: Database, workspace_id: uuid.UUID, raw: Mapping[str, Any]
+) -> StoredFile | None:
+    """파일 참조(FileRef)가 가리키는 이 워크스페이스의 파일. 없으면 None, 참조가 아니면 ValueError.
+
+    참조의 저장소 키는 노드 출력에서 온 값이라 믿지 않고 id로 행을 다시 찾는다.
+    """
+    file = FileRef.model_validate(dict(raw))
+    file_id = uuid.UUID(file.file_id)
+    async with db.read() as session:
+        if file.source == "wf_file":
+            row = await WfFileRepository(session, workspace_id).get(file_id)
+            if row is not None:
+                return StoredFile(file, row.storage_key, row.size_bytes)
+            return None
+        found = await SessionFileRepository(session, workspace_id).get(file_id)
+        if found is not None and found.storage_key is not None:
+            return StoredFile(file, found.storage_key, found.size_bytes)
+    return None
+
+
 async def bind_run_uploads(session: AsyncSession, run: WfRun, values: object) -> None:
     """런 입력·폼 응답 값이 가리키는 업로드를 그 런에 묶는다(4.4).
 

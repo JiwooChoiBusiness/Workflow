@@ -132,6 +132,7 @@ class ClassifierRunner(NodeRunner[ClassifierConfig]):
             messages=messages,
             params=model_params(config.model),
             metadata={"run_id": str(ctx.run_id)},
+            tier=ctx.ports.node_settings.tier,
         )
         check_context(ctx, request)
         ids = [item.id for item in config.classes]

@@ -1,8 +1,8 @@
 """워크플로우 DSL 내보내기·가져오기(2단계 설계 5장, 6.1).
 
 YAML 읽기·Dify 변환·그래프 손질은 app/workflow/dsl의 순수 함수가 한다. CPU만 쓰는 일이라 스레드에서
-돌린다. 여기서는 에이전트 slug와 id를 잇고, 비밀 환경 변수를 암·복호화하고, 워크플로우·초안을 쓰고
-검증한다.
+돌린다. 여기서는 에이전트·지식 베이스·데이터 소스 slug와 id를 잇고(3단계 11장), 비밀 환경 변수를
+암·복호화하고, 워크플로우·초안을 쓰고 검증한다.
 
 가져오기는 새 워크플로우를 만들거나(slug는 이름에서, 겹치면 -2) into로 준 워크플로우의 초안을
 덮어쓴다. 덮어쓸 때 발행 버전과 이름·아이콘·설명은 그대로 두고, 값 없이 들어온 환경 변수는 같은
@@ -26,18 +26,23 @@ from app.db.engine import Database
 from app.db.models import WfVersion, Workflow
 from app.db.models.enums import AgentVersionStatus, WorkflowKind
 from app.db.repositories.agents import AgentRepository
+from app.db.repositories.knowledge import KnowledgeBaseRepository
+from app.db.repositories.sql_sources import SqlSourceRepository
 from app.db.repositories.workflows import WfVersionRepository, WorkflowRepository
 from app.db.types import new_id, utcnow
 from app.schemas.workflow import (
     DslImportSummary,
     DslWarning,
     Graph,
+    Node,
     StoredWfEnvVar,
     WorkflowImportOut,
 )
 from app.schemas.workflow import WorkflowKind as WorkflowKindName
 from app.security.crypto import CryptoError, SecretCipher, cipher_from_settings
 from app.services.errors import ServiceError, not_found
+from app.services.sql_sources import graph_sql_sources
+from app.services.workflow_knowledge import graph_knowledge
 from app.services.workflows import (
     check_graph,
     conversation_vars,
@@ -52,17 +57,28 @@ from app.services.workflows import (
     with_prestream,
 )
 from app.workflow.dsl.export import build_document, dump_yaml
-from app.workflow.dsl.import_ import AgentRef, PreparedImport, read_dsl
+from app.workflow.dsl.import_ import (
+    AgentRef,
+    KnowledgeRef,
+    PreparedImport,
+    SqlSourceRefImport,
+    read_dsl,
+)
 from app.workflow.dsl.schema import MAX_DSL_BYTES, DslEnvVar, DslError
-from app.workflow.graph import MAX_GRAPH_BYTES, agent_references
+from app.workflow.graph import (
+    MAX_GRAPH_BYTES,
+    agent_references,
+    knowledge_references,
+    sql_references,
+)
 from app.workflow.nodes.base import NodeRegistry
 
 log = structlog.get_logger("app.services.workflow_dsl")
 
 ExportVersion = Literal["draft", "published"] | uuid.UUID
 _UNSAFE_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
-# 에이전트를 찾지 못했는데 파일의 agent_id도 읽을 수 없을 때 넣는 id. 어떤 에이전트와도 겹치지 않아
-# 검증이 agent_not_found로 알린다.
+# 에이전트·지식 베이스를 찾지 못했는데 파일의 id도 읽을 수 없을 때 넣는 id. 무엇과도 겹치지 않아
+# 검증이 agent_not_found·knowledge_base_not_found로 알린다.
 MISSING_AGENT_ID = uuid.UUID(int=0)
 
 
@@ -131,6 +147,12 @@ class WorkflowDslService:
             agents = await AgentRepository(session, workspace_id).get_many_active(
                 agent_references(graph)
             )
+            bases = await KnowledgeBaseRepository(session, workspace_id).get_many_active(
+                knowledge_references(graph)
+            )
+            sources = await SqlSourceRepository(session, workspace_id).get_many_active(
+                sql_references(graph)
+            )
         env, included = self._export_env(stored_env(row.env_vars), include_secrets)
         document = build_document(
             kind=_kind_name(workflow.kind),
@@ -142,6 +164,8 @@ class WorkflowDslService:
             conversation_vars=conversation_vars(row.conversation_vars),
             settings=parse_settings(row.settings),
             agent_slugs={agent.id: agent.slug for agent in agents},
+            kb_slugs={base.id: base.slug for base in bases},
+            source_slugs={source.id: source.slug for source in sources},
         )
         text = await asyncio.to_thread(dump_yaml, document)
         log.info(
@@ -190,12 +214,21 @@ class WorkflowDslService:
                 graph, linked = await self._link_agents(
                     AgentRepository(session, workspace_id), document.graph, prepared.agents
                 )
+                graph, relinked = await self._link_knowledge(
+                    KnowledgeBaseRepository(session, workspace_id), graph, prepared.knowledge
+                )
+                graph, resourced = await self._link_sql_sources(
+                    SqlSourceRepository(session, workspace_id), graph, prepared.sql_sources
+                )
+                linked = [*linked, *relinked, *resourced]
                 graph = with_prestream(graph, document.kind, registry=self._registry)
                 if into is None:
                     workflow = await self._create(session, workspace_id, prepared, graph)
                 else:
                     workflow = await self._overwrite(session, workspace_id, into, prepared, graph)
                 agents = await live_agent_ids(session, workspace_id, graph)
+                bases = await graph_knowledge(session, workspace_id, graph)
+                sources = await graph_sql_sources(session, workspace_id, graph)
         except IntegrityError:
             raise ServiceError(409, "slug_taken", "slug가 다른 워크플로우와 겹친다") from None
         issues = check_graph(
@@ -205,6 +238,9 @@ class WorkflowDslService:
             conversation=document.conversation_vars,
             registry=self._registry,
             agent_ids=agents,
+            knowledge_bases=bases,
+            kb_top_k_max=self._settings.kb_top_k_max,
+            sql_sources=sources,
         )
         log.info(
             "workflow.imported",
@@ -322,6 +358,105 @@ class WorkflowDslService:
             )
         nodes = [
             node.model_copy(update={"config": {**node.config, "agent_id": fixed[node.id]}})
+            if node.id in fixed
+            else node
+            for node in graph.nodes
+        ]
+        return graph.model_copy(update={"nodes": nodes}), warnings
+
+    async def _link_knowledge(
+        self, bases: KnowledgeBaseRepository, graph: Graph, refs: Sequence[KnowledgeRef]
+    ) -> tuple[Graph, list[DslWarning]]:
+        """지식 노드의 KB id가 이 워크스페이스에 없으면 파일에 적힌 slug로 찾아 바꾼다(11장).
+
+        찾지 못한 자리는 그대로 두어 검증이 knowledge_base_not_found로 알린다. id를 읽을 수 없던
+        자리만 어떤 KB와도 겹치지 않는 id를 넣는다.
+        """
+        if not refs:
+            return graph, []
+        wanted = {kb_id for ref in refs for kb_id in ref.kb_ids if kb_id is not None}
+        alive = {row.id for row in await bases.get_many_active(wanted)}
+        fixed: dict[str, list[str]] = {}
+        warnings: list[DslWarning] = []
+        for ref in refs:
+            ids: list[str] = []
+            changed = False
+            for kb_id, slug in zip(ref.kb_ids, ref.slugs, strict=True):
+                if kb_id is not None and kb_id in alive:
+                    ids.append(str(kb_id))
+                    continue
+                found = await bases.get_active_by_slug(slug) if slug else None
+                if found is not None:
+                    ids.append(str(found.id))
+                    changed = True
+                    message = f"지식 베이스를 slug {slug}(으)로 찾아 이었다"
+                    warnings.append(
+                        DslWarning(code="knowledge_relinked", message=message, node_id=ref.node_id)
+                    )
+                    continue
+                if kb_id is None:
+                    ids.append(str(MISSING_AGENT_ID))
+                    changed = True
+                else:
+                    ids.append(str(kb_id))
+                who = slug or (str(kb_id) if kb_id is not None else "(id 없음)")
+                message = f"지식 베이스 {who}을(를) 찾지 못했다. 노드에서 지식 베이스를 다시 고른다"
+                warnings.append(
+                    DslWarning(
+                        code="knowledge_base_not_found", message=message, node_id=ref.node_id
+                    )
+                )
+            if changed:
+                fixed[ref.node_id] = ids
+        nodes: list[Node] = []
+        for node in graph.nodes:
+            replaced = fixed.get(node.id)
+            if replaced is None:
+                nodes.append(node)
+                continue
+            key, value = (
+                ("kb_ids", replaced)
+                if node.type == "knowledge_retrieval"
+                else ("kb_id", replaced[0])
+            )
+            nodes.append(node.model_copy(update={"config": {**node.config, key: value}}))
+        return graph.model_copy(update={"nodes": nodes}), warnings
+
+    async def _link_sql_sources(
+        self, sources: SqlSourceRepository, graph: Graph, refs: Sequence[SqlSourceRefImport]
+    ) -> tuple[Graph, list[DslWarning]]:
+        """SQL 노드의 데이터 소스 id가 이 워크스페이스에 없으면 파일에 적힌 slug로 찾아
+        바꾼다(11장).
+
+        찾지 못한 자리는 그대로 두어 검증이 sql_source_not_found로 알린다. id를 읽을 수 없던 자리만
+        어떤 데이터 소스와도 겹치지 않는 id를 넣는다.
+        """
+        if not refs:
+            return graph, []
+        wanted = {ref.source_id for ref in refs if ref.source_id is not None}
+        alive = {row.id for row in await sources.get_many_active(wanted)}
+        fixed: dict[str, str] = {}
+        warnings: list[DslWarning] = []
+        for ref in refs:
+            if ref.source_id is not None and ref.source_id in alive:
+                continue
+            found = await sources.get_active_by_slug(ref.slug) if ref.slug else None
+            if found is not None:
+                fixed[ref.node_id] = str(found.id)
+                message = f"데이터 소스를 slug {ref.slug}(으)로 찾아 이었다"
+                warnings.append(
+                    DslWarning(code="sql_source_relinked", message=message, node_id=ref.node_id)
+                )
+                continue
+            if ref.source_id is None:
+                fixed[ref.node_id] = str(MISSING_AGENT_ID)
+            who = ref.slug or (str(ref.source_id) if ref.source_id is not None else "(id 없음)")
+            message = f"데이터 소스 {who}을(를) 찾지 못했다. 노드에서 데이터 소스를 다시 고른다"
+            warnings.append(
+                DslWarning(code="sql_source_not_found", message=message, node_id=ref.node_id)
+            )
+        nodes = [
+            node.model_copy(update={"config": {**node.config, "source_id": fixed[node.id]}})
             if node.id in fixed
             else node
             for node in graph.nodes

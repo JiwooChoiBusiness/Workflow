@@ -60,6 +60,8 @@ class AgentTaskSpec(BaseModel):
     # reuse일 때 이어 쓸 과업 세션. 비우면 새 세션을 만든다(응답의 session_id로 이어 쓴다).
     session_id: UUID | None = None
     external_user: str | None = None
+    # 부르는 런의 키 등급(3단계 14.4). 과업 런은 이 값과 자기 버전의 등급 중 높은 쪽으로 돈다.
+    tier: Literal["free", "paid"] = "free"
     # run.input.correlation에 남는다. 조회 조건에는 쓰지 않는다. 워크플로우 agent 노드는
     # {workflow_run_id, node_id, node_run_id, iteration_index}, call_agent의 자식은
     # child_runs.ChildCorrelation {parent_run_id, parent_session_id, root_run_id, tool_call_id,

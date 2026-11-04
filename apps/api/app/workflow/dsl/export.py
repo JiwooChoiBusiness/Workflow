@@ -1,8 +1,8 @@
 # pyright: strict
 """DSL 내보내기(2단계 설계 5.1).
 
-버전 행을 DslDocument로 바꾸고 YAML 글로 쓴다. 비밀 환경 변수의 복호화와 에이전트 slug 조회는
-서비스가 해서 넘긴다. YAML은 사람이 읽고 고칠 수 있게 블록 형식으로 쓰고, 여러 줄 글
+버전 행을 DslDocument로 바꾸고 YAML 글로 쓴다. 비밀 환경 변수의 복호화와 에이전트·지식 베이스 slug
+조회는 서비스가 해서 넘긴다. YAML은 사람이 읽고 고칠 수 있게 블록 형식으로 쓰고, 여러 줄 글
 (코드·프롬프트)은 | 블록으로, 한글·이모지는 그대로 둔다. 기본값인 노드·엣지 필드는 빼도
 가져올 때 같은 값으로 채워진다.
 """
@@ -10,7 +10,7 @@
 import uuid
 from collections.abc import Mapping, Sequence
 from functools import cache
-from typing import Any
+from typing import Any, cast
 
 from app.schemas.workflow import (
     IN_HANDLE,
@@ -24,15 +24,56 @@ from app.schemas.workflow import (
     WorkflowKind,
     WorkflowSettings,
 )
-from app.workflow.dsl.schema import AGENT_SLUG_KEY, DSL_VERSION, DslDocument, DslEnvVar
-from app.workflow.graph import AGENT_TYPE
+from app.workflow.dsl.schema import (
+    AGENT_SLUG_KEY,
+    DSL_VERSION,
+    KB_SLUG_KEY,
+    KB_SLUGS_KEY,
+    SOURCE_SLUG_KEY,
+    DslDocument,
+    DslEnvVar,
+)
+from app.workflow.graph import (
+    AGENT_TYPE,
+    KNOWLEDGE_INDEX_TYPE,
+    KNOWLEDGE_RETRIEVAL_TYPE,
+    SQL_QUERY_TYPE,
+    SQL_SCHEMA_TYPE,
+)
 
 
-def _agent_id(value: object) -> uuid.UUID | None:
+def _uuid(value: object) -> uuid.UUID | None:
     try:
         return uuid.UUID(str(value))
     except ValueError:
         return None
+
+
+def _with_kb_slugs(node: Node, kb_slugs: Mapping[uuid.UUID, str]) -> Node:
+    if node.type == KNOWLEDGE_RETRIEVAL_TYPE:
+        raw = node.config.get("kb_ids")
+        ids = cast(list[Any], raw) if isinstance(raw, list) else []
+        slugs = [
+            kb_slugs.get(kb_id) if (kb_id := _uuid(item)) is not None else None for item in ids
+        ]
+        if any(slug is not None for slug in slugs):
+            return node.model_copy(update={"config": {**node.config, KB_SLUGS_KEY: slugs}})
+    elif node.type == KNOWLEDGE_INDEX_TYPE:
+        kb_id = _uuid(node.config.get("kb_id"))
+        slug = kb_slugs.get(kb_id) if kb_id is not None else None
+        if slug is not None:
+            return node.model_copy(update={"config": {**node.config, KB_SLUG_KEY: slug}})
+    return node
+
+
+def _with_source_slug(node: Node, source_slugs: Mapping[uuid.UUID, str]) -> Node:
+    if node.type not in (SQL_SCHEMA_TYPE, SQL_QUERY_TYPE):
+        return node
+    source_id = _uuid(node.config.get("source_id"))
+    slug = source_slugs.get(source_id) if source_id is not None else None
+    if slug is None:
+        return node
+    return node.model_copy(update={"config": {**node.config, SOURCE_SLUG_KEY: slug}})
 
 
 def build_document(
@@ -46,15 +87,20 @@ def build_document(
     conversation_vars: Sequence[ConversationVar],
     settings: WorkflowSettings,
     agent_slugs: Mapping[uuid.UUID, str],
+    kb_slugs: Mapping[uuid.UUID, str] | None = None,
+    source_slugs: Mapping[uuid.UUID, str] | None = None,
 ) -> DslDocument:
-    """agent_slugs는 그래프의 agent 노드가 가리키는 살아 있는 에이전트의 id → slug다."""
+    """agent_slugs는 그래프의 agent 노드가 가리키는 살아 있는 에이전트의 id → slug이고,
+    kb_slugs는 지식 노드가 가리키는 살아 있는 지식 베이스의, source_slugs는 SQL 노드가 가리키는
+    살아 있는 데이터 소스의 id → slug다."""
     nodes: list[Node] = []
     for node in graph.nodes:
-        agent_id = _agent_id(node.config.get("agent_id")) if node.type == AGENT_TYPE else None
+        agent_id = _uuid(node.config.get("agent_id")) if node.type == AGENT_TYPE else None
         slug = agent_slugs.get(agent_id) if agent_id is not None else None
         if slug is not None:
             node = node.model_copy(update={"config": {**node.config, AGENT_SLUG_KEY: slug}})
-        nodes.append(node)
+        node = _with_kb_slugs(node, kb_slugs or {})
+        nodes.append(_with_source_slug(node, source_slugs or {}))
     return DslDocument(
         dsl_version=DSL_VERSION,
         kind=kind,

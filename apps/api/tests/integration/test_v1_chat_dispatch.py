@@ -224,8 +224,11 @@ async def test_chatflow_conversations_messages_and_blocking_results(
         "status",
         "pending_interaction",
         "error",
+        "metadata",
     }
     assert (result["status"], result["answer"]) == ("succeeded", "챗: 첫째")
+    # 인용은 Dify처럼 metadata.retriever_resources에 실린다(3단계 M24). 지식 노드가 없으면 비었다.
+    assert result["metadata"] == {"retriever_resources": []}
     conversation_id = result["conversation_id"]
     second = await api.post(
         "/api/v1/chat-messages",

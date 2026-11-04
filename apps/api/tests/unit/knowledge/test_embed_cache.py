@@ -1,5 +1,6 @@
 """index.db embed_cache와 캐시 적중 시 API·리미터를 쓰지 않는 것(설계 6.6, K9)."""
 
+import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -68,20 +69,24 @@ async def test_store_overwrites_the_same_hash(index_db: IndexDb) -> None:
 
 
 async def test_live_units_are_looked_up_before_the_table(index_db: IndexDb) -> None:
-    asked: list[tuple[str, list[str]]] = []
+    asked: list[tuple[str, list[str], uuid.UUID]] = []
+    workspace = uuid.uuid4()
 
-    async def live(config_key: str, hashes: Sequence[str]) -> Mapping[str, bytes]:
-        asked.append((config_key, list(hashes)))
+    async def live(config_key: str, hashes: Sequence[str], scope: uuid.UUID) -> Mapping[str, bytes]:
+        asked.append((config_key, list(hashes), scope))
         return {"h1": blob(9.0)}
 
     cache = EmbedCache(index_db, live=live)
     await cache.store(KEY, {"h1": blob(1.0), "h2": blob(2.0)})
 
-    found = await cache.lookup(KEY, ["h1", "h2", "h1"])
+    found = await cache.lookup(KEY, ["h1", "h2", "h1"], scope=workspace)
+    # 워크스페이스를 모르면(scope 없음) 살아 있는 유닛은 보지 않는다.
+    unscoped = await cache.lookup(KEY, ["h1"])
 
     # 살아 있는 유닛의 벡터가 앞선다(지운 유닛의 오래된 벡터보다 최신이다).
     assert found == {"h1": blob(9.0), "h2": blob(2.0)}
-    assert asked == [(KEY, ["h1", "h2"])]
+    assert asked == [(KEY, ["h1", "h2"], workspace)]
+    assert unscoped == {"h1": blob(1.0)}
 
 
 async def test_purge_drops_old_rows_then_the_oldest_over_the_cap(index_db: IndexDb) -> None:

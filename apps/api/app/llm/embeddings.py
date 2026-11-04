@@ -11,6 +11,7 @@ import json
 import math
 import struct
 import time
+import uuid
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
@@ -475,8 +476,12 @@ def _slice_of(at: float) -> int:
     return math.floor(at / SLICE_SEC)
 
 
+# 하루 사용량을 남기는 index.db meta 키의 앞부분. 색인을 다시 만들 때 새 파일로 옮긴다.
+DAILY_META_PREFIX = "embed_daily_"
+
+
 def _daily_key(tier: KeyTier) -> str:
-    return f"embed_daily_{tier}"
+    return f"{DAILY_META_PREFIX}{tier}"
 
 
 def _dump_daily(state: _Daily) -> str:
@@ -512,16 +517,17 @@ class SqlStore(Protocol):
     def write(self) -> AbstractAsyncContextManager[aiosqlite.Connection]: ...
 
 
-# (config_key, 내용 해시들) → 살아 있는 유닛의 벡터. app.db를 봐야 해서 app.services가 넣는다.
-LiveVectorLookup = Callable[[str, Sequence[str]], Awaitable[Mapping[str, bytes]]]
+# (config_key, 내용 해시들, 요청한 KB의 워크스페이스) → 그 워크스페이스에서 살아 있는 유닛의 벡터.
+# app.db를 봐야 해서 app.services가 넣는다.
+LiveVectorLookup = Callable[[str, Sequence[str], uuid.UUID], Awaitable[Mapping[str, bytes]]]
 
 
 class EmbedCache:
     """같은 입력은 항상 같은 벡터라[실측] 내용 해시로 재사용한다(6.6).
 
-    조회 순서는 (1) live: 같은 config_key인 KB의 살아 있는 유닛 벡터(vec_*에서 복사), (2) index.db
-    embed_cache(지웠거나 끈 유닛의 벡터, 30일·5만 행)다. API 결과는 vec_*에 들어가므로 여기에 다시
-    쓰지 않고, 유닛을 지우거나 끌 때 store()로 옮겨 둔다.
+    조회 순서는 (1) live: 같은 워크스페이스에서 같은 config_key인 KB의 살아 있는 유닛 벡터(vec_*에서
+    복사, scope가 있을 때만), (2) index.db embed_cache(지웠거나 끈 유닛의 벡터, 30일·5만 행)다. API
+    결과는 vec_*에 들어가므로 여기에 다시 쓰지 않고, 유닛을 지우거나 끌 때 store()로 옮겨 둔다.
     """
 
     def __init__(
@@ -535,11 +541,13 @@ class EmbedCache:
         self._live = live
         self._now = now
 
-    async def lookup(self, config_key: str, hashes: Collection[str]) -> dict[str, bytes]:
+    async def lookup(
+        self, config_key: str, hashes: Collection[str], *, scope: uuid.UUID | None = None
+    ) -> dict[str, bytes]:
         wanted = list(dict.fromkeys(hashes))
         found: dict[str, bytes] = {}
-        if self._live is not None and wanted:
-            found.update(await self._live(config_key, wanted))
+        if self._live is not None and scope is not None and wanted:
+            found.update(await self._live(config_key, wanted, scope))
         missing = [value for value in wanted if value not in found]
         for batch in itertools.batched(missing, CACHE_LOOKUP_BATCH):
             marks = ", ".join("?" for _ in batch)
@@ -697,15 +705,20 @@ class EmbeddingClient:
         *,
         tier: KeyTier = "free",
         priority: Priority = "bulk",
+        scope: uuid.UUID | None = None,
     ) -> EmbeddedDocuments:
-        """실패해도 예외 대신 failure를 채워 돌려준다. 그때까지 받은 벡터는 그대로 있다."""
+        """실패해도 예외 대신 failure를 채워 돌려준다. 그때까지 받은 벡터는 그대로 있다.
+
+        scope는 색인하는 KB의 워크스페이스다. 주면 그 워크스페이스의 다른 KB에 같은 글이 있을 때
+        벡터를 복사한다(캐시 첫 단계).
+        """
         if not texts:
             return EmbeddedDocuments(vectors=[])
         hashes = [content_hash(text) for text in texts]
         found: dict[str, bytes] = {}
         if self._cache is not None:
             width = config.dimensions * 4
-            cached = await self._cache.lookup(config.key(), hashes)
+            cached = await self._cache.lookup(config.key(), hashes, scope=scope)
             found = {digest: blob for digest, blob in cached.items() if len(blob) == width}
         cached_count = sum(1 for digest in hashes if digest in found)
         # 같은 글은 한 번만 보낸다.
@@ -786,10 +799,17 @@ class EmbeddingClient:
         return vector
 
     async def embed_single(
-        self, text: str, config: EmbeddingConfig, *, tier: KeyTier = "free"
+        self,
+        text: str,
+        config: EmbeddingConfig,
+        *,
+        tier: KeyTier = "free",
+        scope: uuid.UUID | None = None,
     ) -> bytes:
         # 청크 단건 편집. 사람이 기다리므로 interactive로 보낸다.
-        result = await self.embed_documents([text], config, tier=tier, priority="interactive")
+        result = await self.embed_documents(
+            [text], config, tier=tier, priority="interactive", scope=scope
+        )
         if result.failure is not None:
             raise result.failure
         vector = result.vectors[0]

@@ -26,6 +26,7 @@ from app.schemas.service_api import (
     ChatMessageResult,
     ExternalUser,
     FlowChatMessageResult,
+    MessageMetadataOut,
     StopRequest,
     StopResult,
 )
@@ -55,6 +56,7 @@ def chat_result(result: RunResult) -> ChatMessageResult:
         status=run.status,
         pending_interaction=run.pending_interaction,
         error=run.error,
+        metadata=MessageMetadataOut(retriever_resources=result.retriever_resources),
     )
 
 
@@ -69,6 +71,7 @@ def flow_chat_result(result: WfChatResult) -> FlowChatMessageResult:
         status=run.status,
         pending_interaction=run.pending_interaction,
         error=run.error,
+        metadata=MessageMetadataOut(retriever_resources=result.retriever_resources),
     )
 
 

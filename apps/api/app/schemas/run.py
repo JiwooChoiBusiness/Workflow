@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.events import InteractionKind, RunEventOut, UsageTotal
 from app.schemas.session import SessionFileOut, SessionOut, WorkspaceInstanceOut
 
@@ -14,6 +15,9 @@ class RunErrorOut(BaseModel):
     code: str
     message: str
     retryable: bool = False
+    # 모델이 모두 일일 한도에 걸린 것처럼 기다리면 풀리는 실패면 남은 초. 새로 고친 화면이 "N시
+    # 이후" 안내를 다시 그릴 때 쓴다(run.error 이벤트의 retry_after와 같다).
+    retry_after: float | None = None
 
 
 class PendingInteractionOut(BaseModel):
@@ -98,6 +102,10 @@ class RunResult(BaseModel):
     message_id: uuid.UUID | None
     # 이 런이 바꾼 파일.
     files: list[SessionFileOut]
+    # 마지막 assistant 메시지의 인용(search_knowledge).
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )
 
 
 class RunInput(BaseModel):

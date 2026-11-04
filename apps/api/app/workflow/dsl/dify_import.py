@@ -9,9 +9,12 @@ app.mode가 workflow·advanced-chat인 Dify DSL(app, workflow.graph.nodes[].data
   뜻의 우리 노드로 옮긴다. 옮기지 못한 옵션은 경고로 남기거나, 뜻이 바뀌면 안 되는 것(조건 연산자
   등)은 원래 값을 그대로 두어 검증 오류로 드러낸다. tool은 우리 내장 도구 넷(current_time·
   json_parse·regex_extract·web_fetch)에 뚜렷이 맞는 Dify 도구만 옮긴다.
-- 그 밖의 노드(지식 검색, 에이전트, 트리거, 반복 끝내기 loop-end, 자바스크립트 code, 맞는 내장
-  도구가 없는 tool, 버튼마다 갈라지는 human-input)는 원래 data를 담은 unsupported 노드로 두고 엣지는
-  그대로 잇는다.
+- 지식 검색(knowledge-retrieval)은 우리 knowledge_retrieval로 옮긴다(3단계 11장). Dify 지식
+  베이스는 이을 수 없어 kb_ids를 비워 두고(검증 오류 kb_required로 고르게 한다) 원래 id는
+  ui.dify_dataset_ids에 남긴다. 이 노드의 result를 context로 받는 llm은 우리 context.var로 옮긴다.
+- 그 밖의 노드(지식 쓰기·파이프라인 데이터 소스, 에이전트, 트리거, 반복 끝내기 loop-end,
+  자바스크립트 code, 맞는 내장 도구가 없는 tool, 버튼마다 갈라지는 human-input)는 원래 data를 담은
+  unsupported 노드로 두고 엣지는 그대로 잇는다.
 - 노드 id는 우리 형식([a-z][a-z0-9_]{0,31})으로 바꾼다. 숫자 id는 n<id>다. {{#node.var#}}와
   value_selector는 {{ node.var }}·"node.var"로, sys.user_id 같은 시스템 변수는 우리 이름으로,
   env는 그대로, conversation은 conv로 바꾼다. iteration 안의 item·index는 Dify에서 iteration
@@ -25,9 +28,10 @@ import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 from app.schemas.agent_version import MAX_ENV_VALUE_CHARS
+from app.schemas.retrieval import ComparisonOperator, canonical_operator
 from app.schemas.workflow import (
     FAIL_HANDLE,
     OUT_HANDLE,
@@ -139,6 +143,7 @@ COMPARISONS = {
     "not in": "not_in",
 }
 UNARY = frozenset({"is_empty", "is_not_empty"})
+COMPARISON_OPERATORS: frozenset[str] = frozenset(get_args(ComparisonOperator))
 ASSIGN_OPS = {
     "over-write": "overwrite",
     "overwrite": "overwrite",
@@ -162,12 +167,12 @@ BODY_TYPES = {
     "binary": "file",
 }
 HTTP_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"})
-# 켜져 있으면 경고만 남기는 Dify 앱 기능. 여는 말·추천 질문·파일 업로드는 옮긴다.
+# 켜져 있으면 경고만 남기는 Dify 앱 기능. 여는 말·추천 질문·파일 업로드·인용 표시
+# (retriever_resource)는 옮긴다.
 IGNORED_FEATURES = (
     "speech_to_text",
     "text_to_speech",
     "suggested_questions_after_answer",
-    "retriever_resource",
     "sensitive_word_avoidance",
     "annotation_reply",
     "citation",
@@ -175,6 +180,10 @@ IGNORED_FEATURES = (
 )
 MAX_ID = 32
 MAX_SUGGESTED = 10
+MAX_KB_TOP_K = 20
+# Dify 메타데이터 필터 모드. 우리 knowledge_retrieval의 metadata_filter.mode와 이름이 같다.
+FILTER_MODES = frozenset({"disabled", "manual", "automatic"})
+_FIELD_NAME = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 _ID_UNSAFE = re.compile(r"[^a-z0-9_]")
 _BRANCH_UNSAFE = re.compile(r"[^A-Za-z0-9_]")
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
@@ -303,6 +312,8 @@ class _Converter:
         # 워크플로우에 Dify 파일 업로드 기능이 켜져 있으면 sys.files를 start의 files 입력으로
         # 읽는다.
         self.files_ref: str | None = None
+        # 변환기가 config 밖에 남길 화면 값(우리 노드 id → ui). 지식 검색의 원래 dataset id다.
+        self.node_ui: dict[str, dict[str, Any]] = {}
         self.converters: dict[str, Converter] = {
             "start": self._start,
             "end": self._end,
@@ -326,6 +337,7 @@ class _Converter:
             "assigner": self._assigner,
             "question-classifier": self._classifier,
             "parameter-extractor": self._extractor,
+            "knowledge-retrieval": self._knowledge,
         }
 
     def warn(self, code: str, message: str, node_id: str | None = None) -> None:
@@ -570,6 +582,8 @@ class _Converter:
             return node
         node["type"] = node_type
         node["config"] = config
+        if node_id in self.node_ui:
+            node["ui"] = self.node_ui[node_id]
         self._error_policy(node, data)
         return node
 
@@ -683,6 +697,21 @@ class _Converter:
             if context.get("enabled") is True
             else None
         )
+        moved: str | None = None
+        selector = [str(part) for part in _list(context.get("variable_selector"))]
+        if (
+            context_ref is not None
+            and len(selector) == 2
+            and selector[1] == "result"
+            and self.types.get(selector[0]) == "knowledge-retrieval"
+        ):
+            # 우리 context는 참고 자료 블록을 시스템 글 끝에 붙이므로 {{#context#}} 자리는 비운다.
+            moved, context_ref = context_ref, None
+            message = (
+                "지식 검색 결과를 context로 옮겼다. {{#context#}} 자리는 비우고 결과는 시스템 "
+                "프롬프트 끝의 참고 자료 블록으로 들어간다"
+            )
+            self.warn("context_moved", message, node_id)
         given = data.get("prompt_template")
         # completion 모드 모델은 프롬프트가 블록 목록이 아니라 글 하나다.
         blocks = [cast(dict[str, Any], given)] if isinstance(given, dict) else _dicts(given)
@@ -698,6 +727,8 @@ class _Converter:
                 body = self.text(block.get("text"), context=context_ref)
             prompt.append({"role": role, "text": body})
         config: dict[str, Any] = {"model": self._model(data, node_id), "prompt": prompt}
+        if moved is not None:
+            config["context"] = {"var": moved}
         memory = data.get("memory")
         if isinstance(memory, dict) and self.kind == "chatflow":
             memory = cast(dict[str, Any], memory)
@@ -1225,6 +1256,122 @@ class _Converter:
             "reasoning_mode": "prompt" if data.get("reasoning_mode") == "prompt" else "tool_call",
         }
 
+    def _knowledge(
+        self, data: dict[str, Any], node_id: str, dify_id: str
+    ) -> tuple[str, dict[str, Any]]:
+        datasets = [_str(item) for item in _list(data.get("dataset_ids")) if _str(item)]
+        if datasets:
+            self.node_ui[node_id] = {"dify_dataset_ids": datasets}
+            message = (
+                f"Dify 지식 베이스 {len(datasets)}개는 이을 수 없다. 노드에서 지식 베이스를 다시 "
+                "고른다"
+            )
+            self.warn("knowledge_unlinked", message, node_id)
+        if data.get("retrieval_mode") == "single":
+            message = "단일 검색(single)은 없어 다중 검색 설정으로 옮겼다"
+            self.warn("single_retrieval_unsupported", message, node_id)
+        config: dict[str, Any] = {
+            # 비워 두면 검증 오류 kb_required로 사용자가 고른다.
+            "kb_ids": [],
+            "query_var": self.selector(data.get("query_variable_selector")) or "",
+        }
+        retrieval = self._retrieval(_dict(data.get("multiple_retrieval_config")), node_id)
+        if retrieval:
+            config["retrieval"] = retrieval
+        metadata_filter = self._metadata_filter(data, node_id)
+        if metadata_filter is not None:
+            config["metadata_filter"] = metadata_filter
+        return "knowledge_retrieval", config
+
+    def _retrieval(self, raw: Mapping[str, Any], node_id: str) -> dict[str, Any]:
+        """multiple_retrieval_config → 우리 retrieval. 없던 값은 KB·기본값을 따른다."""
+        if not raw:
+            return {}
+        out: dict[str, Any] = {}
+        top_k = _int(raw.get("top_k"))
+        if top_k is not None:
+            out["top_k"] = _clamp(top_k, 1, MAX_KB_TOP_K)
+        if "score_threshold" in raw:
+            threshold = _number(raw.get("score_threshold"))
+            if threshold is None:
+                out["score_threshold_enabled"] = False
+            else:
+                out["score_threshold_enabled"] = True
+                out["score_threshold"] = min(max(threshold, 0.0), 1.0)
+        mode = _str(raw.get("reranking_mode"))
+        if mode == "reranking_model" and raw.get("reranking_enable") is not False:
+            out["reranking_mode"] = "llm"
+            model = _dict(raw.get("reranking_model"))
+            provider = _str(model.get("provider") or model.get("reranking_provider_name"))
+            name = _str(model.get("model") or model.get("reranking_model_name"))
+            original = "/".join(part for part in (provider, name) if part)
+            message = (
+                f"재순위 모델 {original or '(지정 없음)'} 대신 Gemini 폴백 목록의 첫 모델로 LLM "
+                "재순위를 한다"
+            )
+            self.warn("rerank_model_replaced", message, node_id)
+        elif mode in ("weighted_score", "reranking_model"):
+            out["reranking_mode"] = "weighted_score"
+        weights = _dict(raw.get("weights"))
+        vector = _number(_dict(weights.get("vector_setting")).get("vector_weight"))
+        keyword = _number(_dict(weights.get("keyword_setting")).get("keyword_weight"))
+        if vector is not None or keyword is not None:
+            vector_weight = min(max(vector if vector is not None else 0.7, 0.0), 1.0)
+            keyword_weight = min(max(keyword if keyword is not None else 0.3, 0.0), 1.0)
+            if vector_weight + keyword_weight > 0:
+                out["weights"] = {
+                    "vector_weight": vector_weight,
+                    "keyword_weight": keyword_weight,
+                }
+        return out
+
+    def _metadata_filter(self, data: Mapping[str, Any], node_id: str) -> dict[str, Any] | None:
+        """metadata_filtering_mode·conditions. 공개 예제에서 확인하지 못한 필드라 모양이 다르면
+        경고를 남기고 버린다."""
+        mode = _str(data.get("metadata_filtering_mode"))
+        if mode not in FILTER_MODES or mode == "disabled":
+            return None
+        if mode == "automatic":
+            return {"mode": "automatic"}
+        raw = _dict(data.get("metadata_filtering_conditions"))
+        logical = _str(raw.get("logical_operator")).strip().lower() or "and"
+        conditions: list[dict[str, Any]] = []
+        for entry in _dicts(raw.get("conditions")):
+            name = _str(entry.get("name"))
+            operator = canonical_operator(_str(entry.get("comparison_operator")))
+            value = self._condition_value(entry.get("value"))
+            if not _FIELD_NAME.fullmatch(name) or operator not in COMPARISON_OPERATORS:
+                message = f"메타데이터 조건 {name or '?'} {operator or '?'}은(는) 옮기지 못했다"
+                self.warn("condition_unsupported", message, node_id)
+                continue
+            conditions.append({"name": name, "comparison_operator": operator, "value": value})
+        return {
+            "mode": "manual",
+            "logical_operator": logical if logical in ("and", "or") else "and",
+            "conditions": conditions,
+        }
+
+    def _condition_value(self, value: object) -> object:
+        # {{#node.var#}} 하나뿐인 글은 변수 참조다.
+        if isinstance(value, str):
+            match = _DIFY_REF.fullmatch(value.strip())
+            if match is not None:
+                found = self.ref([part.strip() for part in match.group(1).split(".")])
+                if found is not None:
+                    return {"var": found}
+            return value
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, int | float):
+            return value
+        if isinstance(value, list):
+            return [
+                item
+                for item in cast(list[object], value)
+                if isinstance(item, str | int | float) and not isinstance(item, bool)
+            ]
+        return None
+
     def _handle(self, source: str, handle: str) -> str:
         if handle in ("", "source"):
             return OUT_HANDLE
@@ -1320,6 +1467,9 @@ class _Converter:
             self.warn("suggested_questions_trimmed", message)
         if questions:
             webapp["suggested_questions"] = questions[:MAX_SUGGESTED]
+        citations = _dict(features.get("retriever_resource"))
+        if citations.get("enabled") is False:
+            webapp["citations_enabled"] = False
         ignored = [
             name for name in IGNORED_FEATURES if _dict(features.get(name)).get("enabled") is True
         ]

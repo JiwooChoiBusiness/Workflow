@@ -2,7 +2,8 @@
 """DSL 가져오기의 DB 없는 부분(2단계 설계 5.1, 9.3).
 
 YAML 글을 읽어 형식을 가리고(우리 DSL·Dify DSL), 버전을 맞춘 DslDocument로 만든 뒤 가져온 그래프를
-손질한다. 에이전트 slug로 id 찾기, 워크플로우·초안 쓰기, 검증은 app/services/workflow_dsl.py가 한다.
+손질한다. 에이전트·지식 베이스 slug로 id 찾기, 워크플로우·초안 쓰기, 검증은
+app/services/workflow_dsl.py가 한다.
 
 가져오는 파일은 신뢰하지 않는다. YAML은 safe 로더로 읽되 병합 키(<<)는 받지 않는다. 병합은 별칭을
 겹쳐 노드 목록을 거듭제곱으로 불릴 수 있다. 별칭이 가리키는 값은 같은 객체를 공유하므로 읽기 자체는
@@ -23,11 +24,21 @@ from app.workflow.dsl.dify_import import convert_dify
 from app.workflow.dsl.schema import (
     AGENT_SLUG_KEY,
     DSL_VERSION,
+    KB_SLUG_KEY,
+    KB_SLUGS_KEY,
+    SOURCE_SLUG_KEY,
     DslDocument,
     DslError,
     validate_document,
 )
-from app.workflow.graph import AGENT_TYPE, UNSUPPORTED_TYPE
+from app.workflow.graph import (
+    AGENT_TYPE,
+    KNOWLEDGE_INDEX_TYPE,
+    KNOWLEDGE_RETRIEVAL_TYPE,
+    SQL_QUERY_TYPE,
+    SQL_SCHEMA_TYPE,
+    UNSUPPORTED_TYPE,
+)
 from app.workflow.nodes import default_registry
 from app.workflow.nodes.base import NodeRegistry
 from app.workflow.nodes.code import IMPORTED_CODE_FLAG
@@ -57,10 +68,34 @@ class AgentRef:
 
 
 @dataclass
+class KnowledgeRef:
+    """가져온 지식 노드가 가리키던 지식 베이스(3단계 11장). 서비스가 id로 못 찾으면 slug로 찾는다.
+
+    knowledge_retrieval은 kb_ids 자리마다 하나씩, knowledge_index는 kb_id 하나다(many=False).
+    """
+
+    node_id: str
+    many: bool
+    kb_ids: list[uuid.UUID | None]
+    slugs: list[str | None]
+
+
+@dataclass
+class SqlSourceRefImport:
+    """가져온 SQL 노드가 가리키던 데이터 소스(3단계 11장). 서비스가 id로 못 찾으면 slug로 찾는다."""
+
+    node_id: str
+    source_id: uuid.UUID | None
+    slug: str | None
+
+
+@dataclass
 class PreparedImport:
     document: DslDocument
     source: DslSource
     agents: list[AgentRef] = field(default_factory=list[AgentRef])
+    knowledge: list[KnowledgeRef] = field(default_factory=list[KnowledgeRef])
+    sql_sources: list[SqlSourceRefImport] = field(default_factory=list[SqlSourceRefImport])
     unsupported: list[str] = field(default_factory=list[str])
     warnings: list[DslWarning] = field(default_factory=list[DslWarning])
 
@@ -253,15 +288,52 @@ def _uuid(value: object) -> uuid.UUID | None:
         return None
 
 
+def _slug(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _knowledge_ref(node: Node) -> tuple[Node, KnowledgeRef]:
+    """지식 노드의 slug 키를 떼고 id·slug 자리를 맞춘 참조를 만든다."""
+    config = dict(node.config)
+    if node.type == KNOWLEDGE_RETRIEVAL_TYPE:
+        raw_ids = config.get("kb_ids")
+        ids = cast(list[object], raw_ids) if isinstance(raw_ids, list) else []
+        raw_slugs = config.pop(KB_SLUGS_KEY, None)
+        slugs = cast(list[object], raw_slugs) if isinstance(raw_slugs, list) else []
+        ref = KnowledgeRef(
+            node_id=node.id,
+            many=True,
+            kb_ids=[_uuid(item) for item in ids],
+            slugs=[
+                _slug(slugs[index]) if index < len(slugs) else None for index in range(len(ids))
+            ],
+        )
+    else:
+        raw_id = config.get("kb_id")
+        slug = _slug(config.pop(KB_SLUG_KEY, None))
+        # 아직 KB를 고르지 않은 노드(kb_id 없음)는 이을 것이 없다. 검증이 kb_required로 알린다.
+        chosen = raw_id is not None or slug is not None
+        ref = KnowledgeRef(
+            node_id=node.id,
+            many=False,
+            kb_ids=[_uuid(raw_id)] if chosen else [],
+            slugs=[slug] if chosen else [],
+        )
+    return node.model_copy(update={"config": config}), ref
+
+
 def prepare(document: DslDocument, source: DslSource, warnings: list[DslWarning]) -> PreparedImport:
     """가져온 그래프를 저장할 모양으로 손질한다(설계 5.1, 9.3).
 
-    code 노드에는 ui.imported_code를 붙여 검토 전 실행·발행을 막고, agent 노드의 agent_slug는 떼어
-    서비스가 id를 찾게 넘기며, 승인 모드 off는 inherit로 되돌린다.
+    code 노드에는 ui.imported_code를 붙여 검토 전 실행·발행을 막고, agent 노드의 agent_slug와 지식
+    노드의 kb_slugs·kb_slug, SQL 노드의 source_slug는 떼어 서비스가 id를 찾게 넘기며, 승인 모드
+    off는 inherit로 되돌린다.
     """
     out = list(warnings)
     nodes: list[Node] = []
     agents: list[AgentRef] = []
+    knowledge: list[KnowledgeRef] = []
+    sql_sources: list[SqlSourceRefImport] = []
     code_nodes = 0
     for node in document.graph.nodes:
         if node.type == CODE_TYPE:
@@ -277,6 +349,21 @@ def prepare(document: DslDocument, source: DslSource, warnings: list[DslWarning]
                     slug=slug if isinstance(slug, str) and slug else None,
                 )
             )
+            node = node.model_copy(update={"config": config})
+        elif node.type in (KNOWLEDGE_RETRIEVAL_TYPE, KNOWLEDGE_INDEX_TYPE):
+            node, ref = _knowledge_ref(node)
+            if ref.kb_ids:
+                knowledge.append(ref)
+        elif node.type in (SQL_SCHEMA_TYPE, SQL_QUERY_TYPE):
+            config = dict(node.config)
+            slug = _slug(config.pop(SOURCE_SLUG_KEY, None))
+            raw_id = config.get("source_id")
+            # 아직 데이터 소스를 고르지 않은 노드는 이을 것이 없다. 검증이 sql_source_required로
+            # 알린다.
+            if raw_id is not None or slug is not None:
+                sql_sources.append(
+                    SqlSourceRefImport(node_id=node.id, source_id=_uuid(raw_id), slug=slug)
+                )
             node = node.model_copy(update={"config": config})
         nodes.append(node)
     if code_nodes:
@@ -307,6 +394,8 @@ def prepare(document: DslDocument, source: DslSource, warnings: list[DslWarning]
         ),
         source=source,
         agents=agents,
+        knowledge=knowledge,
+        sql_sources=sql_sources,
         unsupported=[node.id for node in nodes if node.type == UNSUPPORTED_TYPE],
         warnings=out,
     )

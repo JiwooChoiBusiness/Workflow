@@ -258,6 +258,38 @@ def test_failed_backup_leaves_no_part_folder(
     assert sorted(path.name for path in tmp_path.iterdir()) == ["data"]
 
 
+def test_a_briefly_locked_folder_is_renamed_on_a_later_try(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 방금 쓴 파일을 백신·검색 색인이 잠깐 쥐면 이름 바꾸기가 WinError 5다. 다시 해 보고, 끝내
+    # 안 되면 그때 실패한다.
+    data = plain_data_dir(tmp_path)
+    real_rename = os.rename
+    tries: list[str] = []
+
+    def flaky(source: str, target: str) -> None:
+        tries.append(target)
+        if len(tries) < 3:
+            raise PermissionError(13, "Access is denied")
+        real_rename(source, target)
+
+    monkeypatch.setattr(os, "rename", flaky)
+    monkeypatch.setattr(backup, "RENAME_RETRY_SEC", 0.0)
+
+    done = backup.create_backup(plain_settings(data), out=tmp_path / "late")
+
+    assert len(tries) == 3 and done.path == (tmp_path / "late").resolve()
+    assert (tmp_path / "late" / "manifest.json").is_file()
+
+    def locked(source: str, target: str) -> None:
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(os, "rename", locked)
+    with pytest.raises(PermissionError):
+        backup.create_backup(plain_settings(data), out=tmp_path / "never")
+    assert not (tmp_path / "never.part").exists() and not (tmp_path / "never").exists()
+
+
 def test_existing_or_nested_targets_are_refused(tmp_path: Path) -> None:
     data = plain_data_dir(tmp_path)
     settings = plain_settings(data)

@@ -2,10 +2,13 @@
 """우리 DSL 형식(2단계 설계 5.1).
 
 YAML 파일 하나에 워크플로우 하나를 담는다. graph는 wf_version.graph와 같은 모양이라 저장 형식과
-DSL 사이에 변환 코드가 없다. 다른 점은 둘이다. agent 노드 config에 agent_slug를 더 쓰고
-(다른 PC에서는 agent_id가 뜻이 없다), 비밀 환경 변수는 include_secrets로 내보낼 때만 값을 쓴다.
+DSL 사이에 변환 코드가 없다. 다른 점은 둘이다. agent 노드 config에 agent_slug를, 지식 노드 config에
+kb_slugs(knowledge_retrieval)·kb_slug(knowledge_index)를, SQL 노드 config에 source_slug를 더 쓰고
+(다른 PC에서는 id가 뜻이 없다, 3단계 11장), 비밀 환경 변수는 include_secrets로 내보낼 때만 값을
+쓴다.
 
-형식이 바뀌면 DSL_VERSION을 올리고 import_.py의 DSL_UPGRADES에 변환기를 둔다.
+형식이 바뀌면 DSL_VERSION을 올리고 import_.py의 DSL_UPGRADES에 변환기를 둔다. slug 키를 더한 것은
+가져올 때 떼어 내는 선택 키라 버전을 올리지 않았다.
 """
 
 from collections.abc import Mapping
@@ -35,6 +38,11 @@ DSL_VERSION = 1
 MAX_DSL_BYTES = 2 * 1024 * 1024
 # 내보낼 때 agent 노드 config에 더하는 키. 가져올 때 이 slug로 에이전트를 찾고 키는 지운다.
 AGENT_SLUG_KEY = "agent_slug"
+# 지식 노드에 더하는 키. kb_slugs는 kb_ids와 같은 순서이고 찾지 못한 KB 자리는 null이다.
+KB_SLUGS_KEY = "kb_slugs"
+KB_SLUG_KEY = "kb_slug"
+# sql_schema·sql_query 노드에 더하는 키. 가져올 때 이 slug로 데이터 소스를 찾는다.
+SOURCE_SLUG_KEY = "source_slug"
 MAX_ERROR_DETAILS = 50
 
 

@@ -19,6 +19,7 @@ from app.api.v1.common import flow_of, flow_scope, parse_cursor
 from app.auth.dependencies import ApiKeyAuth, DbDep, SettingsDep, require_scope
 from app.db.models.enums import WfRunTrigger
 from app.db.types import utcnow
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.run import RunStatus
 from app.schemas.service_api import (
     ApiFlowRunInput,
@@ -45,7 +46,10 @@ def elapsed_ms(run: WfRunOut, now: datetime | None = None) -> int:
     return max(0, int((end - run.started_at).total_seconds() * 1000))
 
 
-def run_result(run: WfRunOut) -> WorkflowRunResult:
+def run_result(
+    run: WfRunOut, resources: list[RetrieverResourceData] | None = None
+) -> WorkflowRunResult:
+    """resources는 런 하나를 볼 때만 싣는다(목록 /logs에는 없다)."""
     return WorkflowRunResult(
         workflow_run_id=run.id,
         status=run.status,
@@ -58,6 +62,7 @@ def run_result(run: WfRunOut) -> WorkflowRunResult:
         message_id=run.message_id,
         created_at=run.created_at,
         ended_at=run.ended_at,
+        retriever_resources=resources or [],
     )
 
 
@@ -108,16 +113,18 @@ async def run_workflow(
     if body.response_mode == "streaming" and started.subscription is not None:
         return sse_response(started.subscription, headers=headers)
     result = await runs.wait_result(key.workspace_id, started)
-    return JSONResponse(run_result(result).model_dump(mode="json"), headers=headers)
+    resources = await runs.resources(key.workspace_id, started.run_id)
+    return JSONResponse(run_result(result, resources).model_dump(mode="json"), headers=headers)
 
 
 @router.get("/run/{run_id}", response_model=WorkflowRunResult)
 async def get_workflow_run(
     run_id: uuid.UUID, key: ApiKeyAuth, runs: WfRunServiceDep, user: UserQuery = None
 ) -> WorkflowRunResult:
-    """상태·출력·사용량·대기 중인 승인·질문(폴링용). 챗플로우 런도 run_id로 본다."""
+    """상태·출력·사용량·대기 중인 승인·질문·인용(폴링용). 챗플로우 런도 run_id로 본다."""
     flow_of(key, "workflow", "chatflow")
-    return run_result(await runs.check_run(key.workspace_id, run_id, flow_scope(key, user=user)))
+    run = await runs.check_run(key.workspace_id, run_id, flow_scope(key, user=user))
+    return run_result(run, await runs.resources(key.workspace_id, run.id))
 
 
 @router.post("/run/{run_id}/stop", response_model=StopResult)
@@ -174,7 +181,8 @@ async def provide_workflow_input(
         return sse_response(resumed.subscription, headers=headers)
     if body.response_mode == "blocking":
         result = await runs.wait_result(key.workspace_id, resumed)
-        return JSONResponse(run_result(result).model_dump(mode="json"), headers=headers)
+        resources = await runs.resources(key.workspace_id, run_id)
+        return JSONResponse(run_result(result, resources).model_dump(mode="json"), headers=headers)
     current = await runs.check_run(key.workspace_id, run_id, None)
     return JSONResponse(
         run_result(current).model_dump(mode="json"), status_code=202, headers=headers

@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.schemas.agent import Icon, Slug
+from app.schemas.common import Icon, Slug
 
 DocForm = Literal["text_model", "hierarchical_model", "qa_model"]
 IndexingTechnique = Literal["high_quality", "economy"]
@@ -41,6 +41,9 @@ CreatedBy = Literal["automatic", "customized"]
 MetadataType = Literal["string", "number", "time"]
 SearchMethod = Literal["semantic_search", "full_text_search", "hybrid_search"]
 RerankingMode = Literal["weighted_score", "rrf", "llm"]
+EmbeddingModel = Literal["gemini-embedding-2"]
+EmbeddingDimensions = Literal[768, 1536, 3072]
+EmbeddingPrefix = Literal["none", "gemini2"]
 
 KbName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
 KbDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=400)]
@@ -61,10 +64,10 @@ class EmbeddingSettingsIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    model: Literal["gemini-embedding-2"] = "gemini-embedding-2"
-    dimensions: Literal[768, 1536, 3072] = 768
+    model: EmbeddingModel = "gemini-embedding-2"
+    dimensions: EmbeddingDimensions = 768
     # gemini2: 문서 "title: none | text: …", 질의 "task: search result | query: …" 접두어(6.6).
-    prefix: Literal["none", "gemini2"] = "gemini2"
+    prefix: EmbeddingPrefix = "gemini2"
 
 
 class EmbeddingSettings(EmbeddingSettingsIn):
@@ -260,6 +263,126 @@ class KnowledgeBaseOut(BaseModel):
 
 class KnowledgeBaseList(BaseModel):
     items: list[KnowledgeBaseOut]
+
+
+class KbDocumentCounts(BaseModel):
+    """지우지 않은 문서 수와 목록 필터 값(display_status)별 수."""
+
+    total: int
+    queuing: int
+    indexing: int
+    paused: int
+    error: int
+    available: int
+    disabled: int
+    archived: int
+
+
+class KnowledgeBaseStats(BaseModel):
+    """KB 화면의 요약(12.1). 유닛·벡터 수는 index.db에서 센다."""
+
+    kb_id: uuid.UUID
+    indexing_technique: IndexingTechnique
+    key_tier: KeyTier
+    documents: KbDocumentCounts
+    segment_count: int
+    # 전문 색인 행 수. 유닛마다 행이 하나라 유닛 수다(꺼 둔 청크는 빠진다). 색인 파일을 못 쓰면
+    # null.
+    unit_count: int | None
+    # KB의 색인 설정과 맞는 벡터 행 수. economy이거나 색인 파일을 못 쓰면 null.
+    vector_count: int | None
+    # vector_count / unit_count(0~1). 유닛이 없으면 null.
+    vector_ratio: float | None
+    # ready는 설정과 맞는 벡터 테이블이 있음, stale은 색인 설정을 바꿔 재임베딩 전(검색은 전문만),
+    # missing은 아직 벡터가 하나도 없음. economy이거나 색인 파일을 못 쓰면 null.
+    vector_state: Literal["ready", "stale", "missing"] | None
+    # 벡터가 아직 없는 유닛 수와 그것을 분당 인제스트 몫(rpm - reserve)으로 나눈 분. 일일 한도는
+    # 넣지 않았다. economy는 0이다.
+    pending_vector_units: int | None
+    estimated_minutes: int | None
+    # data/knowledge/index.db와 WAL의 크기. 모든 KB가 한 파일을 쓴다.
+    index_bytes: int | None
+    embedded_tokens_estimated: int
+    # 일일 한도(rate_limited_daily)로 멈춘 문서 수와 그중 가장 이른 다시 시도 가능 시각.
+    daily_limited_documents: int
+    daily_retry_after: datetime | None
+    index_available: bool
+    # 색인 파일을 쓸 수 없는 사유(서버 로그와 같은 글).
+    index_error: str | None = None
+
+
+class EmbeddingModelOption(BaseModel):
+    id: EmbeddingModel
+    dimensions: list[EmbeddingDimensions]
+    default_dimensions: EmbeddingDimensions
+    prefixes: list[EmbeddingPrefix]
+    default_prefix: EmbeddingPrefix
+    # 입력 토큰 상한. 청크는 이 값의 80%에서 강제로 나뉜다.
+    input_token_limit: int
+
+
+class EmbeddingLimits(BaseModel):
+    """한 등급의 임베딩 리미터 값(6.6). tpm·rpd가 0이면 그 버킷을 쓰지 않는다."""
+
+    rpm: int
+    # 사람이 기다리는 요청(검색 질의, 청크 편집, 평가) 전용 분당 몫. 인제스트는 rpm - reserve.
+    reserve: int
+    tpm: int
+    # 태평양 자정부터 세는 하루 항목 수.
+    rpd: int
+
+
+class EmbeddingLimiterInfo(BaseModel):
+    """지금 돌고 있는 임베딩 리미터의 값. 설정 화면과 업로드 대화상자가 같은 값을 본다."""
+
+    model: str
+    # 무료 등급 상한(분당 100건)과 하루 몫을 거는지. 가짜 어댑터면 false라 설정값 그대로 돈다.
+    capped: bool
+    free: EmbeddingLimits
+    paid: EmbeddingLimits
+
+
+class EmbeddingDailyUsage(BaseModel):
+    """오늘(태평양 날짜) 임베딩 하루 몫 사용량. 무료 기본값은 하루 1,000건이다."""
+
+    tier: KeyTier
+    # KB_EMBED_RPD(_PAID). 0이면 세지 않는다(가짜 어댑터, 유료 기본값).
+    limit: int
+    used: int
+    # 인제스트가 오늘 더 받을 수 있는 항목 수. 세지 않으면 null.
+    bulk_remaining: int | None
+    # 하루 몫이 다시 차는 때(다음 태평양 자정). 세지 않으면 null.
+    reset_at: datetime | None
+    # 일일 429나 하루 몫 소진으로 오늘 인제스트 임베딩을 더 보낼 수 없으면 풀리는 때.
+    blocked_until: datetime | None
+
+
+class KnowledgeDefaults(BaseModel):
+    """KB 만들기·설정·업로드 화면이 쓰는 기본값과 한도(12.1)."""
+
+    # 1차는 gemini-embedding-2(OpenAI 호환 경로)뿐이다. 001은 네이티브 전송이 생기면 더한다.
+    embedding_models: list[EmbeddingModelOption]
+    embedding: EmbeddingSettingsIn
+    process_rule: ProcessRule
+    # high_quality KB의 기본 검색 설정. economy는 search_method만 full_text_search다.
+    retrieval_model: RetrievalSettings
+    limiter: EmbeddingLimiterInfo
+    daily: list[EmbeddingDailyUsage]
+    # GEMINI_PAID_API_KEY가 있어야 data_policy.key_tier=paid를 고를 수 있다.
+    paid_key: bool
+    sqlite_version: str
+    # contentless는 본문을 저장하지 않는 FTS5(SQLite 3.43 이상), stored는 본문을 저장하는 폴백.
+    # 색인 파일을 열지 못했으면 null.
+    fts_mode: Literal["contentless", "stored"] | None
+    index_available: bool
+    # 색인 파일을 쓸 수 없는 사유(서버 로그와 같은 글).
+    index_error: str | None = None
+    top_k_max: int
+    upload_max_files: int
+    upload_max_mb: int
+    doc_max_text_mb: int
+    # 0이면 검색 질의를 기록하지 않는다.
+    query_log_days: int
 
 
 class DocumentMetadataValue(BaseModel):

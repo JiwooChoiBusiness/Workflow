@@ -1,8 +1,13 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 ApprovalMode = Literal["off", "http_writes", "all_shell"]
+# 웹앱 주소(/apps/<slug>)에 쓰인다. 스킬 이름과 같은 규칙. Slug·Icon은 지식 베이스 스키마도 써서
+# 여기 둔다(app.schemas.agent에 두면 agent_version → knowledge → agent로 import가 돈다).
+Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")]
+# 이모지나 아이콘 이름. 화면이 해석한다.
+Icon = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 
 
 class RunLimits(BaseModel):

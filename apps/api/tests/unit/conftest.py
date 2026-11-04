@@ -34,6 +34,8 @@ class ChatPorts:
         self.http = None
         self.files = None
         self.tasks = tasks
+        self.knowledge = None
+        self.sql = None
         self.node_settings = NodeSettings()
         self.checkpoints: list[Checkpoint] = []
 

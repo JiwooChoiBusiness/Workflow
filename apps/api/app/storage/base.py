@@ -125,3 +125,9 @@ def kb_file_key(workspace_id: UUID, document_id: UUID) -> str:
     # 지식 베이스 문서의 원본(3단계 설계 6.2). 붙여 넣은 글도 .txt로 여기에 둬 재색인이 원본에서
     # 다시 돈다.
     return f"kb-files/{workspace_id}/{document_id}"
+
+
+def sql_source_key(workspace_id: UUID, file_id: UUID) -> str:
+    # Text2SQL 데이터 소스의 원본 파일(3단계 설계 10.2). 질의는 이 파일이 아니라 준비 단계가 만든
+    # cache/kb-sql/<source>.duckdb를 읽고, SQLite 소스만 이 파일을 읽기 전용으로 연다.
+    return f"sql-sources/{workspace_id}/{file_id}"

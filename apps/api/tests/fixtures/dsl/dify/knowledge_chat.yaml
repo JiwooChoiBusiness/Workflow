@@ -1,0 +1,178 @@
+# Dify DSL 구조를 보고 직접 쓴 지식 검색 챗플로우(advanced-chat) 예제(3단계 M24). 다중 검색(재순위
+# 모델·가중치·문턱 없음·메타데이터 수동 필터)과 단일 검색(자동 필터) 두 노드가 있고, 첫 노드의 result를
+# llm이 context로 받는다. 인용 표시(retriever_resource)를 켰다.
+app:
+  description: 사내 규정을 찾아 답한다
+  icon: 📚
+  icon_background: '#FEF3C7'
+  mode: advanced-chat
+  name: 규정 도우미
+kind: app
+version: 0.3.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: 규정에 대해 물어보세요.
+    retriever_resource:
+      enabled: true
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+    - id: e-start-rules
+      source: '1740000000001'
+      sourceHandle: source
+      target: '1740000000002'
+      targetHandle: target
+      type: custom
+    - id: e-rules-faq
+      source: '1740000000002'
+      sourceHandle: source
+      target: '1740000000003'
+      targetHandle: target
+      type: custom
+    - id: e-faq-llm
+      source: '1740000000003'
+      sourceHandle: source
+      target: '1740000000004'
+      targetHandle: target
+      type: custom
+    - id: e-llm-answer
+      source: '1740000000004'
+      sourceHandle: source
+      target: '1740000000005'
+      targetHandle: target
+      type: custom
+    nodes:
+    - data:
+        title: 시작
+        type: start
+        variables:
+        - label: 부서
+          max_length: 48
+          options: []
+          required: false
+          type: text-input
+          variable: team
+      id: '1740000000001'
+      position:
+        x: 30
+        y: 260
+      type: custom
+    - data:
+        dataset_ids:
+        - 6a4f0000-0000-4000-8000-000000000001
+        - 6a4f0000-0000-4000-8000-000000000002
+        metadata_filtering_conditions:
+          conditions:
+          - comparison_operator: is
+            id: c1
+            name: team
+            value: '{{#1740000000001.team#}}'
+          - comparison_operator: ≥
+            id: c2
+            name: year
+            value: 2024
+          - comparison_operator: contains
+            id: c3
+            name: Owner-Name
+            value: kim
+          logical_operator: and
+        metadata_filtering_mode: manual
+        multiple_retrieval_config:
+          reranking_enable: true
+          reranking_mode: reranking_model
+          reranking_model:
+            model: rerank-multilingual-v3.0
+            provider: cohere
+          score_threshold: null
+          top_k: 6
+          weights:
+            keyword_setting:
+              keyword_weight: 0.4
+            vector_setting:
+              embedding_model_name: text-embedding-3-large
+              embedding_provider_name: openai
+              vector_weight: 0.6
+        query_variable_selector:
+        - sys
+        - query
+        retrieval_mode: multiple
+        title: 규정 검색
+        type: knowledge-retrieval
+      id: '1740000000002'
+      position:
+        x: 330
+        y: 260
+      type: custom
+    - data:
+        dataset_ids:
+        - 6a4f0000-0000-4000-8000-000000000003
+        metadata_filtering_mode: automatic
+        metadata_model_config:
+          mode: chat
+          name: gpt-4o-mini
+          provider: openai
+        query_variable_selector:
+        - sys
+        - query
+        retrieval_mode: single
+        single_retrieval_config:
+          model:
+            mode: chat
+            name: gpt-4o-mini
+            provider: openai
+        title: FAQ 검색
+        type: knowledge-retrieval
+      id: '1740000000003'
+      position:
+        x: 630
+        y: 260
+      type: custom
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1740000000002'
+          - result
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: gpt-4o
+          provider: openai
+        prompt_template:
+        - role: system
+          text: '아래 자료로만 답한다.
+
+            {{#context#}}'
+        - role: user
+          text: '{{#sys.query#}}'
+        title: 답변 작성
+        type: llm
+      id: '1740000000004'
+      position:
+        x: 930
+        y: 260
+      type: custom
+    - data:
+        answer: '{{#1740000000004.text#}}'
+        title: 답변
+        type: answer
+      id: '1740000000005'
+      position:
+        x: 1230
+        y: 260
+      type: custom
+    viewport:
+      x: 0
+      y: 0
+      zoom: 1

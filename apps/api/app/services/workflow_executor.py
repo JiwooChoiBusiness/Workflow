@@ -23,6 +23,12 @@ wf_file(kind=output) 행을 남기고, 노드 설정에는 WF_CODE_TIMEOUT_SEC�
 
 human_input 폼 응답은 서비스가 wf_run.resume_payload의 reply에 담아 다시 넣는다. 재개할 때 그 값을
 RunContext.reply로 엔진에 넘기면 엔진이 기다리던 노드에 전한다.
+
+지식 노드(3단계 8.1, 8.2)는 지식 포트(app/services/workflow_knowledge.py)를, SQL 노드(3단계 10.3)는
+데이터 소스 포트(app/services/sql_sources.py)를 쓴다. 런은 만들 때 정한
+키 등급(wf_run.limits.tier)으로 돌고, 런을 잡을 때마다 지금 KB 등급으로 다시 계산해 올리기만 한다.
+paid인데 유료 키가 없으면 시작 전에 실패한다. 엔진이 모은 인용은 wf_run.retriever_resources와
+챗플로우 assistant 메시지에 쓴다.
 """
 
 import asyncio
@@ -56,6 +62,7 @@ from app.db.repositories.workflows import (
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
 from app.llm.base import ModelAdapter
+from app.llm.key_pool import KeyTier
 from app.runner.supervisor import CancelSignal
 from app.sandbox.base import SandboxBackend, SandboxError
 from app.schemas.events import UsageTotal
@@ -67,8 +74,24 @@ from app.security.crypto import CryptoError, SecretCipher, cipher_from_settings
 from app.services.child_runs import ChildRunService, NodeParent
 from app.services.errors import ServiceError
 from app.services.files import guess_mime, sanitize_filename
+from app.services.knowledge_index_executor import KnowledgeLane
+from app.services.knowledge_runtime import KnowledgeRuntime
+from app.services.run_tier import (
+    ERR_PAID_KEY_MISSING,
+    higher,
+    paid_key_configured,
+    tier_of,
+    with_tier,
+)
 from app.services.runs import parse_run_key, waits_for_child, workspace_handle
-from app.services.workflow_files import MAX_WF_FILE_BYTES, file_ref
+from app.services.sql_runtime import SqlRuntime
+from app.services.sql_sources import SqlExecutor, WorkflowSqlPort
+from app.services.workflow_files import MAX_WF_FILE_BYTES, file_ref, stored_file
+from app.services.workflow_knowledge import (
+    WorkflowKnowledgePort,
+    graph_knowledge,
+    workflow_tier,
+)
 from app.services.workflow_runs import (
     cancel_children,
     close_waiting_nodes,
@@ -104,7 +127,9 @@ from app.workflow.ports import (
     FilePort,
     FilePortError,
     HttpPort,
+    KnowledgePort,
     NodeSettings,
+    SqlPort,
     TaskPort,
     TaskPortError,
 )
@@ -180,6 +205,8 @@ class _Job:
     history: list[Turn] = field(default_factory=list[Turn])
     # 재개할 때 기다리던 노드에 넘길 사람 응답(human_input 폼).
     reply: NodeReply | None = None
+    # 런을 만들 때 정한 키 등급(wf_run.limits.tier, 3단계 14.4).
+    tier: KeyTier = "free"
 
     @property
     def run_id(self) -> uuid.UUID:
@@ -346,25 +373,13 @@ class _FilesPort:
 
     async def _locate(self, ref: Mapping[str, Any]) -> tuple[FileRef, str, int]:
         try:
-            file = FileRef.model_validate(dict(ref))
-            file_id = uuid.UUID(file.file_id)
-        except (ValidationError, ValueError):
+            found = await stored_file(self._executor.db, self._job.workspace_id, ref)
+        except ValueError:
             raise FilePortError("file_invalid", "파일 참조가 아니다") from None
-        # 참조의 저장소 키는 노드 출력에서 온 값이라 믿지 않고 이 워크스페이스의 행에서 다시 읽는다.
-        key: str | None = None
-        size = 0
-        async with self._executor.db.read() as session:
-            if file.source == "wf_file":
-                row = await WfFileRepository(session, self._job.workspace_id).get(file_id)
-                if row is not None:
-                    key, size = row.storage_key, row.size_bytes
-            else:
-                found = await SessionFileRepository(session, self._job.workspace_id).get(file_id)
-                if found is not None and found.storage_key is not None:
-                    key, size = found.storage_key, found.size_bytes
-        if key is None:
-            raise FilePortError("file_not_found", f"파일을 찾지 못했다: {file.filename}")
-        return file, key, size
+        if found is None:
+            filename = str(ref.get("filename") or "")
+            raise FilePortError("file_not_found", f"파일을 찾지 못했다: {filename}")
+        return found.ref, found.storage_key, found.size_bytes
 
     async def copy_to(self, ref: Mapping[str, Any], dest: Path, *, max_bytes: int) -> int:
         file, key, size = await self._locate(ref)
@@ -413,10 +428,24 @@ class _Ports:
         self._tasks = _TasksPort(executor, job, tasks) if tasks is not None else None
         storage = executor.storage
         self._files = _FilesPort(executor, job, storage) if storage is not None else None
+        self._knowledge = WorkflowKnowledgePort(
+            db=executor.db,
+            settings=executor.settings,
+            workspace_id=job.workspace_id,
+            runtime=executor.knowledge,
+            llm=executor.llm,
+            storage=storage,
+            lane=executor.knowledge_lane,
+        )
+        self._sql = WorkflowSqlPort(
+            SqlExecutor(executor.db, executor.settings, executor.sql_runtime, storage),
+            job.workspace_id,
+        )
         self._settings = NodeSettings(
             code_timeout_sec=executor.settings.wf_code_timeout_sec,
             model_prices=job.model_prices,
             extract_cache_dir=executor.settings.data_dir.joinpath(*WF_EXTRACT_CACHE),
+            tier=job.tier,
         )
 
     @property
@@ -438,6 +467,14 @@ class _Ports:
     @property
     def tasks(self) -> TaskPort | None:
         return self._tasks
+
+    @property
+    def knowledge(self) -> KnowledgePort | None:
+        return self._knowledge
+
+    @property
+    def sql(self) -> SqlPort | None:
+        return self._sql
 
     @property
     def node_settings(self) -> NodeSettings:
@@ -469,11 +506,21 @@ class WorkflowRunExecutor:
         storage: StorageBackend | None = None,
         registry: NodeRegistry | None = None,
         clock: Callable[[], datetime] = utcnow,
+        knowledge: KnowledgeRuntime | None = None,
+        knowledge_lane: KnowledgeLane | None = None,
+        sql_runtime: SqlRuntime | None = None,
     ) -> None:
         self.db = db
         self.settings = settings
         self.bus = bus
         self.llm = llm
+        # 지식 노드가 쓰는 지식 실행 객체(app.state.knowledge)와 지식 레인. 실행 객체가 없으면
+        # 검색이 503 index_unavailable이고, 레인이 없으면 문서가 waiting으로 남아 다음 기동에
+        # 들어간다.
+        self.knowledge = knowledge
+        self.knowledge_lane = knowledge_lane
+        # SQL 노드가 쓰는 Text2SQL 실행 객체(app.state.sql_runtime). 없으면 실행이 sql_failed다.
+        self.sql_runtime = sql_runtime
         # DATA_DIR/wf-workspaces의 두 번째 로컬 백엔드(9.1).
         self.sandbox = sandbox
         self.http = http
@@ -532,6 +579,21 @@ class WorkflowRunExecutor:
                 raise _Failure("graph_invalid", "저장된 그래프를 읽지 못했다")
             resume: Checkpoint | None = None
             reply: NodeReply | None = None
+            # 며칠 멈춘 런을 재개하면 그사이 KB 등급이 바뀌었을 수 있다. 지금 등급으로 올리기만 하고
+            # 내리지 않는다(14.4).
+            bases = await graph_knowledge(session, workspace_id, graph)
+            tier = higher(
+                tier_of(run.limits), await workflow_tier(session, workspace_id, graph, bases)
+            )
+            if tier != tier_of(run.limits):
+                run.limits = with_tier(run.limits or {}, tier)
+            if tier == "paid" and not paid_key_configured(self.settings):
+                # 런을 만든 뒤 .env에서 유료 키를 뺀 경우다. 무료 키로 넘어가지 않는다(14.4).
+                raise _Failure(
+                    ERR_PAID_KEY_MISSING,
+                    "유료 키 전용 지식 베이스나 데이터 소스를 쓰는 런인데 "
+                    "GEMINI_PAID_API_KEY가 없다",
+                )
             if run.resume_payload is not None:
                 reply = reply_of(run.resume_payload)
                 if version.graph_hash != run.graph_hash:
@@ -584,6 +646,7 @@ class WorkflowRunExecutor:
                 conversation=chat.conversation,
                 history=chat.history,
                 reply=reply,
+                tier=tier,
             )
             run.status = RunStatus.RUNNING
             run.started_at = run.started_at or now
@@ -662,6 +725,7 @@ class WorkflowRunExecutor:
             version_id=job.version_id,
             env=env,
             secret_env=secrets,
+            platform_secrets=self.settings.secret_values(),
             conversation_types=job.conversation_types,
             limits=job.limits,
             resume=job.resume,
@@ -758,6 +822,7 @@ class WorkflowRunExecutor:
                 run.node_run_count = outcome.node_runs
                 run.outputs = jsonable(outcome.outputs) if status == "succeeded" else None
                 run.error = outcome.error.model_dump(mode="json") if outcome.error else None
+                run.retriever_resources = outcome.retriever_resources or None
                 run.resume_payload = None
                 if status == "waiting_input" and outcome.pending is not None:
                     run.pending_interaction = outcome.pending.model_dump(mode="json")
@@ -772,7 +837,12 @@ class WorkflowRunExecutor:
                 if status in ("succeeded", "cancelled"):
                     run.state = None
                 if run.conversation_id is not None:
-                    await settle_message(session, run, text=outcome.answer)
+                    await settle_message(
+                        session,
+                        run,
+                        text=outcome.answer,
+                        resources=outcome.retriever_resources,
+                    )
                     chat = await WfConversationRepository(session, job.workspace_id).get(
                         run.conversation_id
                     )
@@ -867,7 +937,6 @@ class WorkflowRunExecutor:
                 run.error = error
                 run.pending_interaction = None
                 run.ended_at = now
-                await WfNodeRunRepository(session, job.workspace_id).close_running(job.run_id, now)
                 await close_waiting_nodes(session, run, now)
                 await settle_message(session, run)
                 data = completed_data(run, status=RunStatus.FAILED)

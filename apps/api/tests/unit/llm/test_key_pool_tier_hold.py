@@ -360,6 +360,21 @@ async def test_daily_429_on_every_model_fails_as_model_unavailable() -> None:
         assert isinstance(error, ErrorEvent)
         assert (error.code, error.retryable) == ("model_unavailable", True)
         assert "일일 한도" in error.message
+        # 모두 일일 한도라 기다리면 풀린다. 다음 태평양 자정까지 남은 초다(3단계 12.4).
+        assert error.retry_after == 23 * 3600.0
+
+
+async def test_retry_after_is_left_out_when_some_model_failed_otherwise() -> None:
+    transport = QuotaTransport({("model-a", 0): (DAY, "100s"), ("model-b", 0): [503, 503]})
+    adapter = make_adapter(transport)
+
+    events = await run(adapter)
+
+    error = events[-1]
+    assert isinstance(error, ErrorEvent)
+    # model-b는 일일 한도가 아니라 5xx로 실패했다. 기다린다고 풀린다는 보장이 없다.
+    assert error.code == "model_unavailable" and error.retry_after is None
+    assert "retry_after" not in error.model_dump()
 
 
 async def test_unknown_429_still_rotates_like_before() -> None:

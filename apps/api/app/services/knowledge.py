@@ -8,10 +8,13 @@ pending, 문서를 waiting으로 돌린다(4.4). index.db의 테이블을 다시
 문서·청크·메타데이터 서비스가 같이 쓰는 해석·검사 함수도 여기에 둔다.
 """
 
+import math
+import sqlite3
 import uuid
 from collections.abc import Callable, Mapping
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, cast
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 import structlog
 from pydantic import ValidationError
@@ -21,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.engine import Database
 from app.db.models import KbDocument, KnowledgeBase
-from app.db.models.enums import KbDocForm, KbIndexingTechnique
+from app.db.models.enums import KbDocForm, KbIndexingStatus, KbIndexingTechnique
 from app.db.repositories.api_keys import ApiKeyRepository
 from app.db.repositories.knowledge import (
     IN_PROGRESS_STATUSES,
@@ -40,22 +43,40 @@ from app.knowledge.chunking import (
     ParentRule,
 )
 from app.knowledge.cleaning import CleaningRules
+from app.knowledge.index_db import IndexUnavailable
 from app.knowledge.ingest.job import SplitRules
+from app.llm.embeddings import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBED_INPUT_LIMITS,
+    ERR_RATE_LIMITED_DAILY,
+)
+from app.llm.key_pool import KeyTier
 from app.schemas.knowledge import (
     MAX_CHUNK_TOKENS,
     DataPolicy,
     DataPolicyIn,
+    DisplayStatus,
+    EmbeddingDailyUsage,
+    EmbeddingDimensions,
+    EmbeddingLimiterInfo,
+    EmbeddingLimits,
+    EmbeddingModelOption,
+    EmbeddingPrefix,
     EmbeddingSettings,
     EmbeddingSettingsIn,
+    KbDocumentCounts,
     KnowledgeBaseCreate,
     KnowledgeBaseList,
     KnowledgeBaseOut,
     KnowledgeBasePatch,
+    KnowledgeBaseStats,
+    KnowledgeDefaults,
     ProcessRule,
     RetrievalSettings,
 )
 from app.services.agents import slugify
 from app.services.errors import Problems, ServiceError, not_found
+from app.services.knowledge_runtime import KnowledgeRuntime, embedding_config_of, key_tier_of
 
 if TYPE_CHECKING:
     from app.services.knowledge_index_executor import KnowledgeLane
@@ -64,6 +85,22 @@ log = structlog.get_logger("app.services.knowledge")
 
 _SLUG_MAX = 64
 _SLUG_ATTEMPTS = 1000
+# 한 번에 올리는 파일 수(6.2). 같은 요청의 문서는 batch 하나로 묶인다.
+MAX_UPLOAD_FILES = 20
+# 통계가 일일 한도로 멈춘 문서를 찾으려고 (id, error)만 읽는 오류 문서 수의 상한. error JSON은 SQL
+# 조건에 쓰지 않는 규칙이라 읽어서 code를 본다. 오류 문서가 이보다 많으면 일일 한도 문서 수와 가장
+# 이른 retry_after는 앞 5,000개(위치 순)만 보고 센 값이라 실제보다 적을 수 있다.
+_ERROR_SCAN = 5000
+_DISPLAY_STATUSES: tuple[DisplayStatus, ...] = get_args(DisplayStatus)
+_RUNNING_STATUSES = frozenset(
+    {
+        KbIndexingStatus.PARSING,
+        KbIndexingStatus.CLEANING,
+        KbIndexingStatus.SPLITTING,
+        KbIndexingStatus.INDEXING,
+    }
+)
+VectorState = Literal["ready", "stale", "missing"]
 
 
 def split_rules(rule: ProcessRule, doc_form: str, *, input_limit: int | None) -> SplitRules:
@@ -153,6 +190,37 @@ async def live_document(
     return kb, document
 
 
+def display_of(status: str, enabled: bool, archived: bool) -> DisplayStatus:
+    """목록 필터 값(display_status, 4.4, Dify와 같다). 보관은 색인이 끝난 문서에만 보인다."""
+    if status == KbIndexingStatus.WAITING:
+        return "queuing"
+    if status == KbIndexingStatus.PAUSED:
+        return "paused"
+    if status in _RUNNING_STATUSES:
+        return "indexing"
+    if status == KbIndexingStatus.ERROR:
+        return "error"
+    if archived:
+        return "archived"
+    return "available" if enabled else "disabled"
+
+
+def retry_after_from(error: Mapping[str, Any] | None) -> datetime | None:
+    """문서 error.retry_after(일일 한도가 풀리는 때). 없거나 깨졌으면 None."""
+    raw = (error or {}).get("retry_after")
+    if not isinstance(raw, str):
+        return None
+    try:
+        value = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def retry_after_of(document: KbDocument) -> datetime | None:
+    return retry_after_from(document.error)
+
+
 def kb_out(kb: KnowledgeBase, in_progress: int = 0) -> KnowledgeBaseOut:
     return KnowledgeBaseOut(
         id=kb.id,
@@ -175,6 +243,23 @@ def kb_out(kb: KnowledgeBase, in_progress: int = 0) -> KnowledgeBaseOut:
         created_at=kb.created_at,
         updated_at=kb.updated_at,
     )
+
+
+def _limits(runtime: KnowledgeRuntime, tier: KeyTier) -> EmbeddingLimits:
+    limits = runtime.limiter.limits(tier)
+    return EmbeddingLimits(rpm=limits.rpm, reserve=limits.reserve, tpm=limits.tpm, rpd=limits.rpd)
+
+
+@dataclass(frozen=True)
+class _IndexStats:
+    available: bool
+    error: str | None = None
+    disk_bytes: int | None = None
+    units: int | None = None
+    vectors: int | None = None
+    state: VectorState | None = None
+    pending: int | None = None
+    minutes: int | None = None
 
 
 def _slug_taken(slug: str | None) -> ServiceError:
@@ -276,6 +361,155 @@ class KnowledgeService:
     ) -> KnowledgeBaseOut:
         counts = await KbDocumentRepository(session, workspace_id).in_progress_counts([kb.id])
         return kb_out(kb, counts.get(kb.id, 0))
+
+    async def stats(
+        self, workspace_id: uuid.UUID, kb_id: uuid.UUID, runtime: KnowledgeRuntime | None
+    ) -> KnowledgeBaseStats:
+        """KB 요약(12.1). 색인 파일을 못 써도 app.db 쪽 값은 돌려주고 색인 값만 null이다."""
+        async with self._db.read() as session:
+            kb = await active_kb(session, workspace_id, kb_id)
+            documents = KbDocumentRepository(session, workspace_id)
+            counts: dict[str, int] = dict.fromkeys(("total", *_DISPLAY_STATUSES), 0)
+            for status, enabled, archived, count in await documents.status_counts(kb.id):
+                counts["total"] += count
+                counts[display_of(status, enabled, archived)] += count
+            failed = (
+                await documents.error_payloads(kb.id, limit=_ERROR_SCAN) if counts["error"] else []
+            )
+        daily = [
+            error for _, error in failed if (error or {}).get("code") == ERR_RATE_LIMITED_DAILY
+        ]
+        retry_times = [found for error in daily if (found := retry_after_from(error)) is not None]
+        index = await self._index_stats(kb, runtime)
+        ratio = None
+        if index.vectors is not None and index.units:
+            # 지운 유닛의 벡터가 매시 정리 전까지 남을 수 있어 1을 넘지 않게 자른다.
+            ratio = min(1.0, index.vectors / index.units)
+        return KnowledgeBaseStats(
+            kb_id=kb.id,
+            indexing_technique=kb.indexing_technique,  # pyright: ignore[reportArgumentType]
+            key_tier=key_tier_of(kb),
+            documents=KbDocumentCounts.model_validate(counts),
+            segment_count=kb.segment_count,
+            unit_count=index.units,
+            vector_count=index.vectors,
+            vector_ratio=ratio,
+            vector_state=index.state,
+            pending_vector_units=index.pending,
+            estimated_minutes=index.minutes,
+            index_bytes=index.disk_bytes,
+            embedded_tokens_estimated=kb.embedded_tokens_estimated,
+            daily_limited_documents=len(daily),
+            daily_retry_after=min(retry_times, default=None),
+            index_available=index.available,
+            index_error=index.error,
+        )
+
+    async def _index_stats(
+        self, kb: KnowledgeBase, runtime: KnowledgeRuntime | None
+    ) -> _IndexStats:
+        if runtime is None:
+            return _IndexStats(available=False)
+        index_db = runtime.index_db
+        if not index_db.available:
+            return _IndexStats(available=False, error=index_db.unavailable_reason)
+        config = embedding_config_of(kb)
+        state: VectorState | None = None
+        vectors: int | None = None
+        try:
+            units = await runtime.fts.count(kb.id)
+            if config is not None:
+                meta = await index_db.describe(kb.id)
+                if meta is None or meta.vec_table is None:
+                    state = "missing"
+                elif (meta.config_key, meta.embedding_version, meta.dims) == (
+                    config.key(),
+                    config.version,
+                    config.dimensions,
+                ):
+                    state = "ready"
+                else:
+                    # 색인 설정을 바꾼 뒤 레인이 테이블을 다시 만들기 전. 검색은 이 벡터를
+                    # 쓰지 않는다.
+                    state = "stale"
+                vectors = await runtime.vectors.count(kb.id) if state == "ready" else 0
+        except IndexUnavailable as exc:
+            return _IndexStats(available=False, error=str(exc))
+        pending: int | None = None
+        minutes: int | None = None
+        if kb.indexing_technique == KbIndexingTechnique.ECONOMY:
+            pending, minutes = 0, 0
+        elif vectors is not None:
+            # 미리보기의 예상 소요와 같은 계산이다(분당 인제스트 몫, 일일 한도 제외, 17.4).
+            pending = max(0, units - vectors)
+            limits = runtime.limiter.limits(key_tier_of(kb))
+            minutes = math.ceil(pending / max(1, limits.rpm - limits.reserve))
+        return _IndexStats(
+            available=True,
+            disk_bytes=index_db.disk_bytes(),
+            units=units,
+            vectors=vectors,
+            state=state,
+            pending=pending,
+            minutes=minutes,
+        )
+
+    def defaults(self, runtime: KnowledgeRuntime) -> KnowledgeDefaults:
+        """KB 만들기·설정·업로드 화면이 쓰는 기본값과 한도. 리미터 값은 지금 돌고 있는 리미터의
+        것이라 설정 화면(LLM)도 이 값을 본다."""
+        settings = self._settings
+        embedding = EmbeddingSettingsIn()
+        index_db = runtime.index_db
+        fts_mode: Literal["contentless", "stored"] | None = None
+        if index_db.available:
+            fts_mode = "contentless" if index_db.fts_contentless else "stored"
+        dimensions: list[EmbeddingDimensions] = list(get_args(EmbeddingDimensions))
+        prefixes: list[EmbeddingPrefix] = list(get_args(EmbeddingPrefix))
+        return KnowledgeDefaults(
+            embedding_models=[
+                EmbeddingModelOption(
+                    id=embedding.model,
+                    dimensions=dimensions,
+                    default_dimensions=embedding.dimensions,
+                    prefixes=prefixes,
+                    default_prefix=embedding.prefix,
+                    input_token_limit=EMBED_INPUT_LIMITS[embedding.model],
+                )
+            ],
+            embedding=embedding,
+            process_rule=ProcessRule(),
+            retrieval_model=RetrievalSettings(),
+            limiter=EmbeddingLimiterInfo(
+                model=DEFAULT_EMBEDDING_MODEL,
+                capped=not runtime.fake,
+                free=_limits(runtime, "free"),
+                paid=_limits(runtime, "paid"),
+            ),
+            daily=[self._daily_usage(runtime, "free"), self._daily_usage(runtime, "paid")],
+            paid_key=settings.gemini_paid_api_key is not None,
+            sqlite_version=sqlite3.sqlite_version,
+            fts_mode=fts_mode,
+            index_available=index_db.available,
+            index_error=None if index_db.available else index_db.unavailable_reason,
+            top_k_max=settings.kb_top_k_max,
+            upload_max_files=MAX_UPLOAD_FILES,
+            upload_max_mb=settings.kb_upload_max_mb,
+            doc_max_text_mb=settings.kb_doc_max_text_mb,
+            query_log_days=settings.kb_query_log_days,
+        )
+
+    def _daily_usage(self, runtime: KnowledgeRuntime, tier: KeyTier) -> EmbeddingDailyUsage:
+        limiter = runtime.limiter
+        usage = limiter.daily_usage(tier)
+        blocked = runtime.embeddings.blocked_for_today(DEFAULT_EMBEDDING_MODEL, tier)
+        return EmbeddingDailyUsage(
+            tier=tier,
+            limit=usage.limit if usage is not None else 0,
+            used=usage.used if usage is not None else 0,
+            bulk_remaining=limiter.daily_remaining(tier, "bulk"),
+            reset_at=usage.reset_at if usage is not None else None,
+            blocked_until=None if blocked is None else self._clock() + timedelta(seconds=blocked),
+        )
 
     async def create_base(
         self, workspace_id: uuid.UUID, body: KnowledgeBaseCreate

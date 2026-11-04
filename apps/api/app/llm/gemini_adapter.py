@@ -969,6 +969,8 @@ class GeminiAdapter:
     ) -> AsyncGenerator[ModelEvent, None]:
         tier = req.tier
         failures: list[str] = []
+        # 일일 한도로 실패한(건너뛴) 모델. 모델마다 failures에 한 줄씩 들어간다.
+        daily: list[str] = []
         # 키가 모두 빠졌을 때의 오류. 이번 요청에서 401·403을 받았으면 마지막 응답을 덧붙인다.
         auth_status: int | None = None
         auth_message = ALL_KEYS_DISABLED
@@ -976,6 +978,7 @@ class GeminiAdapter:
             if self._pool.any_exhausted(model, tier):
                 # 같은 모델의 다른 키로 가면 하루 총량이 키 수만큼 늘어난다(3단계 설계 Z2).
                 failures.append(f"{model}: 오늘의 일일 한도를 다 써서 건너뛴다")
+                daily.append(model)
                 _log_fallback(models, position, failures, context)
                 continue
             caps = get_capabilities(model)
@@ -1073,6 +1076,7 @@ class GeminiAdapter:
                         if verdict.scope == "day":
                             # 일일 한도는 같은 모델의 다른 키로 순환하지 않고 다음 모델로 간다.
                             failures.append(f"{model}: 일일 한도 {message[:200]}")
+                            daily.append(model)
                             break
                         if tier == "paid":
                             # 유료 키는 하나라 같은 키로 기다렸다 다시 보낸다. 무료 키로 넘어가지
@@ -1119,12 +1123,28 @@ class GeminiAdapter:
                 attempt.normalizer = normalizer
                 return
             _log_fallback(models, position, failures, context)
+        retry_after: float | None = None
+        if daily and len(daily) == len(failures):
+            # 모두 일일 한도라 기다리면 풀린다. 먼저 풀리는 모델까지 남은 초를 준다(3단계 12.4).
+            waits = [wait for name in daily if (wait := self._daily_wait(name, tier)) is not None]
+            retry_after = float(math.ceil(min(waits))) if waits else None
         attempt.error = ErrorEvent(
             code=ERR_MODEL_UNAVAILABLE,
             message="모든 모델이 실패했다: " + "; ".join(failures),
             retryable=True,
             model=models[-1] if models else None,
+            retry_after=retry_after,
         )
+
+    def _daily_wait(self, model: str, tier: KeyTier) -> float | None:
+        """이 모델을 다시 고를 수 있을 때까지 남은 초. 등급의 키 하나라도 일일 한도면 건너뛰므로
+        한도에 걸린 키들 가운데 가장 늦게 풀리는 때다."""
+        waits = [
+            status.exhausted_remaining[model]
+            for status in self._pool.status()
+            if status.tier == tier and model in status.exhausted_remaining
+        ]
+        return max(waits) if waits else None
 
     def _shortest_hold(self, model: str, tier: KeyTier, tried: set[int]) -> float | None:
         waits = [

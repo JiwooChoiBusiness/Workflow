@@ -187,6 +187,76 @@ class KbDocumentRepository(WorkspaceScopedRepository[KbDocument]):
             )
         )
 
+    async def live_names(
+        self, kb_id: uuid.UUID, document_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, str]:
+        """살아 있는 문서의 id → 이름. 평가셋 정답 문서를 보일 때 쓴다(JSON 열은 읽지 않는다)."""
+        if not document_ids:
+            return {}
+        rows = await self._execute(
+            self._select(KbDocument.id, KbDocument.name).where(
+                KbDocument.id.in_(list(document_ids)),
+                KbDocument.kb_id == kb_id,
+                KbDocument.deleted_at.is_(None),
+            )
+        )
+        return {document_id: str(name) for document_id, name in rows.all()}
+
+    async def live_ids_by_name(
+        self, kb_id: uuid.UUID, names: Collection[str]
+    ) -> dict[str, list[uuid.UUID]]:
+        """이름이 정확히 같은 살아 있는 문서의 id(이름 → 목록 순서대로). knowledge_index 노드의 같은
+        이름 처리(skip·replace)가 쓴다."""
+        if not names:
+            return {}
+        rows = await self._execute(
+            self._select(KbDocument.id, KbDocument.name)
+            .where(
+                KbDocument.kb_id == kb_id,
+                KbDocument.name.in_(list(names)),
+                KbDocument.deleted_at.is_(None),
+            )
+            .order_by(KbDocument.position)
+        )
+        found: dict[str, list[uuid.UUID]] = {}
+        for document_id, name in rows.all():
+            found.setdefault(str(name), []).append(document_id)
+        return found
+
+    async def status_counts(self, kb_id: uuid.UUID) -> list[tuple[str, bool, bool, int]]:
+        """살아 있는 문서를 (indexing_status, enabled, archived)로 묶어 센다. KB 통계용."""
+        rows = await self._execute(
+            self._select(
+                KbDocument.indexing_status,
+                KbDocument.enabled,
+                KbDocument.archived,
+                func.count(),
+            )
+            .where(KbDocument.kb_id == kb_id, KbDocument.deleted_at.is_(None))
+            .group_by(KbDocument.indexing_status, KbDocument.enabled, KbDocument.archived)
+        )
+        return [
+            (str(status), bool(enabled), bool(archived), int(count))
+            for status, enabled, archived, count in rows.all()
+        ]
+
+    async def error_payloads(
+        self, kb_id: uuid.UUID, *, limit: int
+    ) -> list[tuple[uuid.UUID, dict[str, Any] | None]]:
+        """오류로 끝난 살아 있는 문서의 (id, error) 앞 limit개. error JSON은 조건에 쓰지 않아 읽는
+        쪽이 code를 본다."""
+        rows = await self._execute(
+            self._select(KbDocument.id, KbDocument.error)
+            .where(
+                KbDocument.kb_id == kb_id,
+                KbDocument.deleted_at.is_(None),
+                KbDocument.indexing_status == KbIndexingStatus.ERROR,
+            )
+            .order_by(KbDocument.position)
+            .limit(limit)
+        )
+        return [(document_id, error) for document_id, error in rows.all()]
+
     def _conditions(
         self, kb_id: uuid.UUID, status: str | None, keyword: str | None
     ) -> list[ColumnElement[bool]]:
@@ -512,6 +582,43 @@ class KbSegmentRepository(WorkspaceScopedRepository[KbSegment]):
         )
         return [(int(unit_no), str(digest)) for unit_no, digest in rows.all()]
 
+    def _indexed(self) -> list[ColumnElement[bool]]:
+        # 색인이 끝난 켜진 유닛. 색인 설정을 바꾸면 같은 트랜잭션에서 waiting으로 돌아가므로
+        # completed면 지금 설정의 벡터다(4.4). 끈 청크는 색인 행이 없다. 지운 문서의 유닛도
+        # 쓰지 않는다(KbDocument를 조인해서 부른다).
+        return [
+            KbSegment.unit_no.is_not(None),
+            KbSegment.enabled.is_(True),
+            KbSegment.status == KbSegmentStatus.COMPLETED,
+            KbDocument.workspace_id == self.workspace_id,
+            KbDocument.deleted_at.is_(None),
+        ]
+
+    async def indexed_units(self, hashes: Collection[str]) -> list[tuple[str, uuid.UUID, int]]:
+        """이 글(content_hash)로 색인이 끝난 유닛. (해시, KB)마다 하나만(임베딩 캐시, 6.6)."""
+        if not hashes:
+            return []
+        rows = await self._execute(
+            self._select(KbSegment.content_hash, KbSegment.kb_id, func.max(KbSegment.unit_no))
+            .join(KbDocument, KbDocument.id == KbSegment.document_id)
+            .where(KbSegment.content_hash.in_(list(hashes)), *self._indexed())
+            .group_by(KbSegment.content_hash, KbSegment.kb_id)
+        )
+        return [(str(digest), kb_id, int(unit_no)) for digest, kb_id, unit_no in rows.all()]
+
+    async def indexed_hashes(self, kb_id: uuid.UUID, unit_nos: Collection[int]) -> dict[int, str]:
+        """그 유닛들 중 아직 색인이 끝난 채인 것의 글(content_hash)."""
+        if not unit_nos:
+            return {}
+        rows = await self._execute(
+            self._select(KbSegment.unit_no, KbSegment.content_hash)
+            .join(KbDocument, KbDocument.id == KbSegment.document_id)
+            .where(
+                KbSegment.kb_id == kb_id, KbSegment.unit_no.in_(list(unit_nos)), *self._indexed()
+            )
+        )
+        return {int(unit_no): str(digest) for unit_no, digest in rows.all()}
+
     async def delete_some_for_document(self, document_id: uuid.UUID, limit: int) -> int:
         ids = await self._scalars(
             self._select(KbSegment.id).where(KbSegment.document_id == document_id).limit(limit)
@@ -646,6 +753,46 @@ class KbChildChunkRepository(WorkspaceScopedRepository[KbChildChunk]):
             .limit(limit)
         )
         return [(int(unit_no), str(digest)) for unit_no, digest in rows.all()]
+
+    def _indexed(self) -> list[ColumnElement[bool]]:
+        # 자식 청크에는 status가 없다. 부모가 completed면 자식이 모두 끝났다. 부모 청크와 문서를
+        # 조인해서 부른다.
+        return [
+            KbSegment.workspace_id == self.workspace_id,
+            KbSegment.enabled.is_(True),
+            KbSegment.status == KbSegmentStatus.COMPLETED,
+            KbDocument.workspace_id == self.workspace_id,
+            KbDocument.deleted_at.is_(None),
+        ]
+
+    async def indexed_units(self, hashes: Collection[str]) -> list[tuple[str, uuid.UUID, int]]:
+        if not hashes:
+            return []
+        rows = await self._execute(
+            self._select(
+                KbChildChunk.content_hash, KbChildChunk.kb_id, func.max(KbChildChunk.unit_no)
+            )
+            .join(KbSegment, KbSegment.id == KbChildChunk.segment_id)
+            .join(KbDocument, KbDocument.id == KbChildChunk.document_id)
+            .where(KbChildChunk.content_hash.in_(list(hashes)), *self._indexed())
+            .group_by(KbChildChunk.content_hash, KbChildChunk.kb_id)
+        )
+        return [(str(digest), kb_id, int(unit_no)) for digest, kb_id, unit_no in rows.all()]
+
+    async def indexed_hashes(self, kb_id: uuid.UUID, unit_nos: Collection[int]) -> dict[int, str]:
+        if not unit_nos:
+            return {}
+        rows = await self._execute(
+            self._select(KbChildChunk.unit_no, KbChildChunk.content_hash)
+            .join(KbSegment, KbSegment.id == KbChildChunk.segment_id)
+            .join(KbDocument, KbDocument.id == KbChildChunk.document_id)
+            .where(
+                KbChildChunk.kb_id == kb_id,
+                KbChildChunk.unit_no.in_(list(unit_nos)),
+                *self._indexed(),
+            )
+        )
+        return {int(unit_no): str(digest) for unit_no, digest in rows.all()}
 
     async def delete_some_for_document(self, document_id: uuid.UUID, limit: int) -> int:
         ids = await self._scalars(

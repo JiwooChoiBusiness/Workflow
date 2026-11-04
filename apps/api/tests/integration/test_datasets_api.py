@@ -405,6 +405,72 @@ async def test_document_metadata_values_are_checked_before_creating(
     assert listed.json()["total"] == 0
 
 
+async def test_document_metadata_also_takes_dify_operation_data(
+    logged_in: AsyncClient, client: AsyncClient, app: FastAPI
+) -> None:
+    kb = await create_kb(logged_in)
+    first = str(await seed(app, kb, "영업팀 규정", "출장비 정산은 30일 안에 한다"))
+    second = str(await seed(app, kb, "개발팀 규정", "출장비 정산은 14일 안에 한다"))
+    headers = await kb_key(logged_in, kb["id"])
+    fields_url = f"{V1}/{kb['id']}/metadata"
+    team = await client.post(fields_url, headers=headers, json={"name": "team", "type": "string"})
+    await client.post(fields_url, headers=headers, json={"name": "year", "type": "number"})
+    enabled = await client.post(f"{fields_url}/built-in/enable", headers=headers)
+    assert enabled.status_code == 200, enabled.text
+    [name_field] = [f for f in enabled.json()["items"] if f["name"] == "document_name"]
+    url = f"{V1}/{kb['id']}/documents/metadata"
+
+    async def send(*operations: dict[str, Any]) -> Any:
+        return await client.post(url, headers=headers, json={"operation_data": list(operations)})
+
+    full = await send(
+        {
+            "document_id": first,
+            "metadata_list": [
+                {"id": team.json()["id"], "name": "team", "value": "sales"},
+                {"name": "year", "value": 2024},
+                # 조회한 목록을 그대로 돌려보내도 기본 필드는 시스템 값을 지킨다.
+                {"id": name_field["id"], "name": "document_name", "value": "바꾼 이름"},
+            ],
+        },
+        {"document_id": second, "metadata_list": [{"name": "team", "value": "dev"}]},
+    )
+    partial = await send(
+        {
+            "document_id": first,
+            "metadata_list": [{"name": "team", "value": "hr"}],
+            "partial_update": True,
+        }
+    )
+    replaced = await send(
+        {"document_id": first, "metadata_list": [{"name": "team", "value": "ops"}]}
+    )
+    unknown = await send(
+        {"document_id": second, "metadata_list": [{"name": "owner", "value": "x"}]}
+    )
+
+    def values(response: Any, *, built_in: bool = False) -> dict[str, dict[str, Any]]:
+        assert response.status_code == 200, response.text
+        return {
+            item["document_id"]: {
+                value["name"]: value["value"]
+                for value in item["doc_metadata"]
+                if value["built_in"] is built_in
+            }
+            for item in response.json()["items"]
+        }
+
+    assert values(full) == {first: {"team": "sales", "year": 2024}, second: {"team": "dev"}}
+    assert values(full, built_in=True)[first]["document_name"] == "영업팀 규정"
+    assert values(partial) == {first: {"team": "hr", "year": 2024}}
+    # partial_update가 거짓(기본)이면 목록에 없는 사용자 필드 값은 지운다.
+    assert values(replaced) == {first: {"team": "ops"}}
+    assert unknown.status_code == 422, unknown.text
+    [problem] = unknown.json()["error"]["details"]
+    assert problem["type"] == "metadata_field_not_found"
+    assert problem["loc"] == ["body", "operation_data", 0, "metadata_list", 0]
+
+
 async def test_an_unavailable_index_hides_its_reason_from_the_service_api(
     logged_in: AsyncClient, client: AsyncClient, app: FastAPI
 ) -> None:

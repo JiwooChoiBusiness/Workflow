@@ -29,6 +29,11 @@ DESIGN_TOOLS = {
     "list_files": "files",
     "http_request": "http",
     "ask_user": "ask_user",
+    # 3단계 8.4. 버전에 지식 베이스가 있으면 러너가 붙이는 그룹이다.
+    "search_knowledge": "knowledge",
+    # 3단계 10.3. 버전에 데이터 소스가 있으면 러너가 붙이는 그룹이다.
+    "describe_sql_source": "sql",
+    "query_sql": "sql",
 }
 
 

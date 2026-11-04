@@ -8,6 +8,7 @@ lifespan이 Settings와 채팅 어댑터로 하나 만들어 app.state.knowledge
 작업이 같은 순서(5.4)로 index.db를 다루게 하려는 것이다.
 """
 
+import itertools
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -19,8 +20,14 @@ from fastapi import Request
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.db.engine import Database
 from app.db.models import KnowledgeBase
 from app.db.models.enums import KbIndexingTechnique
+from app.db.repositories.knowledge import (
+    KbChildChunkRepository,
+    KbSegmentRepository,
+    KnowledgeBaseRepository,
+)
 from app.knowledge.fts_index import SqliteFtsIndex
 from app.knowledge.index_db import IndexDb, IndexUnavailable, get_meta, set_meta
 from app.knowledge.tokens import estimate_tokens
@@ -59,6 +66,9 @@ class KnowledgeRuntime:
     embeddings: EmbeddingClient
     limiter: EmbedLimiter
     cache: EmbedCache
+    # 가짜 임베더면 무료 등급 상한(분당 100건)과 하루 몫을 걸지 않는다. 화면이 리미터 값과
+    # 함께 보인다.
+    fake: bool = False
 
     @property
     def available(self) -> bool:
@@ -103,8 +113,87 @@ def _tier_limits(rpm: int, tpm: int, reserve: int, rpd: int) -> TierLimits:
     return TierLimits(rpm=rpm, tpm=tpm, reserve=min(reserve, rpm - 1), rpd=rpd)
 
 
-def build_knowledge_runtime(settings: Settings, llm: ModelAdapter) -> KnowledgeRuntime:
-    """열지 않은 실행 객체. open()은 lifespan이 부른다."""
+class LiveUnitVectors:
+    """EmbedCache의 첫 단계(6.6). 같은 글로 이미 색인이 끝난 유닛의 벡터를 vec_*에서 꺼낸다.
+
+    색인하는 KB와 같은 워크스페이스에서, KB의 색인 설정이 요청과 같은(config_key) 유닛만 본다. 그
+    KB의 index.db 쪽 설정(config_key·version·차원)도 app.db와 같아야 한다. 벡터를 읽은 뒤에는 그
+    유닛이 아직 같은 글로 색인이 끝난 채인지, KB 설정이 그대로인지 app.db를 다시 본다. 청크 편집과
+    설정 변경은 app.db를 먼저 바꾸고 index.db에 쓰므로(5.4), 읽는 사이 행이 바뀌었으면 여기서
+    걸러진다.
+    """
+
+    BATCH = 500
+
+    def __init__(self, db: Database, vectors: SqliteVecIndex) -> None:
+        self._db = db
+        self._vectors = vectors
+
+    async def __call__(
+        self, config_key: str, hashes: Sequence[str], workspace_id: uuid.UUID
+    ) -> dict[str, bytes]:
+        units: list[tuple[str, uuid.UUID, int]] = []
+        async with self._db.read() as session:
+            for batch in itertools.batched(hashes, self.BATCH):
+                units += await KbSegmentRepository(session, workspace_id).indexed_units(batch)
+                units += await KbChildChunkRepository(session, workspace_id).indexed_units(batch)
+            if not units:
+                return {}
+            kbs = await KnowledgeBaseRepository(session, workspace_id).get_many_active(
+                {kb_id for _, kb_id, _ in units}
+            )
+        configs: dict[uuid.UUID, EmbeddingConfig] = {}
+        for kb in kbs:
+            config = embedding_config_of(kb)
+            if config is not None and config.key() == config_key:
+                configs[kb.id] = config
+        wanted: dict[uuid.UUID, dict[int, str]] = {}
+        for digest, kb_id, unit_no in units:
+            if kb_id in configs:
+                wanted.setdefault(kb_id, {})[unit_no] = digest
+        copied: dict[uuid.UUID, dict[int, bytes]] = {}
+        for kb_id, by_unit in wanted.items():
+            config = configs[kb_id]
+            meta = await self._vectors.describe(kb_id)
+            if meta is None or (meta.config_key, meta.embedding_version, meta.dims) != (
+                config_key,
+                config.version,
+                config.dimensions,
+            ):
+                continue
+            blobs = await self._vectors.get_many(kb_id, list(by_unit))
+            width = config.dimensions * 4
+            copied[kb_id] = {unit: blob for unit, blob in blobs.items() if len(blob) == width}
+        found: dict[str, bytes] = {}
+        async with self._db.read() as session:
+            for kb_id, blobs in copied.items():
+                if not blobs:
+                    continue
+                current = await KnowledgeBaseRepository(session, workspace_id).get_active(kb_id)
+                if current is None or embedding_config_of(current) != configs[kb_id]:
+                    continue
+                still = await KbSegmentRepository(session, workspace_id).indexed_hashes(
+                    kb_id, list(blobs)
+                )
+                still.update(
+                    await KbChildChunkRepository(session, workspace_id).indexed_hashes(
+                        kb_id, list(blobs)
+                    )
+                )
+                for unit_no, blob in blobs.items():
+                    digest = wanted[kb_id][unit_no]
+                    if still.get(unit_no) == digest:
+                        found.setdefault(digest, blob)
+        return found
+
+
+def build_knowledge_runtime(
+    settings: Settings, llm: ModelAdapter, *, db: Database | None = None
+) -> KnowledgeRuntime:
+    """열지 않은 실행 객체. open()은 lifespan이 부른다.
+
+    db가 있으면 임베딩 캐시가 다른 KB(같은 색인 설정)의 같은 글 벡터를 먼저 복사한다(K9).
+    """
     index_db = IndexDb(index_path(settings), cache_kb=settings.kb_index_cache_kb)
     fake = settings.llm_fake or isinstance(llm, FakeAdapter)
     transport: EmbeddingTransport
@@ -133,15 +222,17 @@ def build_knowledge_runtime(settings: Settings, llm: ModelAdapter) -> KnowledgeR
         free_rpm_cap=None if fake else FREE_EMBED_RPM_CAP,
         store=_IndexMetaStore(index_db),
     )
-    cache = EmbedCache(index_db)
+    vectors = SqliteVecIndex(index_db)
+    cache = EmbedCache(index_db, live=None if db is None else LiveUnitVectors(db, vectors))
     embeddings = EmbeddingClient(transport, pool, limiter, cache, estimate_tokens=estimate_tokens)
     return KnowledgeRuntime(
         index_db=index_db,
-        vectors=SqliteVecIndex(index_db),
+        vectors=vectors,
         fts=SqliteFtsIndex(index_db),
         embeddings=embeddings,
         limiter=limiter,
         cache=cache,
+        fake=fake,
     )
 
 

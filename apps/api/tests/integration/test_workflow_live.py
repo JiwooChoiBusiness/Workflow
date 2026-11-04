@@ -30,6 +30,8 @@ class Ports:
     http = None
     files = None
     tasks = None
+    knowledge = None
+    sql = None
 
     def __init__(self, model: GeminiAdapter) -> None:
         self.model = model

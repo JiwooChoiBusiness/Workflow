@@ -374,7 +374,14 @@ async def test_unfinished_documents_are_found_by_full_text(seeder: Seeder) -> No
     assert warning_codes(hidden.json()) == []
 
 
-async def test_documents_and_chunks_that_are_off_stay_out(seeder: Seeder, db: Database) -> None:
+@pytest.mark.parametrize("doc_filter_limit", [1000, 0])
+async def test_documents_and_chunks_that_are_off_stay_out(
+    seeder: Seeder, db: Database, monkeypatch: pytest.MonkeyPatch, doc_filter_limit: int
+) -> None:
+    # 0이면 검색할 문서 목록을 읽지 않고(문서가 많은 KB) 유닛을 읽을 때 SQL 조건으로만 거른다.
+    from app.services import knowledge_search
+
+    monkeypatch.setattr(knowledge_search, "DOC_FILTER_LIMIT", doc_filter_limit)
     kb = await seeder.kb()
     keep = await seeder.document(kb, "켜짐", ["보안 점검은 분기마다 한다"])
     await seeder.document(kb, "꺼짐", ["보안 점검은 매달 한다"], enabled=False)

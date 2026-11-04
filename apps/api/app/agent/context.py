@@ -54,6 +54,7 @@ class StoredMessage(BaseModel):
     # 재개한 스텝에 도구 결과를 붙여 다시 저장할 때 행의 값을 지우지 않도록 함께 읽는다.
     stop_reason: str | None = None
     usage: dict[str, Any] | None = None
+    retriever_resources: list[dict[str, Any]] | None = None
 
 
 class StepMessage(BaseModel):
@@ -64,6 +65,9 @@ class StepMessage(BaseModel):
     provider_extra: dict[str, Any] | None = None
     stop_reason: str | None = None
     usage: dict[str, Any] | None = None
+    # 이 스텝의 search_knowledge가 찾은 인용(3단계 8.4). 런이 끝나면 실행기가 런의 마지막
+    # 메시지로 모은다.
+    retriever_resources: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
 
     @property
     def text(self) -> str:
@@ -140,6 +144,7 @@ def decode_step(stored: StoredMessage) -> StepMessage:
         provider_extra=extra,
         stop_reason=stored.stop_reason,
         usage=stored.usage,
+        retriever_resources=list(stored.retriever_resources or []),
     )
 
 

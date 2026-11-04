@@ -8,10 +8,11 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
 
+from app.api.downloads import stored_download
 from app.api.errors import ApiError
 from app.api.uploads import MULTIPART_OVERHEAD, upload_chunks
 from app.auth.dependencies import CurrentAuth, DbDep, SettingsDep
@@ -41,11 +42,10 @@ from app.schemas.knowledge import (
     SegmentOut,
     SegmentPatch,
 )
-from app.services.knowledge_documents import (
-    MAX_UPLOAD_FILES,
-    KnowledgeDocumentService,
-    UploadSource,
-)
+from app.schemas.service_api import DatasetIndexingStatus
+from app.services.knowledge import MAX_UPLOAD_FILES
+from app.services.knowledge_datasets import KnowledgeDatasetService
+from app.services.knowledge_documents import KnowledgeDocumentService, UploadSource
 from app.services.knowledge_metadata import KnowledgeMetadataService
 from app.services.knowledge_runtime import KnowledgeRuntime, optional_knowledge_runtime
 from app.services.knowledge_segments import KnowledgeSegmentService
@@ -85,9 +85,14 @@ def get_metadata_service(db: DbDep) -> KnowledgeMetadataService:
     return KnowledgeMetadataService(db)
 
 
+def get_dataset_service(db: DbDep) -> KnowledgeDatasetService:
+    return KnowledgeDatasetService(db)
+
+
 DocumentServiceDep = Annotated[KnowledgeDocumentService, Depends(get_document_service)]
 SegmentServiceDep = Annotated[KnowledgeSegmentService, Depends(get_segment_service)]
 MetadataServiceDep = Annotated[KnowledgeMetadataService, Depends(get_metadata_service)]
+DatasetServiceDep = Annotated[KnowledgeDatasetService, Depends(get_dataset_service)]
 
 
 def _validation_error(exc: ValidationError, *prefix: str | int) -> ApiError:
@@ -187,6 +192,22 @@ async def list_documents(
     return await service.list_documents(
         auth.workspace_id, kb_id, status=status, keyword=keyword, page=page, limit=limit
     )
+
+
+# /documents/{document_id}보다 먼저 둔다. 뒤에 두면 indexing-status가 문서 id 자리에 잡혀
+# 422가 된다.
+@router.get("/knowledge/{kb_id}/documents/indexing-status", response_model=DatasetIndexingStatus)
+async def documents_indexing_status(
+    kb_id: uuid.UUID,
+    auth: CurrentAuth,
+    service: DatasetServiceDep,
+    batch: Annotated[str, Query(min_length=1, max_length=64)],
+) -> DatasetIndexingStatus:
+    """올리기 응답의 batch로 묶인 문서들의 색인 상태와 진행(completed/total_segments).
+
+    서비스 API GET /api/v1/datasets/{id}/documents/{batch}/indexing-status와 같은 계산이다.
+    """
+    return await service.indexing_status(auth.workspace_id, kb_id, batch)
 
 
 @router.post(
@@ -387,6 +408,27 @@ async def get_document(
     kb_id: uuid.UUID, document_id: uuid.UUID, auth: CurrentAuth, service: DocumentServiceDep
 ) -> KbDocumentOut:
     return await service.get_document(auth.workspace_id, kb_id, document_id)
+
+
+@router.get("/knowledge/{kb_id}/documents/{document_id}/file", response_class=Response)
+async def download_document_file(
+    kb_id: uuid.UUID,
+    document_id: uuid.UUID,
+    request: Request,
+    auth: CurrentAuth,
+    service: DocumentServiceDep,
+) -> Response:
+    """원본 내려받기. 원본을 바꾼 문서는 지금 원본, 글로 만든 문서는 저장한 .txt다.
+
+    늘 attachment로 보내고 nosniff를 단다. html·svg 원본이 이 출처에서 열리지 않게 한다.
+    """
+    original = await service.original(auth.workspace_id, kb_id, document_id)
+    return await stored_download(
+        request.app.state.storage,
+        original.storage_key,
+        filename=original.filename,
+        mime=original.mime,
+    )
 
 
 @router.patch("/knowledge/{kb_id}/documents/{document_id}", response_model=KbDocumentOut)

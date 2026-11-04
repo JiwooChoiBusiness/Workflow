@@ -20,6 +20,7 @@ from app import sysinfo
 from app.config import Settings
 from app.db.engine import Database
 from app.db.models import ApiKey
+from app.db.models.enums import KbDataSourceType
 from app.db.repositories.api_keys import ApiKeyRepository
 from app.db.repositories.knowledge import KbDocumentRepository, KnowledgeBaseRepository
 from app.db.repositories.workspaces import WorkspaceRepository
@@ -27,7 +28,9 @@ from app.db.types import new_id
 from app.llm.fake_adapter import FakeAdapter
 from app.logsetup import configure_logging
 from app.main import create_app
+from app.schemas.knowledge import KbDocumentUploadOptions
 from app.security.tokens import hash_token
+from app.services.knowledge_documents import KnowledgeDocumentService, UploadSource
 from app.services.knowledge_index_executor import KnowledgeLane
 from app.services.knowledge_runtime import optional_knowledge_runtime
 
@@ -424,6 +427,38 @@ async def test_uploads_make_one_batch_and_reject_bad_files(
     # 실패한 요청은 문서도 원본도 남기지 않는다.
     listed = (await logged_in.get(url)).json()
     assert listed["total"] == 2
+
+
+async def test_uploads_record_where_the_files_came_from(
+    logged_in: AsyncClient, app: FastAPI, db: Database
+) -> None:
+    # knowledge_index 노드는 같은 경로로 파일 문서를 만들고 출처를 workflow로 남긴다(M24 연동).
+    kb = await create_kb(logged_in)
+    me = (await logged_in.get("/api/console/auth/me")).json()
+    workspace_id = uuid.UUID(me["workspace"]["id"])
+    service = KnowledgeDocumentService(db, app.state.settings, app.state.storage)
+
+    async def one(data: bytes) -> AsyncIterator[bytes]:
+        yield data
+
+    by_node = await service.create_from_uploads(
+        workspace_id,
+        uuid.UUID(kb["id"]),
+        [UploadSource("노드.txt", "text/plain", one("노드가 만든 글".encode()))],
+        KbDocumentUploadOptions(),
+        data_source_type=KbDataSourceType.WORKFLOW,
+    )
+    by_default = await service.create_from_uploads(
+        workspace_id,
+        uuid.UUID(kb["id"]),
+        [UploadSource("사람.txt", "text/plain", one("사람이 올린 글".encode()))],
+        KbDocumentUploadOptions(),
+    )
+
+    assert by_node.documents[0].data_source_type == "workflow"
+    assert by_default.documents[0].data_source_type == "upload_file"
+    stored = (await logged_in.get(f"{BASE}/{kb['id']}/documents/{by_node.documents[0].id}")).json()
+    assert (stored["data_source_type"], stored["filename"]) == ("workflow", "노드.txt")
     kb_files = app.state.storage.local_path("kb-files")
     assert len([path for path in kb_files.rglob("*") if path.is_file()]) == 2
 

@@ -301,6 +301,10 @@ class Checkpoint(BaseModel):
     answer_cursors: dict[str, int] = Field(default_factory=dict[str, int])
     conv_vars: dict[str, Any] = Field(default_factory=dict[str, Any])
     usage: UsageTotal = Field(default_factory=UsageTotal)
+    # 대기 전까지 모은 인용(3단계 8.1). 재개한 런이 이어 붙인다.
+    retriever_resources: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
+    # 런 전체 인용 번호표(세그먼트 id → 번호, 8.3). 재개한 런의 llm이 다음 번호부터 받는다.
+    citation_numbers: dict[str, int] = Field(default_factory=dict[str, int])
     # 자식 런을 포함한 토큰 합. max_total_tokens 판정에 쓴다.
     budget_tokens: int = 0
     next_index: int = 0

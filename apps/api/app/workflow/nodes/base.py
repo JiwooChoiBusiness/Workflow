@@ -9,12 +9,13 @@ NodeResult를 돌려주거나 NodeFailure를 던진다.
 import builtins
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
 from app.schemas.events import UsageTotal, WorkflowFormData
+from app.schemas.knowledge import MetadataType
 from app.schemas.run import PendingInteractionOut
 from app.schemas.workflow import (
     OUT_HANDLE,
@@ -74,13 +75,25 @@ class TemplateField:
 
 
 class NodeFailure(Exception):
-    """노드 안에서 던지면 그 노드의 실패로 기록된다. retryable이면 retry 정책을 탄다."""
+    """노드 안에서 던지면 그 노드의 실패로 기록된다. retryable이면 retry 정책을 탄다.
 
-    def __init__(self, code: str, message: str, *, retryable: bool = False) -> None:
+    retry_after는 일일 한도처럼 기다리면 풀리는 실패의 남은 초다. 런이 이 실패로 끝나면
+    workflow.error에도 실린다.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+        retry_after: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class NodeNotImplemented(NodeFailure):
@@ -142,6 +155,32 @@ class NodeResult(BaseModel):
     loop_updates: dict[str, Any] = Field(default_factory=dict[str, Any])
     child_run_id: uuid.UUID | None = None
     child_session_id: uuid.UUID | None = None
+    # 이 노드가 답의 근거로 쓴 지식 검색 결과(RetrieverResourceData의 JSON 모양, 3단계 8.1).
+    # 성공한 노드의 것만 엔진이 런 단위로 모은다.
+    retriever_resources: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeBaseRef:
+    """검증이 보는 살아 있는 지식 베이스(3단계 8.1). 서비스가 DB에서 읽어 넘긴다."""
+
+    id: uuid.UUID
+    name: str
+    # data_policy.key_tier가 paid인지. 참조하면 경고 paid_key_required다.
+    paid: bool = False
+    # 메타데이터 필드 이름 → 타입.
+    fields: Mapping[str, MetadataType] = field(default_factory=dict[str, MetadataType])
+
+
+@dataclass(frozen=True, slots=True)
+class SqlSourceRef:
+    """검증이 보는 살아 있는 데이터 소스(3단계 10.3). 서비스가 DB에서 읽어 넘긴다."""
+
+    id: uuid.UUID
+    name: str
+    slug: str = ""
+    # data_policy.key_tier가 paid인지. 참조하면 경고 paid_key_required다.
+    paid: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +281,10 @@ class NodeContext(Protocol):
 
     def warn(self, message: str) -> None: ...
 
+    # 런 전체 인용 번호표에서 세그먼트의 번호(3단계 8.3). 이미 본 세그먼트는 같은 번호, 처음 보는
+    # 세그먼트는 다음 번호다. iteration·병렬 가지가 같은 표를 쓴다.
+    def cite(self, segment_id: str) -> int: ...
+
     # 이 노드의 하위 그래프(parent_id가 이 노드)를 plan.items마다 돈다. container 노드만 부른다.
     # state는 앞 구간이 waiting_input으로 돌려준 FramesOutcome.state다.
     async def run_frames(
@@ -280,6 +323,16 @@ class GraphView(Protocol):
     # 워크스페이스에 살아 있는 에이전트인지. 검증하는 쪽이 에이전트 목록을 주지 않았으면 None이다
     # (엔진처럼 DB를 모르는 곳).
     def agent_known(self, agent_id: uuid.UUID) -> bool | None: ...
+
+    # 그래프가 가리키는 지식 베이스 중 살아 있는 것. 목록을 주지 않았으면 None이다(agent_known과
+    # 같은 규칙). 없는 id는 지웠거나 다른 PC에서 가져온 노드다.
+    def knowledge_bases(self) -> Mapping[uuid.UUID, KnowledgeBaseRef] | None: ...
+
+    # 서버 설정 KB_TOP_K_MAX. 검증하는 쪽이 주지 않았으면 None이고 top_k는 실행에서 본다.
+    def kb_top_k_max(self) -> int | None: ...
+
+    # 그래프가 가리키는 데이터 소스 중 살아 있는 것(knowledge_bases와 같은 규칙, 3단계 11장).
+    def sql_sources(self) -> Mapping[uuid.UUID, SqlSourceRef] | None: ...
 
 
 class NodeRunner[C: BaseModel]:

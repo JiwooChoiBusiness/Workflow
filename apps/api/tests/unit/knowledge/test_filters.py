@@ -228,11 +228,14 @@ async def test_unsearchable_documents_stay_out(seeded: Seeded) -> None:
         repo = KbSearchDocumentRepository(session, seeded.workspace_id)
         everything = await repo.searchable(seeded.kb_id, completed_only=False)
         done = await repo.searchable(seeded.kb_id, completed_only=True)
-        rows = await repo.count_rows(seeded.kb_id)
+        while_indexing = await repo.summary(seeded.kb_id, completed_only=False)
+        finished_only = await repo.summary(seeded.kb_id, completed_only=True)
 
     assert {seeded.names[doc_id] for doc_id in everything} == {*DOCS, "busy"}
     assert {seeded.names[doc_id] for doc_id in done} == set(DOCS)
-    assert rows == len(DOCS) + 4
+    # (검색할 문서 수, 지운 것까지 센 행 수, 진행 중 문서가 있는지). 목록을 읽지 않고 센다.
+    assert while_indexing == (len(DOCS) + 1, len(DOCS) + 4, True)
+    assert finished_only == (len(DOCS), len(DOCS) + 4, False)
 
 
 def condition(name: str, operator: str, value: Any = None) -> MetadataCondition:

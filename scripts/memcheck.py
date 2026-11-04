@@ -1,9 +1,13 @@
 # 플랫폼 서버를 따로 띄워 /healthz의 rss_mb를 0.5초마다 잰다(설계 2.7). 유휴 상태를 잰 뒤 가짜
 # 어댑터로 셸 도구를 쓰는 런 1개를 돌리고, 이어서 워크플로우 미리보기 런 1개(llm, code, 원소 20개
 # iteration 안의 code, txt 파일을 읽는 document_extractor)와 챗플로우 미리보기 대화 3턴(llm 메모리,
-# answer)을 돌린 다음(2단계 8장), 런이 끝난 뒤 다시 같은 시간만큼 잰다. 런 중 구간은 초기 설정·
-# 로그인부터 run.completed까지, 워크플로우 런 중 구간은 워크플로우를 만들 때부터 workflow.completed
-# 까지, 챗플로우 구간은 챗플로우를 만들 때부터 세 번째 턴의 workflow.completed까지다.
+# answer)을 돌린 다음(2단계 8장), 지식 베이스에 1MB 글 문서 하나를 가짜 임베더로
+# 색인하고(청크 약 1,000개, 분당 6,000건) 하이브리드 검색 20번(메타데이터 필터 5번 포함)과 평가
+# 실행 1번을 한다(3단계 13장). 그 뒤 다시 같은 시간만큼 잰다. 런 중 구간은 초기 설정·로그인부터
+# run.completed까지, 워크플로우 런 중 구간은 워크플로우를 만들 때부터 workflow.completed까지,
+# 챗플로우 구간은 챗플로우를 만들 때부터 세 번째 턴의 workflow.completed까지, 인제스트 구간은 지식
+# 베이스를 만들 때부터 문서가 completed가 될 때까지, 검색 구간은 메타데이터를 넣을 때부터 평가
+# 응답까지다.
 # 최댓값이 MEMORY_BUDGET_MB(기본 300)를 넘으면 종료 코드 1, 서버가 뜨지 않거나 런이 succeeded로
 # 끝나지 않으면 2다.
 #
@@ -17,6 +21,7 @@ import http.client
 import io
 import json
 import os
+import random
 import shutil
 import signal
 import socket
@@ -45,10 +50,26 @@ PHASES = {
     "run": "런 중",
     "workflow": "워크플로우 런 중",
     "chat": "챗플로우 3턴 중",
+    "ingest": "인제스트 중",
+    "search": "검색 중",
     "after": "런 뒤",
 }
 ITERATION_ITEMS = 20
 CHAT_TURNS = 3
+# 가짜 임베더는 무료 등급 상한(분당 100건)을 걸지 않는다(3단계 6.6, K2·memcheck는 6,000).
+KB_EMBED_RPM = "6000"
+INGEST_BYTES = 1024 * 1024
+INGEST_TIMEOUT_SEC = 300
+# 낱말 32개 문단을 400토큰 청크로 나누면 1MB 글이 1,000개 안팎(989개)이 된다.
+INGEST_WORDS = 32
+INGEST_MAX_TOKENS = 400
+SEARCHES = 20
+FILTERED_SEARCHES = 5
+EVAL_CASES = 10
+KB_WORDS = (
+    "연차 휴가 출장 보고서 회의록 예산 일정 계약 보안 점검 배포 장애 고객 문의 정산 구매 채용 교육"
+    " 인사 평가 서버 백업 복구 로그 권한 승인 결재 공지 규정 지침"
+).split()
 # document_extractor가 서버 안에서 읽는 txt(pdf·docx와 달리 파서 설치가 없다).
 DOC_TEXT = "메모리 확인용 문서\n" * 200
 WORKFLOW_GRAPH = {
@@ -326,6 +347,87 @@ def _run_chatflow(console: Console) -> str:
     return "succeeded"
 
 
+def _ingest_text() -> str:
+    """1MB 안팎(UTF-8)의 서로 다른 문단. 가짜 임베더가 문단마다 다른 벡터를 내게 낱말을 섞는다."""
+    rng = random.Random(7)  # noqa: S311  같은 글을 다시 만들려는 고정 시드다.
+    paragraphs: list[str] = []
+    size = 0
+    while size < INGEST_BYTES:
+        words = " ".join(
+            f"{rng.choice(KB_WORDS)}{rng.randrange(1000)}" for _ in range(INGEST_WORDS)
+        )
+        paragraph = f"{len(paragraphs) + 1}번 문단. {words}"
+        paragraphs.append(paragraph)
+        size += len(paragraph.encode("utf-8")) + 2
+    return "\n\n".join(paragraphs)
+
+
+def _ingest(console: Console) -> tuple[str, str, int]:
+    """지식 베이스에 1MB 글 문서 하나를 넣고 끝날 때까지 기다린다. (KB id, 문서 id, 청크 수)."""
+    rule = {"general": {"max_tokens": INGEST_MAX_TOKENS, "overlap_tokens": 20}}
+    kb = console.call(
+        "POST",
+        "/api/console/knowledge",
+        {"name": "memcheck", "data_policy": {"acknowledged": True}, "process_rule": rule},
+        expect=201,
+    )
+    base = f"/api/console/knowledge/{kb['id']}"
+    created = console.call(
+        "POST", f"{base}/documents", {"name": "memcheck", "text": _ingest_text()}, expect=201
+    )
+    document_id = created["documents"][0]["id"]
+    deadline = time.monotonic() + INGEST_TIMEOUT_SEC
+    while True:
+        document = console.call("GET", f"{base}/documents/{document_id}", None, expect=200)
+        status = document["indexing_status"]
+        if status == "completed":
+            return kb["id"], document_id, int(document["total_segments"])
+        if status in ("error", "paused"):
+            raise ScenarioError(f"문서가 {status}로 끝났다: {document.get('error')}")
+        if time.monotonic() > deadline:
+            raise ScenarioError(f"문서가 {INGEST_TIMEOUT_SEC}초 안에 끝나지 않았다({status})")
+        time.sleep(SAMPLE_INTERVAL_SEC)
+
+
+def _search(console: Console, kb_id: str, document_id: str) -> None:
+    """하이브리드 검색 20번(메타데이터 필터 5번 포함)과 평가 실행 1번."""
+    base = f"/api/console/knowledge/{kb_id}"
+    field = console.call("POST", f"{base}/metadata", {"name": "team", "type": "string"}, expect=201)
+    console.call(
+        "POST",
+        f"{base}/documents/metadata",
+        {
+            "document_ids": [document_id],
+            "values": [{"field_id": field["id"], "value": "운영"}],
+            "apply_to_all": True,
+        },
+        expect=200,
+    )
+    rng = random.Random(11)  # noqa: S311  같은 질의를 다시 만들려는 고정 시드다.
+    condition = {"name": "team", "comparison_operator": "is", "value": "운영"}
+    for index in range(SEARCHES):
+        body: dict[str, Any] = {
+            "query": f"{rng.choice(KB_WORDS)}{rng.randrange(1000)} {rng.choice(KB_WORDS)} 문단",
+            "retrieval_model": {"search_method": "hybrid_search", "top_k": 10},
+        }
+        if index < FILTERED_SEARCHES:
+            body["metadata_filter"] = {"mode": "manual", "conditions": [condition]}
+        found = console.call("POST", f"{base}/retrieve", body, expect=200)
+        if not found["records"]:
+            raise ScenarioError(f"검색 결과가 없다: {body['query']}")
+    for index in range(EVAL_CASES):
+        console.call(
+            "POST",
+            f"{base}/eval/cases",
+            {
+                "question": f"{rng.choice(KB_WORDS)} {index}번 문단",
+                "expected": {"document_ids": [document_id]},
+            },
+            expect=201,
+        )
+    console.call("POST", f"{base}/eval/run", {"save": False}, expect=200)
+
+
 def _measure(
     server: subprocess.Popen[bytes], port: int, seconds: float, *, idle_only: bool
 ) -> dict[str, list[float]]:
@@ -354,6 +456,11 @@ def _measure(
             status = _run_chatflow(console)
             if status != "succeeded":
                 raise ScenarioError(f"챗플로우 턴이 {status}로 끝났다")
+            sampler.phase = "ingest"
+            kb_id, document_id, segments = _ingest(console)
+            print(f"인제스트: 청크 {segments}개", flush=True)
+            sampler.phase = "search"
+            _search(console, kb_id, document_id)
             sampler.phase = "after"
             time.sleep(seconds)
     finally:
@@ -424,6 +531,7 @@ def main(argv: list[str] | None = None) -> int:
         "DATA_DIR": str(data_dir),
         "LLM_FAKE": "true",
         "LLM_FAKE_DELAY_SEC": FAKE_DELAY_SEC,
+        "KB_EMBED_RPM": KB_EMBED_RPM,
     }
     output = data_dir / "server.out"
     error: str | None = None

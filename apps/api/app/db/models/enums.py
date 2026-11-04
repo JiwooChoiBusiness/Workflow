@@ -157,3 +157,28 @@ class KbQuerySource(StrEnum):
     TOOL = "tool"
     API = "api"
     EVAL = "eval"
+
+
+class SqlSourceKind(StrEnum):
+    # files는 CSV·TSV·xlsx를 DuckDB 질의 파일로 옮겨 읽고, sqlite는 올린 파일을 그대로 읽는다(10.2).
+    FILES = "files"
+    SQLITE = "sqlite"
+
+
+class SqlApproval(StrEnum):
+    NONE = "none"
+    ALWAYS = "always"
+
+
+class SqlQueryOrigin(StrEnum):
+    NODE = "node"
+    TOOL = "tool"
+    TEST = "test"
+    API = "api"
+
+
+class SqlQueryStatus(StrEnum):
+    OK = "ok"
+    REJECTED = "rejected"
+    ERROR = "error"
+    TIMEOUT = "timeout"

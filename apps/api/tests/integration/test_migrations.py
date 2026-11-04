@@ -25,9 +25,9 @@ from app.main import create_app
 from app.security.tokens import hash_token
 from app.services.api_keys import ApiKeyService
 
-HEAD = "0007"
+HEAD = "0008"
 
-# 1단계 설계 5.1, 2단계 설계 4.1(0003·0006), 3단계 설계 4.1(0007)의 테이블 전부.
+# 1단계 설계 5.1, 2단계 설계 4.1(0003·0006), 3단계 설계 4.1(0007·0008)의 테이블 전부.
 TABLES = {
     "workspace",
     "account",
@@ -63,6 +63,8 @@ TABLES = {
     "kb_eval_run",
     "kb_query_log",
     "kb_counter",
+    "sql_source",
+    "sql_query_log",
 }
 
 

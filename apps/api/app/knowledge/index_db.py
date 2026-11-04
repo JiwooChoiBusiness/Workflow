@@ -244,6 +244,16 @@ class IndexDb:
             self.available = False
             await self._close_connections()
 
+    def disk_bytes(self) -> int | None:
+        """index.db와 WAL 파일 크기의 합(KB 통계). 모든 KB가 한 파일을 나눠 쓴다. 없으면 None."""
+        sizes: list[int] = []
+        for path in (self.path, self.path.with_name(self.path.name + "-wal")):
+            try:
+                sizes.append(path.stat().st_size)
+            except OSError:
+                continue
+        return sum(sizes) if sizes else None
+
     async def describe(self, kb_id: UUID) -> IndexMeta | None:
         async with self.read() as conn:
             return await read_kb_row(conn, kb_id)

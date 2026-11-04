@@ -3,6 +3,9 @@
 평가 실행은 질문마다 검색(source=eval, 질의 임베딩은 interactive)을 한 번씩 하고 R@1·R@3·R@5·
 MRR@10을 낸다. top_k가 작아도 상위 10개까지 봐야 R@5·MRR@10을 잴 수 있어 검색은 최소 10개로
 돌린다(순위는 top_k와 상관없이 같다). 저장한 실행은 KB마다 최근 30개만 남는다(4.5).
+
+LLM 재순위 설정으로 돌리면 문항마다 채팅 호출이 한 번 직렬로 난다. 무료 등급 하루 몫과 요청 시간을
+지키려고 그때는 문항 수(=채팅 호출 수)를 RERANK_EVAL_MAX_CASES로 묶고, 넘으면 돌리지 않는다.
 """
 
 import time
@@ -54,6 +57,8 @@ log = structlog.get_logger("app.services.knowledge_eval")
 
 KEEP_RUNS = 30
 TOP_HITS = 5
+# LLM 재순위 평가의 문항(채팅 호출) 상한. 합성 평가셋 53문항이 한 번에 돌 만큼이다.
+RERANK_EVAL_MAX_CASES = 60
 
 
 def _expected(raw: dict[str, Any] | None) -> EvalExpected:
@@ -111,7 +116,12 @@ class KnowledgeEvalService:
         async with self._db.read() as session:
             kb = await active_kb(session, workspace_id, kb_id)
             rows = await KbEvalCaseRepository(session, workspace_id).list_for_kb(kb.id)
-        return EvalCaseList(items=[_case_out(row) for row in rows], total=len(rows))
+            items = [_case_out(row) for row in rows]
+            # 정답 문서 이름은 화면이 문서 목록을 따로 읽지 않게 한 번에 싣는다.
+            names = await KbDocumentRepository(session, workspace_id).live_names(
+                kb.id, {doc_id for item in items for doc_id in item.expected.document_ids}
+            )
+        return EvalCaseList(items=items, total=len(rows), document_names=names)
 
     async def create_case(
         self, workspace_id: uuid.UUID, kb_id: uuid.UUID, body: EvalCaseCreate
@@ -263,6 +273,14 @@ class KnowledgeEvalService:
         settings = body.retrieval_model or stored.model_copy(
             update={"top_k": min(stored.top_k, self._settings.kb_top_k_max)}
         )
+        if settings.reranking_mode == "llm" and len(rows) > RERANK_EVAL_MAX_CASES:
+            raise ServiceError(
+                422,
+                "eval_rerank_limit",
+                f"LLM 재순위로는 평가셋을 {RERANK_EVAL_MAX_CASES}문항까지 돌린다(지금 {len(rows)}"
+                "문항). 문항을 줄이거나 재순위를 끄고 돌린다",
+                details={"max": RERANK_EVAL_MAX_CASES, "cases": len(rows)},
+            )
         depth = min(max(settings.top_k, EVAL_DEPTH), self._settings.kb_top_k_max)
         searched = settings.model_copy(update={"top_k": depth})
         started = self._monotonic()

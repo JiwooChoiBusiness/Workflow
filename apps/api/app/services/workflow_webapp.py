@@ -33,7 +33,9 @@ from app.schemas.webapp import FlowAppOut, FlowField, FlowRunResult
 from app.schemas.wf_run import WfRunList, WfRunOut
 from app.schemas.workflow import Graph, WfFileOut
 from app.services.errors import ServiceError, not_found
+from app.services.sql_sources import graph_sql_sources
 from app.services.workflow_files import FileDownload, WorkflowFileService, bind_run_uploads
+from app.services.workflow_knowledge import graph_knowledge, workflow_tier
 from app.services.workflow_runs import (
     StartedWfRun,
     enqueue,
@@ -141,7 +143,8 @@ async def start_version_run(
     """버전 하나로 워크플로우 런을 만들어 워크플로우 레인에 넣는다.
 
     미리보기 런(WorkflowRunService.start_draft_run)과 같은 검사를 하되 버전과 trigger를 받는다. 발행
-    버전은 발행할 때 검증을 통과했지만 노드 레지스트리가 바뀌었을 수 있어 다시 본다.
+    버전은 발행할 때 검증을 통과했지만 노드 레지스트리가 바뀌었거나 지식 베이스를 지웠을 수 있어
+    다시 본다.
     """
     if supervisor.shutting_down or bus.closed:
         raise ServiceError(503, "shutting_down", "서버가 종료 중이라 새 런을 받지 않는다")
@@ -150,6 +153,10 @@ async def start_version_run(
     graph = parse_graph(version.graph)
     if graph is None:
         raise ServiceError(422, "version_invalid", "발행 버전의 그래프를 읽지 못했다")
+    async with db.read() as session:
+        bases = await graph_knowledge(session, workspace_id, graph)
+        sources = await graph_sql_sources(session, workspace_id, graph)
+        tier = await workflow_tier(session, workspace_id, graph, bases)
     analysis = graph_check.analyze(
         graph,
         "workflow",
@@ -158,6 +165,9 @@ async def start_version_run(
         conversation_vars=conversation_types(
             workflow.kind, conversation_vars(version.conversation_vars)
         ),
+        knowledge_bases=bases,
+        kb_top_k_max=settings.kb_top_k_max,
+        sql_sources=sources,
     )
     if not analysis.ok:
         raise ServiceError(
@@ -179,7 +189,7 @@ async def start_version_run(
         raise ServiceError(
             422, "invalid_inputs", "런 입력이 올바르지 않다", details=exc.errors
         ) from None
-    limits = run_limits(settings, parse_settings(version.settings))
+    limits = run_limits(settings, parse_settings(version.settings), tier)
     async with db.write() as session:
         runs = WfRunRepository(session, workspace_id)
         run = runs.add(

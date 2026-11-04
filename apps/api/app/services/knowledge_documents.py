@@ -13,7 +13,7 @@ import math
 import uuid
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -59,7 +59,15 @@ from app.schemas.knowledge import (
 )
 from app.services.errors import ServiceError
 from app.services.files import guess_mime, sanitize_filename
-from app.services.knowledge import active_kb, live_document, parse_process_rule, split_rules
+from app.services.knowledge import (
+    MAX_UPLOAD_FILES,
+    active_kb,
+    display_of,
+    live_document,
+    parse_process_rule,
+    retry_after_of,
+    split_rules,
+)
 from app.services.knowledge_metadata import document_metadata, fill_built_in
 from app.services.knowledge_runtime import embedding_config_of, key_tier_of
 from app.storage.base import StorageBackend, StorageError, StorageLimitExceeded, kb_file_key
@@ -71,22 +79,12 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger("app.services.knowledge_documents")
 
-# 한 번에 올리는 파일 수(6.2). 같은 요청의 문서는 batch 하나로 묶인다.
-MAX_UPLOAD_FILES = 20
 ACCEPTED_FORMATS = "txt, md, csv, html, pdf, docx"
 _MB = 1024 * 1024
 # 미리보기가 돌려주는 청크 수(6.4). Parent-child는 부모 10개와 그 자식이다.
 PREVIEW_CHUNKS = 50
 PREVIEW_PARENTS = 10
 _PAUSABLE = frozenset(IN_PROGRESS_STATUSES)
-_RUNNING = frozenset(
-    {
-        KbIndexingStatus.PARSING,
-        KbIndexingStatus.CLEANING,
-        KbIndexingStatus.SPLITTING,
-        KbIndexingStatus.INDEXING,
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -94,6 +92,13 @@ class UploadSource:
     filename: str | None
     content_type: str | None
     chunks: AsyncIterable[bytes]
+
+
+@dataclass(frozen=True)
+class OriginalFile:
+    storage_key: str
+    filename: str
+    mime: str
 
 
 @dataclass(frozen=True)
@@ -108,19 +113,7 @@ class _Stored:
 
 
 def display_status(document: KbDocument) -> str:
-    """목록 필터 값(4.4, Dify와 같다). 보관은 색인이 끝난 문서에만 보인다."""
-    status = document.indexing_status
-    if status == KbIndexingStatus.WAITING:
-        return "queuing"
-    if status == KbIndexingStatus.PAUSED:
-        return "paused"
-    if status in _RUNNING:
-        return "indexing"
-    if status == KbIndexingStatus.ERROR:
-        return "error"
-    if document.archived:
-        return "archived"
-    return "available" if document.enabled else "disabled"
+    return display_of(document.indexing_status, document.enabled, document.archived)
 
 
 def document_out(
@@ -180,17 +173,6 @@ def _text_filename(name: str) -> str:
 
 def _extract_mode(document: KbDocument) -> ExtractMode:
     return "model" if (document.extract or {}).get("mode") == "model" else "text"
-
-
-def _retry_after(document: KbDocument) -> datetime | None:
-    raw = (document.error or {}).get("retry_after")
-    if not isinstance(raw, str):
-        return None
-    try:
-        value = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class KnowledgeDocumentService:
@@ -258,6 +240,14 @@ class KnowledgeDocumentService:
             found = await document_metadata(session, workspace_id, kb.id, [document.id])
         return document_out(document, found[document.id])
 
+    async def original(
+        self, workspace_id: uuid.UUID, kb_id: uuid.UUID, document_id: uuid.UUID
+    ) -> OriginalFile:
+        """문서 원본. 원본을 바꾼 문서는 지금 원본이고, 글로 만든 문서는 저장해 둔 .txt다."""
+        async with self._db.read() as session:
+            _, document = await live_document(session, workspace_id, kb_id, document_id)
+        return OriginalFile(document.storage_key, document.filename, document.mime)
+
     async def create_from_text(
         self,
         workspace_id: uuid.UUID,
@@ -308,8 +298,12 @@ class KnowledgeDocumentService:
         options: KbDocumentUploadOptions,
         *,
         uploader: str | None = None,
+        data_source_type: KbDataSourceType = KbDataSourceType.UPLOAD_FILE,
     ) -> KbDocumentsCreated:
-        """파일 여러 개(최대 20)를 원본으로 저장하고 문서를 만든다. 하나라도 실패하면 모두 뺀다."""
+        """파일 여러 개(최대 20)를 원본으로 저장하고 문서를 만든다. 하나라도 실패하면 모두 뺀다.
+
+        data_source_type은 문서가 어디서 왔는지다. knowledge_index 노드가 넣는 파일은 workflow다.
+        """
         if not files:
             raise ServiceError(
                 422,
@@ -378,7 +372,7 @@ class KnowledgeDocumentService:
             stored,
             process_rule=options.process_rule,
             allow_duplicate=options.allow_duplicate,
-            data_source_type=KbDataSourceType.UPLOAD_FILE,
+            data_source_type=data_source_type,
             uploader=uploader,
             extract_mode=options.extract_mode,
         )
@@ -623,7 +617,7 @@ class KnowledgeDocumentService:
                     return None
                 if status != KbIndexingStatus.ERROR:
                     return skip("not_failed", "오류로 끝난 문서만 다시 시도한다")
-                retry_after = _retry_after(document)
+                retry_after = retry_after_of(document)
                 if retry_after is not None and retry_after > now:
                     return skip(
                         "retry_after",

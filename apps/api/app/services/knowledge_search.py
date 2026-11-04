@@ -171,6 +171,10 @@ class RetrievalResult:
     # 자동 필터·LLM 재순위의 채팅 호출. 노드가 node.usage로 낸다.
     model_calls: list[ModelCall]
     latency_ms: int
+    # 자동 필터가 만든 조건(모델 호출이 실패했으면 None)과 그 조건을 실제로 걸었는지. 필드가 없거나
+    # 값이 틀려 버린 조건도 질의 기록에서 볼 수 있게 남긴다.
+    auto_filter: MetadataFilter | None = None
+    auto_filter_applied: bool = False
 
     def resources(self) -> list[RetrieverResource]:
         return [record.resource() for record in self.records]
@@ -207,13 +211,23 @@ class _Target:
 
 @dataclass
 class _Scope:
-    """KB 하나에서 검색할 문서."""
+    """KB 하나에서 검색할 문서.
 
-    allowed: set[uuid.UUID]
+    질의마다 문서 목록을 읽지 않는다. 지운·끈·보관한 문서는 후보 유닛을 app.db에서 읽을 때 SQL
+    조건으로 빠진다. 문서 id를 직접 드는 것은 메타데이터 필터에 맞는 문서이거나, 검색 못 하는 문서가
+    있고 검색할 문서가 DOC_FILTER_LIMIT 이하라 벡터 검색에 doc_id IN을 걸 때뿐이다.
+    """
+
+    # 검색할 문서가 하나라도 있는지.
+    searchable: bool
+    allowed: set[uuid.UUID] | None
     # 메타데이터 필터나 검색 못 하는 문서가 있어 index.db 결과를 걸러야 하는지.
     restricted: bool
     # 색인이 진행 중인 문서(waiting~indexing)가 있는지. error·paused는 세지 않는다.
     in_progress: bool
+
+    def admits(self, document_id: uuid.UUID) -> bool:
+        return self.allowed is None or document_id in self.allowed
 
 
 @dataclass(frozen=True)
@@ -370,7 +384,7 @@ class KnowledgeSearchService:
         except IndexUnavailable as exc:
             raise _unavailable(str(exc)) from exc
         text = self._fit(text, targets, effective, warnings)
-        filter_plan = await self._filter_plan(
+        filter_plan, auto_filter = await self._filter_plan(
             targets, fields, metadata_filter, text, chat_tier, warnings, calls
         )
         scopes = await self._scopes(workspace_id, targets, fields, filter_plan)
@@ -423,7 +437,16 @@ class KnowledgeSearchService:
                 )
             )
         latency = int((self._monotonic() - started) * 1000)
-        result = RetrievalResult(text, effective, records, warnings, calls, latency)
+        result = RetrievalResult(
+            text,
+            effective,
+            records,
+            warnings,
+            calls,
+            latency,
+            auto_filter=auto_filter,
+            auto_filter_applied=auto_filter is not None and filter_plan is not None,
+        )
         await self._bookkeep(workspace_id, targets, result, metadata_filter, source)
         return result
 
@@ -562,17 +585,18 @@ class KnowledgeSearchService:
         tier: KeyTier,
         warnings: list[RetrievalWarning],
         calls: list[ModelCall],
-    ) -> FilterPlan | None:
+    ) -> tuple[FilterPlan | None, MetadataFilter | None]:
+        """(걸 조건, 자동 필터가 만든 조건). 자동 필터가 아니면 두 번째는 None이다."""
         if metadata_filter is None or metadata_filter.mode == "disabled":
-            return None
+            return None, None
         kb_ids = [target.id for target in targets]
         per_kb = {target.id: fields[target.id] for target in targets}
         if metadata_filter.mode == "manual":
             if not metadata_filter.conditions:
-                return None
+                return None, None
             try:
                 types = check_fields(metadata_filter.conditions, per_kb)
-                return plan(metadata_filter, types)
+                return plan(metadata_filter, types), None
             except FilterError as exc:
                 raise ServiceError(422, exc.code, exc.message, details=exc.details) from exc
         common = common_fields([per_kb[kb_id] for kb_id in kb_ids])
@@ -589,7 +613,7 @@ class KnowledgeSearchService:
         built = outcome.metadata_filter
         if built is not None:
             try:
-                return plan(built, common) if built.conditions else None
+                return (plan(built, common) if built.conditions else None), built
             except FilterError as exc:
                 reason = exc.message
         warnings.append(
@@ -600,7 +624,7 @@ class KnowledgeSearchService:
             )
         )
         log.info("knowledge.auto_filter_ignored", kb_ids=[str(k) for k in kb_ids], reason=reason)
-        return None
+        return None, built
 
     async def _scopes(
         self,
@@ -613,18 +637,37 @@ class KnowledgeSearchService:
         async with self._db.read() as session:
             documents = KbSearchDocumentRepository(session, workspace_id)
             for target in targets:
-                field_ids = {field.name: field.id for field in fields[target.id]}
-                statuses = await documents.searchable(
-                    target.id,
-                    completed_only=target.completed_only,
-                    plan=filter_plan,
-                    field_ids=field_ids,
+                if filter_plan is not None:
+                    statuses = await documents.searchable(
+                        target.id,
+                        completed_only=target.completed_only,
+                        plan=filter_plan,
+                        field_ids={field.name: field.id for field in fields[target.id]},
+                    )
+                    scopes[target.id] = _Scope(
+                        searchable=bool(statuses),
+                        allowed=set(statuses),
+                        restricted=True,
+                        in_progress=any(
+                            status in IN_PROGRESS_STATUSES for status in statuses.values()
+                        ),
+                    )
+                    continue
+                count, rows, in_progress = await documents.summary(
+                    target.id, completed_only=target.completed_only
                 )
-                rows = await documents.count_rows(target.id)
+                # 지우는 중인 문서도 행으로 센다. index.db에 아직 그 유닛이 남아 있을 수 있다.
+                restricted = count < rows
+                allowed: set[uuid.UUID] | None = None
+                if restricted and 0 < count <= DOC_FILTER_LIMIT:
+                    allowed = set(
+                        await documents.searchable(target.id, completed_only=target.completed_only)
+                    )
                 scopes[target.id] = _Scope(
-                    allowed=set(statuses),
-                    restricted=filter_plan is not None or len(statuses) < rows,
-                    in_progress=any(status in IN_PROGRESS_STATUSES for status in statuses.values()),
+                    searchable=count > 0,
+                    allowed=allowed,
+                    restricted=restricted,
+                    in_progress=in_progress,
                 )
         return scopes
 
@@ -712,7 +755,7 @@ class KnowledgeSearchService:
         keyword: list[FtsHit] = []
         units: dict[int, UnitRef] = {}
         stale = False
-        if not scope.allowed:
+        if not scope.searchable:
             return _Searched(KbHits(target.id, frozenset(), [], [], {}), stale)
         depth = candidate_depth(settings.top_k, self._settings.kb_search_candidates)
         keep = kb_keep(settings)
@@ -748,7 +791,11 @@ class KnowledgeSearchService:
     ) -> list[Hit]:
         doc_ids: list[str] | None = None
         k = depth
-        if scope.restricted and len(scope.allowed) <= DOC_FILTER_LIMIT:
+        if (
+            scope.restricted
+            and scope.allowed is not None
+            and len(scope.allowed) <= DOC_FILTER_LIMIT
+        ):
             doc_ids = [doc_id_of(doc_id) for doc_id in scope.allowed]
         elif scope.restricted:
             k = min(depth * WIDEN_FACTOR, MAX_K)
@@ -810,16 +857,16 @@ class KnowledgeSearchService:
             async with self._db.read() as session:
                 if target.parent_child:
                     rows = await KbSearchChildRepository(session, workspace_id).units(
-                        target.id, unknown
+                        target.id, unknown, completed_only=target.completed_only
                     )
                     refs = [UnitRef(unit, seg, doc, child) for unit, child, seg, doc in rows]
                 else:
                     plain = await KbSearchSegmentRepository(session, workspace_id).units(
-                        target.id, unknown
+                        target.id, unknown, completed_only=target.completed_only
                     )
                     refs = [UnitRef(unit, seg, doc) for unit, seg, doc in plain]
             for ref in refs:
-                if ref.document_id in scope.allowed:
+                if scope.admits(ref.document_id):
                     units[ref.unit_no] = ref
         return [hit for hit in found if hit.unit_no in units]
 
@@ -973,6 +1020,13 @@ class KnowledgeSearchService:
         }
         if metadata_filter is not None and metadata_filter.mode != "disabled":
             snapshot["metadata_filter"] = metadata_filter.model_dump(mode="json")
+        if result.auto_filter is not None:
+            snapshot["auto_filter"] = {
+                **result.auto_filter.model_dump(
+                    mode="json", include={"logical_operator", "conditions"}
+                ),
+                "applied": result.auto_filter_applied,
+            }
         if result.warnings:
             snapshot["warnings"] = [warning.code for warning in result.warnings]
         now = self._clock()

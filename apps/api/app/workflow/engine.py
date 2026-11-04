@@ -19,6 +19,11 @@ loop 노드는 run_loop로 같은 프레임 기계를 하나씩 차례로 돌린
 입력 대기는 agent 노드의 승인·질문과 human_input 노드의 폼 두 가지다. 폼 응답은 재개할 때
 RunContext.reply로 들어와 그 노드 state의 "reply"로 넘어간다.
 
+성공한 노드가 낸 인용(NodeResult.retriever_resources)은 런 단위로 모은다. 세그먼트 id로 겹친 것을
+빼고 position 순으로 50개까지이며 체크포인트에도 남아 재개한 런이 이어 붙인다(3단계 8.1, 8.3).
+번호는 런 전체 번호표(NodeContext.cite)에서 받아 iteration 안의 llm이나 context를 쓰는 llm이
+여럿이어도 겹치지 않는다. 번호표도 체크포인트에 남는다.
+
 단일 노드 실행(RunContext.single_node)은 그 노드 하나(iteration이면 하위 그래프까지)만 돈다. 노드가
 참조하는 변수는 seed로 받은 값을 풀에 먼저 넣는다.
 
@@ -43,6 +48,8 @@ import structlog
 import uuid6
 from pydantic import BaseModel, Field, ValidationError
 
+from app.schemas.citations import cite as citation_number
+from app.schemas.citations import event_resources, merge_resources
 from app.schemas.events import UsageTotal, WfPendingKind, WorkflowFormData
 from app.schemas.run import PendingInteractionOut
 from app.schemas.workflow import (
@@ -154,13 +161,17 @@ class RunContext:
     env: Mapping[str, Any] = field(default_factory=dict[str, Any])
     # env 가운데 비밀값의 이름. 그 값은 이벤트·노드 런·체크포인트에서 ***가 된다(9.4).
     secret_env: Collection[str] = ()
+    # 설정의 키(.env의 Gemini 키, ENCRYPTION_KEY). 비밀 env와 함께 가리고, mask_outputs를 꺼도
+    # 끝·답변 출력에서 가린다. 에이전트 런(RunMasker)과 같은 규칙이다(3단계 KS9).
+    platform_secrets: Collection[str] = ()
     conversation: Mapping[str, Any] = field(default_factory=dict[str, Any])
     # 대화 변수 선언 타입. None이면 검증이 conv 이름을 따지지 않는다.
     conversation_types: Mapping[str, VarType] | None = None
     limits: EngineLimits = field(default_factory=EngineLimits)
     # waiting_input으로 멈춘 런을 이어 갈 때 그때 저장한 체크포인트.
     resume: Checkpoint | None = None
-    # settings.mask_secrets_in_outputs. end 출력·answer 텍스트에도 비밀값 마스킹을 건다.
+    # settings.mask_secrets_in_outputs. end 출력·answer 텍스트에도 비밀 env 마스킹을 건다. 꺼도
+    # platform_secrets는 가린다.
     mask_outputs: bool = True
     # 단일 노드 실행(6.1)이면 그 노드 id. 런 출력은 그 노드의 출력이다.
     single_node: str | None = None
@@ -206,11 +217,17 @@ class WfEvent:
     node_run: NodeRunRecord | None = None
 
 
+def _none(value: object) -> bool:
+    return value is None
+
+
 class RunError(BaseModel):
     code: str
     message: str
     node_id: str | None = None
     retryable: bool = False
+    # 일일 한도처럼 기다리면 풀리는 노드 실패의 남은 초. 없으면 직렬화하지 않는다.
+    retry_after: float | None = Field(default=None, exclude_if=_none)
 
 
 class PendingWait(BaseModel):
@@ -242,15 +259,20 @@ class RunOutcome(BaseModel):
     checkpoint: Checkpoint | None = None
     node_runs: int = 0
     duration_ms: int = 0
+    # 런 단위로 모은 인용(RetrieverResourceData의 JSON 모양). mask_outputs면 마스킹했다.
+    retriever_resources: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
 
 
 def new_id() -> uuid.UUID:
     return uuid6.uuid7()
 
 
-def _failed(code: str, message: str, *, retryable: bool = False) -> NodeResult:
+def _failed(
+    code: str, message: str, *, retryable: bool = False, retry_after: float | None = None
+) -> NodeResult:
     return NodeResult(
-        status="failed", error=NodeError(code=code, message=message, retryable=retryable)
+        status="failed",
+        error=NodeError(code=code, message=message, retryable=retryable, retry_after=retry_after),
     )
 
 
@@ -334,6 +356,9 @@ class _NodeCtx:
         if message not in self.warnings:
             self.warnings.append(message)
 
+    def cite(self, segment_id: str) -> int:
+        return citation_number(self._execution.citations, segment_id)
+
     async def run_frames(self, plan: FramePlan, state: Mapping[str, Any] | None) -> FramesOutcome:
         return await self._execution.run_frames(self._node, plan, state)
 
@@ -354,9 +379,14 @@ class _Execution:
         self.registry = registry
         self.ctx = ctx
         self.outcome: RunOutcome | None = None
-        self.masker = Masker(
+        env_secrets = [
             ctx.env[name] for name in ctx.secret_env if isinstance(ctx.env.get(name), str)
-        )
+        ]
+        self.masker = Masker([*env_secrets, *ctx.platform_secrets])
+        # 끝·답변 출력. '출력에서 비밀 값 가리기'를 끄면 비밀 env만 드러나고 설정의 키는 가린다.
+        self.output_masker = self.masker if ctx.mask_outputs else Masker(ctx.platform_secrets)
+        # 경고는 비밀 env만 센다. 설정의 키는 짧지 않다.
+        self.short_env_secrets = len(Masker(env_secrets).short)
         # (이벤트 타입, 프레임 키) → 그 스트림의 마스커와 끝부분을 낼 때 붙일 id들.
         self._deltas: dict[tuple[str, str], tuple[StreamMasker, dict[str, Any]]] = {}
         self.pool = VariablePool(ctx.limits.pool_max_bytes)
@@ -365,6 +395,9 @@ class _Execution:
         self.answer = ""
         self.conversation: dict[str, Any] = dict(ctx.conversation)
         self.usage = UsageTotal()
+        self.resources: list[dict[str, Any]] = []
+        # 런 전체 인용 번호표(세그먼트 id → 번호).
+        self.citations: dict[str, int] = {}
         self.node_runs = 0
         self._queue: asyncio.Queue[_Item | None] = asyncio.Queue()
         self._closed = False
@@ -447,7 +480,11 @@ class _Execution:
     ) -> None:
         text = data.get("text")
         if event_type == "answer.delta" and not self.ctx.mask_outputs:
-            await self._emit(event_type, data)
+            # 비밀 env는 드러내고 설정의 키만 가린다. 가릴 값이 없으면 StreamMasker가 그대로 낸다.
+            if stream is not None and isinstance(text, str):
+                await self._emit_streamed(event_type, stream, data, self.output_masker)
+            else:
+                await self._emit(event_type, self.output_masker.mask(data))
         elif event_type in STREAMED_EVENTS and stream is not None and isinstance(text, str):
             await self._emit_streamed(event_type, stream, data)
         else:
@@ -462,16 +499,19 @@ class _Execution:
         같은 키를 써서 미리 흘린 끝과 노드가 낸 앞에 걸친 비밀값도 가린다.
         """
         data: dict[str, Any] = {"text": text, "node_id": node_id}
-        if not self.ctx.mask_outputs:
-            await self._emit("answer.delta", data)
-            return
-        await self._emit_streamed("answer.delta", node_id, data)
+        await self._emit_streamed("answer.delta", node_id, data, self.output_masker)
 
-    async def _emit_streamed(self, event_type: str, stream: str, data: dict[str, Any]) -> None:
+    async def _emit_streamed(
+        self,
+        event_type: str,
+        stream: str,
+        data: dict[str, Any],
+        base: Masker | None = None,
+    ) -> None:
         key = (event_type, stream)
         ids = {name: value for name, value in data.items() if name != "text"}
         found = self._deltas.get(key)
-        masker = found[0] if found is not None else StreamMasker(self.masker)
+        masker = found[0] if found is not None else StreamMasker(base or self.masker)
         self._deltas[key] = (masker, ids)
         text = masker.feed(str(data["text"]))
         if text:
@@ -537,10 +577,10 @@ class _Execution:
                 "node_count": len(ctx.graph.nodes),
             },
         )
-        if self.masker.short:
+        if self.short_env_secrets:
             # 8자 미만 비밀값은 일반 글자와 겹치기 쉬워 가리지 않는다(9.4). 값은 남기지 않는다.
             log.warning(
-                "workflow.secret_too_short", run_id=str(ctx.run_id), count=len(self.masker.short)
+                "workflow.secret_too_short", run_id=str(ctx.run_id), count=self.short_env_secrets
             )
         errors = self._blocking_issues(analysis)
         if errors:
@@ -661,6 +701,8 @@ class _Execution:
         self.answer = resume.answer_text
         self.conversation = dict(resume.conv_vars)
         self.usage = resume.usage.model_copy()
+        self.resources = [dict(item) for item in resume.retriever_resources]
+        self.citations = dict(resume.citation_numbers)
         self._budget_tokens = resume.budget_tokens
         self._next_index = resume.next_index
         self.node_runs = resume.node_runs
@@ -873,7 +915,10 @@ class _Execution:
         except NodeNotImplemented as exc:
             return _failed(exc.code, exc.message), True
         except NodeFailure as exc:
-            return _failed(exc.code, exc.message, retryable=exc.retryable), False
+            failed = _failed(
+                exc.code, exc.message, retryable=exc.retryable, retry_after=exc.retry_after
+            )
+            return failed, False
         except (TemplateError, VariableError) as exc:
             return _failed(exc.code, exc.message), False
         except TimeoutError:
@@ -1006,7 +1051,7 @@ class _Execution:
                 self.pool.mark_skipped(key)
             elif handled and strategy == "default":
                 handles = [OUT_HANDLE]
-                outputs = self._default_outputs(runner, config, node)
+                outputs = self._default_outputs(runner, config, node, result.outputs)
                 self.pool.put_outputs(key, outputs, self._output_types(runner, config))
             elif handled:
                 handles = [FAIL_HANDLE]
@@ -1017,6 +1062,8 @@ class _Execution:
                     self.outputs.update(result.run_outputs)
                 if result.answer:
                     self.answer += result.answer
+                if result.retriever_resources:
+                    self.resources = merge_resources([self.resources, result.retriever_resources])
                 for name, value in result.conv_updates.items():
                     self.pool.assign(name, value)
                     self.conversation[name] = value
@@ -1058,6 +1105,7 @@ class _Execution:
                             message=message,
                             node_id=node_id,
                             retryable=error.retryable,
+                            retry_after=error.retry_after,
                         )
                     )
         else:
@@ -1072,11 +1120,22 @@ class _Execution:
     def _output_types(self, runner: AnyRunner, config: BaseModel) -> dict[str, VarType | None]:
         return {spec.name: spec.type for spec in runner.outputs(config)}
 
-    def _default_outputs(self, runner: AnyRunner, config: BaseModel, node: Node) -> dict[str, Any]:
+    def _default_outputs(
+        self,
+        runner: AnyRunner,
+        config: BaseModel,
+        node: Node,
+        failed: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         declared = self._output_types(runner, config)
         values: dict[str, Any] = {}
         for name, declared_type in declared.items():
-            value = node.error.default_outputs.get(name)
+            # 실패한 노드가 직접 낸 출력(sql_query의 error처럼 고쳐 다시 돌릴 재료)이 사용자가 정한
+            # 기본값보다 앞선다. 다른 노드는 실패할 때 출력을 내지 않아 동작이 같다.
+            if failed and name in failed:
+                value = failed[name]
+            else:
+                value = node.error.default_outputs.get(name)
             try:
                 values[name] = coerce(value, declared_type)
             except VariableError:
@@ -1529,6 +1588,8 @@ class _Execution:
         waiting = dict(self._waiting)
         outputs, answer = dict(self.outputs), self.answer
         conversation, usage = dict(self.conversation), self.usage.model_copy()
+        resources = [dict(item) for item in self.resources]
+        citations = dict(self.citations)
         budget, next_index, node_runs = self._budget_tokens, self._next_index, self.node_runs
         elapsed = self._elapsed_ms()
         cursors = self.streams.cursors() if self.streams is not None else {}
@@ -1549,6 +1610,8 @@ class _Execution:
                 answer_cursors=cursors,
                 conv_vars=mask.mask(conversation),
                 usage=usage,
+                retriever_resources=mask.mask(resources),
+                citation_numbers=citations,
                 budget_tokens=budget,
                 next_index=next_index,
                 node_runs=node_runs,
@@ -1561,9 +1624,13 @@ class _Execution:
         return checkpoint
 
     def _completed_data(
-        self, status: WorkflowEndStatus, outputs: dict[str, Any] | None, error: RunError | None
+        self,
+        status: WorkflowEndStatus,
+        outputs: dict[str, Any] | None,
+        error: RunError | None,
+        resources: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "status": status,
             "outputs": outputs,
             "usage_total": self.usage.model_dump(),
@@ -1571,6 +1638,10 @@ class _Execution:
             "duration_ms": self._elapsed_ms(),
             "error": error.model_dump() if error else None,
         }
+        if resources:
+            # 이벤트에는 줄인 것만 싣는다. 전문은 실행기가 wf_run·메시지에 쓴다(8.3).
+            data["retriever_resources"] = event_resources(resources)
+        return data
 
     def _single_outputs(self) -> None:
         target = self.ctx.single_node
@@ -1591,10 +1662,11 @@ class _Execution:
             )
         self._single_outputs()
         await self._flush_streamed()
-        mask = self.masker if self.ctx.mask_outputs else Masker()
+        mask = self.output_masker
         outputs: dict[str, Any] = mask.mask(self.outputs)
         prestreamed = self.streams.pending() if self.streams is not None else ""
         answer = mask.text(self.answer + prestreamed)
+        resources: list[dict[str, Any]] = mask.mask(self.resources)
         checkpoint: Checkpoint | None = None
         pending: PendingWait | None = None
         if failure is not None:
@@ -1602,10 +1674,14 @@ class _Execution:
             if root is not None and not self._skip_checkpoint:
                 checkpoint = await self._checkpoint()
             await self._emit("workflow.error", failure.model_dump())
-            await self._emit("workflow.completed", self._completed_data(status, None, failure))
+            await self._emit(
+                "workflow.completed", self._completed_data(status, None, failure, resources)
+            )
         elif self._cancelled:
             status = "cancelled"
-            await self._emit("workflow.completed", self._completed_data(status, None, None))
+            await self._emit(
+                "workflow.completed", self._completed_data(status, None, None, resources)
+            )
         elif self._pending and root is not None:
             status = "waiting_input"
             key = min(self._pending, key=_key_order)
@@ -1631,10 +1707,14 @@ class _Execution:
                     "form": form.model_dump(mode="json") if form is not None else None,
                 },
             )
-            await self._emit("workflow.completed", self._completed_data(status, None, None))
+            await self._emit(
+                "workflow.completed", self._completed_data(status, None, None, resources)
+            )
         else:
             status = "succeeded"
-            await self._emit("workflow.completed", self._completed_data(status, outputs, None))
+            await self._emit(
+                "workflow.completed", self._completed_data(status, outputs, None, resources)
+            )
         return RunOutcome(
             status=status,
             outputs=outputs if status == "succeeded" else {},
@@ -1646,6 +1726,7 @@ class _Execution:
             checkpoint=checkpoint,
             node_runs=self.node_runs,
             duration_ms=self._elapsed_ms(),
+            retriever_resources=resources,
         )
 
     def _pending_wait(self, key: str, node_id: str, iteration_index: int | None) -> PendingWait:

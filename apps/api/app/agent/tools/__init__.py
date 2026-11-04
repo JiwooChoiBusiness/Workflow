@@ -2,16 +2,21 @@ from collections.abc import Iterable
 
 from app.agent.tools.ask_user import AskUserTool
 from app.agent.tools.base import Tool, ToolGroup
+from app.agent.tools.describe_sql_source import DescribeSqlSourceTool
 from app.agent.tools.edit_file import EditFileTool
 from app.agent.tools.http_request import HttpRequestTool
 from app.agent.tools.install_packages import InstallPackagesTool
 from app.agent.tools.list_files import ListFilesTool
+from app.agent.tools.query_sql import QuerySqlTool
 from app.agent.tools.read_file import ReadFileTool
 from app.agent.tools.run_python import RunPythonTool
+from app.agent.tools.search_knowledge import SearchKnowledgeTool
 from app.agent.tools.shell import ShellTool
 from app.agent.tools.write_file import WriteFileTool
 
-# 모델에 보내는 순서이기도 하다. 순서가 바뀌면 prompt_hash가 바뀐다.
+# 모델에 보내는 순서이기도 하다. 순서가 바뀌면 prompt_hash가 바뀐다. search_knowledge(그룹
+# knowledge)와 SQL 도구 둘(그룹 sql)은 끝에 두어 지식 베이스·데이터 소스가 없는 에이전트의
+# prompt_hash를 바꾸지 않는다. 런에는 목록을 담은 인스턴스를 러너가 따로 붙인다.
 BUILTIN_TOOLS: tuple[Tool, ...] = (
     ShellTool(),
     RunPythonTool(),
@@ -22,6 +27,9 @@ BUILTIN_TOOLS: tuple[Tool, ...] = (
     ListFilesTool(),
     HttpRequestTool(),
     AskUserTool(),
+    SearchKnowledgeTool(),
+    DescribeSqlSourceTool(),
+    QuerySqlTool(),
 )
 
 

@@ -294,7 +294,11 @@ class UnitIndexer:
             )
             return report
         result = await self._runtime.embeddings.embed_documents(
-            [unit.unit.text for unit in vector_units], config, tier=self.tier, priority=priority
+            [unit.unit.text for unit in vector_units],
+            config,
+            tier=self.tier,
+            priority=priority,
+            scope=self._kb.workspace_id,
         )
         done = [
             (unit, vector)

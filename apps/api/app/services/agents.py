@@ -9,6 +9,11 @@ provision_content로 작업공간 초기화에 넘길 내용을 만든다.
 하위 에이전트(sub_agents, 오케스트레이션 2.3)는 저장·발행 때 검사한다. 없는 에이전트·자기 자신·
 순환·잘못된 결과 스키마는 막고, 설명 없음·미발행·깊이 초과는 응답의 warnings로 알린다. 발행은 하위
 에이전트가 모두 발행되어 있어야 한다(발행된 부모가 초안 자식을 부르면 미완성 설정이 밖으로 샌다).
+
+지식 베이스(knowledge, 3단계 8.4)도 저장·발행 때 본다. 지운 KB와 유료 전용 KB는 warnings로 알리고
+(런은 지운 KB를 빼고 검색한다), KB가 둘 이상인데 검색 설정이 없거나 유료 전용 KB를 쓰는데 유료 키가
+없으면 발행하지 않는다. 데이터 소스(sql_sources, 3단계 10.3)도 같다. 지운 것과 유료 전용은
+warnings이고, 유료 전용인데 유료 키가 없으면 발행하지 않는다.
 """
 
 import asyncio
@@ -41,9 +46,11 @@ from app.db.repositories.agent_files import AgentFileRepository
 from app.db.repositories.agent_versions import AgentVersionRepository
 from app.db.repositories.agents import AgentRepository
 from app.db.repositories.api_keys import ApiKeyRepository
+from app.db.repositories.knowledge import KnowledgeBaseRepository
 from app.db.repositories.runs import RunRepository
 from app.db.repositories.skill_versions import SkillVersionRepository
 from app.db.repositories.snapshots import SnapshotRepository
+from app.db.repositories.sql_sources import SqlSourceRepository
 from app.db.repositories.workspace_instances import WorkspaceInstanceRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
@@ -54,6 +61,7 @@ from app.sandbox.provisioning import SnapshotSource
 from app.schemas.agent import AgentCreate, AgentOut, AgentPatch, PublishOut, SnapshotOut
 from app.schemas.agent_version import (
     TOOL_GROUPS,
+    AgentKnowledge,
     AgentVersionConfig,
     AgentVersionList,
     AgentVersionOut,
@@ -70,7 +78,10 @@ from app.schemas.agent_version import (
 from app.schemas.webapp import WebAppOut
 from app.schemas.workspace import WorkspaceSettings
 from app.security.crypto import CryptoError, SecretCipher, cipher_from_settings
+from app.services.agent_tree import resolve_version, tree_tier
 from app.services.errors import Problems, ServiceError, not_found
+from app.services.knowledge_runtime import key_tier_of
+from app.services.run_tier import agent_sql_sources, paid_key_configured, sql_key_tier_of
 from app.services.runs import workspace_handle
 from app.storage.base import StorageBackend, StorageError, snapshot_key
 
@@ -123,6 +134,8 @@ class RuntimeVersion(BaseModel):
     config: AgentVersionConfig
     # 복호화한 환경변수. 도구 프로세스 환경에만 넣고 이벤트·로그에는 남기지 않는다.
     env: dict[str, str] = Field(repr=False)
+    # 비밀로 저장한 환경변수의 이름. 런 이벤트와 메시지 행에서 그 값을 가린다(3단계 KS9).
+    secret_names: frozenset[str] = frozenset()
     skills: list[ResolvedSkill]
     files: list[ResolvedFile]
     # 발행 스냅샷(3.12). 초안은 늘 None이다.
@@ -219,11 +232,20 @@ def _config_dict(version: AgentVersion) -> dict[str, Any]:
         "skill_version_ids": version.skill_version_ids,
         "file_ids": version.file_ids,
         "sub_agents": version.sub_agents or [],
+        "knowledge": version.knowledge or {},
+        "sql_sources": [str(item) for item in agent_sql_sources(version.sql_sources)],
     }
 
 
 def _stored_sub_agents(refs: Sequence[SubAgentRef]) -> list[dict[str, Any]]:
     return [ref.model_dump(mode="json", by_alias=True) for ref in refs]
+
+
+def _stored_knowledge(knowledge: AgentKnowledge) -> dict[str, Any] | None:
+    # 비어 있으면 열을 비운다. 도구가 붙지 않는 에이전트의 행은 3단계 전과 같다.
+    if not knowledge.kb_ids and knowledge.retrieval_model is None:
+        return None
+    return knowledge.model_dump(mode="json")
 
 
 def _sub_agent_ids(raw: Sequence[Any]) -> set[uuid.UUID]:
@@ -481,6 +503,22 @@ class AgentService:
             warnings = await self._check_sub_agents(
                 session, workspace_id, agent, sub_agents, problems, publishing=False
             )
+            if "knowledge" in body.model_fields_set:
+                knowledge = body.knowledge
+            else:
+                # 지식 탭을 아직 모르는 화면이 보낸 저장이다. 저장된 값을 그대로 둔다.
+                knowledge = self._stored_knowledge(draft)
+            warnings += await self._check_knowledge(
+                session, workspace_id, knowledge, problems, publishing=False
+            )
+            if "sql_sources" in body.model_fields_set:
+                sql_sources = body.sql_sources
+            else:
+                # 데이터 소스를 아직 모르는 화면이 보낸 저장이다. 저장된 값을 그대로 둔다.
+                sql_sources = agent_sql_sources(draft.sql_sources)
+            warnings += await self._check_sql_sources(
+                session, workspace_id, sql_sources, problems, publishing=False
+            )
             env_vars = self._merge_env(draft.env_vars, body.env_vars, problems)
             problems.raise_if_any()
             draft.instructions = body.instructions
@@ -493,9 +531,143 @@ class AgentService:
             draft.skill_version_ids = [str(value) for value in body.skill_version_ids]
             draft.file_ids = [str(value) for value in body.file_ids]
             draft.sub_agents = _stored_sub_agents(sub_agents)
+            draft.knowledge = _stored_knowledge(knowledge)
+            draft.sql_sources = [str(item) for item in sql_sources] or None
             draft.updated_at = self._next_stamp(draft.updated_at)
             await AgentVersionRepository(session, workspace_id).flush()
         return self._version_out(draft, warnings)
+
+    def _stored_knowledge(self, version: AgentVersion) -> AgentKnowledge:
+        try:
+            return AgentKnowledge.model_validate(version.knowledge or {})
+        except ValidationError:
+            log.warning("agent.knowledge_invalid", version_id=str(version.id))
+            return AgentKnowledge()
+
+    async def _check_knowledge(
+        self,
+        session: AsyncSession,
+        workspace_id: uuid.UUID,
+        knowledge: AgentKnowledge,
+        problems: Problems,
+        *,
+        publishing: bool,
+    ) -> list[AgentWarning]:
+        """지식 베이스 검사(3단계 8.4, 11장). 막을 문제는 problems에, 알릴 것은 반환값에."""
+        warnings: list[AgentWarning] = []
+        if not knowledge.kb_ids:
+            return warnings
+        rows = await KnowledgeBaseRepository(session, workspace_id).get_many_active(
+            knowledge.kb_ids
+        )
+        by_id = {row.id: row for row in rows}
+        paid_key = paid_key_configured(self._settings)
+        for index, kb_id in enumerate(knowledge.kb_ids):
+            row = by_id.get(kb_id)
+            if row is None:
+                warnings.append(
+                    AgentWarning(
+                        code="knowledge_base_not_found",
+                        message=(
+                            "지식 베이스를 찾을 수 없다. 지웠거나 다른 PC의 id다. 런에서는 빼고 "
+                            "검색한다"
+                        ),
+                        kb_id=kb_id,
+                    )
+                )
+                continue
+            if key_tier_of(row) != "paid":
+                continue
+            warnings.append(
+                AgentWarning(
+                    code="paid_key_required",
+                    message=(
+                        f"지식 베이스 {row.name}은(는) 유료 키 전용이다. 이 에이전트의 런은 모두 "
+                        "유료 키로 돌고 GEMINI_PAID_API_KEY가 없으면 실행·발행할 수 없다"
+                    ),
+                    kb_id=kb_id,
+                )
+            )
+            if publishing and not paid_key:
+                problems.add(
+                    ("knowledge", "kb_ids", index),
+                    "paid_key_missing",
+                    f"유료 키 전용 지식 베이스 {row.name}을(를) 쓰려면 GEMINI_PAID_API_KEY가 "
+                    "있어야 한다",
+                )
+        retrieval = knowledge.retrieval_model
+        if len(knowledge.kb_ids) > 1 and retrieval is None:
+            message = (
+                "지식 베이스를 여럿 고르면 검색 설정(top_k·결합 방식)을 정한다. 정하기 전에는 "
+                "기본값으로 섞는다"
+            )
+            if publishing:
+                problems.add(
+                    ("knowledge", "retrieval_model"), "retrieval_settings_required", message
+                )
+            else:
+                warnings.append(AgentWarning(code="retrieval_settings_required", message=message))
+        top_k_max = self._settings.kb_top_k_max
+        if retrieval is not None and retrieval.top_k > top_k_max:
+            problems.add(
+                ("knowledge", "retrieval_model", "top_k"),
+                "top_k_too_large",
+                f"top_k는 {top_k_max} 이하여야 한다",
+                max=top_k_max,
+            )
+        return warnings
+
+    async def _check_sql_sources(
+        self,
+        session: AsyncSession,
+        workspace_id: uuid.UUID,
+        source_ids: Sequence[uuid.UUID],
+        problems: Problems,
+        *,
+        publishing: bool,
+    ) -> list[AgentWarning]:
+        """데이터 소스 검사(3단계 10.3, 11장). 지운 것과 유료 전용은 알리고, 발행 때 유료 키가
+        없으면 막는다."""
+        warnings: list[AgentWarning] = []
+        if not source_ids:
+            return warnings
+        rows = await SqlSourceRepository(session, workspace_id).get_many_active(source_ids)
+        by_id = {row.id: row for row in rows}
+        paid_key = paid_key_configured(self._settings)
+        for index, source_id in enumerate(source_ids):
+            row = by_id.get(source_id)
+            if row is None:
+                warnings.append(
+                    AgentWarning(
+                        code="sql_source_not_found",
+                        message=(
+                            "데이터 소스를 찾을 수 없다. 지웠거나 다른 PC의 id다. 런에서는 빼고 "
+                            "쓴다"
+                        ),
+                        source_id=source_id,
+                    )
+                )
+                continue
+            if sql_key_tier_of(row) != "paid":
+                continue
+            warnings.append(
+                AgentWarning(
+                    code="paid_key_required",
+                    message=(
+                        f"데이터 소스 {row.name}은(는) 유료 키 전용이다. 이 에이전트의 런은 모두 "
+                        "유료 키로 돌고 GEMINI_PAID_API_KEY가 없으면 실행·발행할 수 없다"
+                    ),
+                    source_id=source_id,
+                )
+            )
+            if publishing and not paid_key:
+                problems.add(
+                    ("sql_sources", index),
+                    "paid_key_missing",
+                    f"유료 키 전용 데이터 소스 {row.name}을(를) 쓰려면 GEMINI_PAID_API_KEY가 "
+                    "있어야 한다",
+                )
+        return warnings
 
     def _stored_refs(self, version: AgentVersion) -> list[SubAgentRef]:
         refs: list[SubAgentRef] = []
@@ -601,6 +773,27 @@ class AgentService:
                             agent_id=target.id,
                         )
                     )
+            if await self._sub_agent_paid(
+                session, workspace_id, target, draft_parent=not publishing
+            ):
+                warnings.append(
+                    AgentWarning(
+                        code="paid_key_required",
+                        message=(
+                            f"하위 에이전트 {target.name}(또는 그 아래)이 유료 키 전용 지식 "
+                            "베이스나 데이터 소스를 쓴다. 이 에이전트의 런도 모두 유료 키로 "
+                            "돌고 GEMINI_PAID_API_KEY가 없으면 실행·발행할 수 없다"
+                        ),
+                        agent_id=target.id,
+                    )
+                )
+                if publishing and not paid_key_configured(self._settings):
+                    problems.add(
+                        loc,
+                        "paid_key_missing",
+                        f"하위 에이전트 {target.name}이(가) 유료 키 전용 지식 베이스나 데이터 "
+                        "소스를 쓰므로 GEMINI_PAID_API_KEY가 있어야 한다",
+                    )
         max_depth = self._settings.orchestration_max_depth
         if _deepest(graph, agent.id, frozenset({agent.id}), max_depth + 1) > max_depth:
             warnings.append(
@@ -613,6 +806,22 @@ class AgentService:
                 )
             )
         return warnings
+
+    async def _sub_agent_paid(
+        self,
+        session: AsyncSession,
+        workspace_id: uuid.UUID,
+        target: Agent,
+        *,
+        draft_parent: bool,
+    ) -> bool:
+        """하위 에이전트가 부를 버전(과 그 아래)이 유료 전용 지식 베이스·데이터 소스를 쓰는지
+        (3단계 14.4)."""
+        picked = resolve_version(target, draft_parent=draft_parent)
+        if picked is None:
+            return False
+        version = await AgentVersionRepository(session, workspace_id).get(picked[0])
+        return version is not None and await tree_tier(session, workspace_id, [version]) == "paid"
 
     async def publish(
         self, workspace_id: uuid.UUID, agent_id: uuid.UUID, change_note: str | None = None
@@ -652,6 +861,8 @@ class AgentService:
                         skill_version_ids=list(draft.skill_version_ids),
                         file_ids=list(draft.file_ids),
                         sub_agents=copy.deepcopy(draft.sub_agents or []),
+                        knowledge=copy.deepcopy(draft.knowledge),
+                        sql_sources=copy.deepcopy(draft.sql_sources),
                         snapshot_id=None,
                         published_at=self._clock(),
                         change_note=change_note or None,
@@ -735,6 +946,12 @@ class AgentService:
         )
         warnings = await self._check_sub_agents(
             session, workspace_id, agent, config.sub_agents, problems, publishing=True
+        )
+        warnings += await self._check_knowledge(
+            session, workspace_id, config.knowledge, problems, publishing=True
+        )
+        warnings += await self._check_sql_sources(
+            session, workspace_id, config.sql_sources, problems, publishing=True
         )
         if problems.items:
             raise ServiceError(
@@ -907,6 +1124,9 @@ class AgentService:
             version_number=version.version_number,
             config=AgentVersionConfig.model_validate(_config_dict(version)),
             env=self._decrypt_env(version.env_vars),
+            secret_names=frozenset(
+                item.name for item in self._stored_env(version.env_vars) if item.secret
+            ),
             skills=resolve_skills(skill_ids, skill_rows),
             files=files,
             snapshot_id=version.snapshot_id,

@@ -2,7 +2,8 @@
 
 tests/fixtures/dsl/dify의 예제 셋은 Dify DSL 구조를 보고 직접 쓴 파일이다. 지원 노드만 우리 노드로
 들어오고 나머지는 unsupported 자리로 남으며 엣지는 그대로다. 노드 id·변수 참조·모델·핸들 변환과
-옛 형식(케이스 없는 if-else, iteration-start 없는 iteration)도 본다.
+옛 형식(케이스 없는 if-else, iteration-start 없는 iteration)도 본다. Dify 지식 검색은 3단계 M24부터
+우리 knowledge_retrieval로 들어온다(test_dsl_knowledge.py에 자세히).
 """
 
 from pathlib import Path
@@ -86,10 +87,11 @@ def test_workflow_example_comes_in_with_only_supported_nodes() -> None:
         ("notes_skipped", None),
         ("model_replaced", "n1720000000006"),
         ("dependencies_ignored", None),
-        ("features_ignored", None),
         ("imported_code", None),
         ("env_value_missing", None),
     }
+    # 인용 표시(retriever_resource)는 웹앱 설정으로 옮긴다(3단계 8.3).
+    assert document.settings.webapp.citations_enabled is True
     assert [(item.name, item.value, item.secret) for item in document.env_vars] == [
         ("SEARCH_KEY", None, True),
         ("SEARCH_BASE", "https://search.example.com", False),
@@ -171,29 +173,30 @@ def test_literal_braces_in_a_dify_prompt_stay_text() -> None:
     )
 
 
-def test_chatflow_example_keeps_unsupported_nodes_in_place() -> None:
+def test_chatflow_example_converts_every_node() -> None:
     prepared = imported("chatflow_support.yaml")
     document = prepared.document
     nodes = nodes_of(prepared)
 
     assert document.kind == "chatflow"
-    # 도구(time/current_time)는 M19부터 내장 current_time으로 들어온다.
-    assert prepared.unsupported == ["n1730000000003"]
-    assert sorted(issues_of(prepared)) == [("unsupported_node", "n1730000000003")]
+    # 도구(time/current_time)는 M19부터 내장 current_time으로, 지식 검색은 M24부터
+    # knowledge_retrieval로 들어온다. Dify 지식 베이스는 이을 수 없어 kb_required로 고르게 한다.
+    assert prepared.unsupported == []
+    assert sorted(issues_of(prepared)) == [("kb_required", "n1730000000003")]
     assert set(warnings_of(prepared)) == {
         ("model_replaced", "n1730000000002"),
         ("model_replaced", "n1730000000004"),
         ("model_replaced", "n1730000000006"),
-        ("unsupported_node", "n1730000000003"),
+        ("knowledge_unlinked", "n1730000000003"),
+        ("context_moved", "n1730000000004"),
         ("features_ignored", None),
     }
     assert nodes["n1730000000009"].type == "tool"
     assert nodes["n1730000000009"].config == {"tool": "current_time", "params": {}}
     knowledge = nodes["n1730000000003"]
-    assert knowledge.type == "unsupported" and knowledge.title == "환불 규정 검색"
-    assert knowledge.config["original_type"] == "knowledge-retrieval"
-    assert knowledge.config["data"]["retrieval_mode"] == "multiple"
-    # 옮기지 못한 노드의 엣지도 그대로 남는다.
+    assert knowledge.type == "knowledge_retrieval" and knowledge.title == "환불 규정 검색"
+    assert knowledge.config == {"kb_ids": [], "query_var": "sys.query"}
+    assert knowledge.ui == {"dify_dataset_ids": ["9d1e0000-0000-4000-8000-000000000003"]}
     edges = edges_of(prepared)
     assert ("n1730000000002", "class_1", "n1730000000003") in edges
     assert ("n1730000000003", "out", "n1730000000004") in edges
@@ -213,10 +216,12 @@ def test_chatflow_example_keeps_unsupported_nodes_in_place() -> None:
     }
     llm = nodes["n1730000000004"].config
     assert llm["memory"] == {"enabled": True, "window_turns": 6}
+    # 검색 결과는 context로 옮겨 참고 자료 블록이 되고 {{#context#}} 자리는 빈다.
+    assert llm["context"] == {"var": "n1730000000003.result"}
     assert llm["prompt"] == [
         {
             "role": "system",
-            "text": "다음 자료만 보고 환불 규정을 설명한다.\n{{ n1730000000003.result }}\n"
+            "text": "다음 자료만 보고 환불 규정을 설명한다.\n\n"
             "지금까지 다룬 주제: {{ conv.topic }}",
         },
         {"role": "user", "text": "{{ sys.query }}"},
@@ -249,6 +254,7 @@ def test_chatflow_example_keeps_unsupported_nodes_in_place() -> None:
     webapp = document.settings.webapp
     assert webapp.opening_statement == "안녕하세요! 무엇을 도와드릴까요?"
     assert webapp.suggested_questions == ["환불 규정이 궁금해요", "배송은 얼마나 걸리나요?"]
+    assert webapp.citations_enabled is False
 
 
 def test_batch_example_maps_iteration_items_and_files() -> None:

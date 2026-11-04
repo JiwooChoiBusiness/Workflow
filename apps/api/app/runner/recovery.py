@@ -89,7 +89,6 @@ async def recover_workflows(db: Database, supervisor: Supervisor, bus: EventBus)
                 run.pending_interaction = None
                 run.resume_payload = None
                 run.ended_at = now
-                await nodes.close_running(run.id, now)
                 await close_waiting_nodes(session, run, now)
                 await settle_message(session, run)
                 failed.append(

@@ -36,7 +36,15 @@ from app.workflow.nodes.base import (
     NodeRunner,
     OutputSpec,
 )
-from app.workflow.ports import ChildRunView, FilePort, HttpPort, NodeSettings, TaskPort
+from app.workflow.ports import (
+    ChildRunView,
+    FilePort,
+    HttpPort,
+    KnowledgePort,
+    NodeSettings,
+    SqlPort,
+    TaskPort,
+)
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "graphs"
 
@@ -147,12 +155,16 @@ class FakePorts:
         files: FilePort | None = None,
         tasks: TaskPort | None = None,
         node_settings: NodeSettings | None = None,
+        knowledge: KnowledgePort | None = None,
+        sql: SqlPort | None = None,
     ) -> None:
         self.model = model
         self.sandbox = sandbox
         self.http = http
         self.files = files
         self.tasks = tasks
+        self.knowledge = knowledge
+        self.sql = sql
         self.node_settings = node_settings or NodeSettings()
         self.checkpoints: list[Checkpoint] = []
 
@@ -432,3 +444,149 @@ def kit() -> Kit:
 @pytest.fixture
 def make_node() -> Callable[..., dict[str, Any]]:
     return node
+
+
+SQL_SOURCE = uuid.UUID("0196f000-0000-7000-8000-0000000000c1")
+
+
+class FakeSql:
+    """SqlPort. 검증은 실제 validate_sql로 하고 실행은 정해 둔 행을 돌려준다(3단계 10.3~10.6).
+
+    executed에 실제로 돌린 SQL이, saved에 CSV를 넘긴 경로가 남는다.
+    """
+
+    def __init__(
+        self,
+        *,
+        rows: list[list[Any]] | None = None,
+        columns: list[str] | None = None,
+        approval: str = "none",
+        truncated: bool = False,
+        fail: Any = None,
+        max_rows_cap: int = 1000,
+    ) -> None:
+        from app.knowledge.sql.sources import source_view
+        from app.schemas.sql_source import (
+            ColumnNote,
+            SqlAnnotations,
+            SqlColumn,
+            SqlSchemaSnapshot,
+            SqlTable,
+            TableNote,
+        )
+
+        snapshot = SqlSchemaSnapshot(
+            tables=[
+                SqlTable(
+                    name="sales",
+                    columns=[
+                        SqlColumn(name="region", type="VARCHAR", samples=["서울", "부산"]),
+                        SqlColumn(name="amount", type="DOUBLE", samples=[10.5]),
+                        SqlColumn(name="card", type="VARCHAR"),
+                    ],
+                    row_count=3,
+                )
+            ],
+            captured_at=datetime(2026, 11, 3, tzinfo=UTC),
+            source_hash="h",
+        )
+        notes = SqlAnnotations(
+            tables={
+                "sales": TableNote(description="판매", columns={"card": ColumnNote(hidden=True)})
+            }
+        )
+        self.view = source_view("files", snapshot, notes)
+        self.columns = columns or ["region", "total"]
+        self.rows = rows if rows is not None else [["서울", 30.5], ["부산", 10.0]]
+        self.approval = approval
+        self.truncated = truncated
+        self.fail = fail
+        self.max_rows_cap = max_rows_cap
+        self.validated: list[str] = []
+        self.executed: list[tuple[str, int, int]] = []
+        self.saved: list[Path] = []
+
+    async def describe(self, source_id: uuid.UUID) -> Any:
+        from app.workflow.ports import SqlPortError, SqlSourceInfo
+
+        if source_id != SQL_SOURCE:
+            raise SqlPortError("sql_source_not_found", "데이터 소스를 찾을 수 없다", stage="source")
+        return SqlSourceInfo(
+            id=source_id,
+            name="매출",
+            slug="sales",
+            view=self.view,
+            glossary="합계는 amount의 합이다",
+            approval=self.approval,  # pyright: ignore[reportArgumentType]
+            max_rows=200,
+            timeout_sec=30,
+            llm_rows=50,
+            llm_bytes=65536,
+            max_rows_cap=self.max_rows_cap,
+        )
+
+    async def validate(self, source_id: uuid.UUID, sql: str, *, max_rows: int) -> str:
+        from app.knowledge.sql.validate import SqlRejected, extract_sql, validate_sql
+        from app.workflow.ports import SqlPortError
+
+        try:
+            validated = validate_sql(extract_sql(sql), self.view, max_rows=max_rows)
+        except SqlRejected as exc:
+            raise SqlPortError(exc.code, exc.message, stage="validate") from None
+        self.validated.append(validated.sql)
+        return validated.sql
+
+    async def execute(
+        self,
+        source_id: uuid.UUID,
+        sql: str,
+        *,
+        max_rows: int,
+        timeout_sec: int,
+        llm_rows: int,
+        llm_bytes: int,
+        save_csv: Any,
+    ) -> Any:
+        from app.knowledge.sql.results import result_text, row_objects
+        from app.workflow.ports import SqlRun
+
+        checked = await self.validate(source_id, sql, max_rows=max_rows)
+        if self.fail is not None:
+            raise self.fail
+        self.executed.append((checked, max_rows, timeout_sec))
+        file = None
+        if self.truncated and save_csv is not None:
+            path = Path(f"C:/fake/{uuid.uuid4().hex}.csv")
+            self.saved.append(path)
+            file = await save_csv(path)
+        objects, cut = row_objects(self.columns, self.rows)
+        return SqlRun(
+            sql_executed=checked,
+            columns=self.columns,
+            rows=objects,
+            row_count=len(self.rows),
+            truncated=self.truncated,
+            rows_cut=cut,
+            result_text=result_text(
+                self.columns,
+                self.rows,
+                row_count=len(self.rows),
+                truncated=self.truncated,
+                max_rows=max_rows,
+                llm_rows=llm_rows,
+                llm_bytes=llm_bytes,
+                source_name="매출",
+            ),
+            elapsed_ms=3,
+            file=file,
+        )
+
+
+@pytest.fixture
+def fake_sql() -> Callable[..., FakeSql]:
+    return FakeSql
+
+
+@pytest.fixture
+def sql_source_id() -> uuid.UUID:
+    return SQL_SOURCE

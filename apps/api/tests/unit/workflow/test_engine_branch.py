@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.workflow import NodeError
 from app.workflow.nodes.base import (
     ALL_STRATEGIES,
     NodeContext,
@@ -270,6 +271,65 @@ async def test_default_strategy_continues_with_default_outputs(kit: Any, make_no
     assert probe["status"] == "failed"
     assert probe["error"]["code"] == "flaky"
     assert probe["outputs_preview"] == {"value": "기본값"}
+
+
+class ReportingFailure(NodeRunner[OpenConfig]):
+    """실패하면서 고칠 재료(error·detail)를 출력으로 내는 노드(sql_query와 같은 모양)."""
+
+    type = "test_reporting"
+    Config = OpenConfig
+    error_strategies = ALL_STRATEGIES
+    fixed_outputs = (
+        OutputSpec("error", "string"),
+        OutputSpec("detail", "string"),
+        OutputSpec("other", "number"),
+    )
+
+    async def run(
+        self, ctx: NodeContext, config: OpenConfig, state: dict[str, Any] | None
+    ) -> NodeResult:
+        return NodeResult(
+            status="failed",
+            error=NodeError(code="broken", message="고장"),
+            outputs={"error": "broken: 고장", "detail": "실패한 입력"},
+        )
+
+
+async def test_a_failed_nodes_own_outputs_come_before_user_defaults(
+    kit: Any, make_node: Node
+) -> None:
+    kit.registry.register(ReportingFailure())
+    defaults = {"error": "기본 오류", "detail": "기본 설명", "other": 7}
+    graph = kit.graph(
+        [
+            make_node("start", "start"),
+            make_node(
+                "report_1",
+                "test_reporting",
+                {},
+                error={"strategy": "default", "default_outputs": defaults},
+            ),
+            make_node(
+                "end_1",
+                "end",
+                {
+                    "outputs": [
+                        {"name": name, "var": f"report_1.{name}"}
+                        for name in ("error", "detail", "other")
+                    ]
+                },
+            ),
+        ],
+        ["start>report_1", "report_1>end_1"],
+    )
+
+    run = await kit.run(graph)
+
+    assert run.outcome.status == "succeeded"
+    # 노드가 낸 출력이 사용자 기본값을 덮고, 노드가 내지 않은 출력만 기본값이다.
+    assert run.outcome.outputs == {"error": "broken: 고장", "detail": "실패한 입력", "other": 7}
+    report = next(d for d in run.of("node.completed") if d["node_id"] == "report_1")
+    assert report["status"] == "failed" and report["error"]["code"] == "broken"
 
 
 async def test_branch_strategy_follows_only_the_fail_handle(kit: Any, make_node: Node) -> None:

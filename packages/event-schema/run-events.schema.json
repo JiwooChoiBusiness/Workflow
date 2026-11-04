@@ -2657,6 +2657,101 @@
       "title": "ChildRunStartedData",
       "type": "object"
     },
+    "CitedChildChunk": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "position",
+        "score"
+      ],
+      "title": "CitedChildChunk",
+      "type": "object"
+    },
+    "CitedFusion": {
+      "properties": {
+        "cosine": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cosine"
+        },
+        "vector_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vector Score"
+        },
+        "keyword_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Keyword Score"
+        },
+        "vector_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vector Rank"
+        },
+        "keyword_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Keyword Rank"
+        }
+      },
+      "title": "CitedFusion",
+      "type": "object"
+    },
     "ContextCompactedData": {
       "properties": {
         "before_tokens": {
@@ -3103,6 +3198,18 @@
           "default": false,
           "title": "Retryable",
           "type": "boolean"
+        },
+        "retry_after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After"
         }
       },
       "required": [
@@ -3475,6 +3582,145 @@
       "title": "PingData",
       "type": "object"
     },
+    "RetrieverResourceData": {
+      "description": "인용 하나. position은 런 전체에서 세그먼트마다 하나이고, 모델이 본 [n]과 같다.",
+      "properties": {
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "dataset_id": {
+          "format": "uuid",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "dataset_name": {
+          "title": "Dataset Name",
+          "type": "string"
+        },
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_name": {
+          "title": "Document Name",
+          "type": "string"
+        },
+        "data_source_type": {
+          "title": "Data Source Type",
+          "type": "string"
+        },
+        "segment_id": {
+          "format": "uuid",
+          "title": "Segment Id",
+          "type": "string"
+        },
+        "segment_position": {
+          "title": "Segment Position",
+          "type": "integer"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "hit_count": {
+          "default": 0,
+          "title": "Hit Count",
+          "type": "integer"
+        },
+        "word_count": {
+          "default": 0,
+          "title": "Word Count",
+          "type": "integer"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer"
+        },
+        "doc_metadata": {
+          "additionalProperties": true,
+          "title": "Doc Metadata",
+          "type": "object"
+        },
+        "child_chunks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CitedChildChunk"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Child Chunks"
+        },
+        "fusion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitedFusion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fusion_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fusion Score"
+        },
+        "indexing_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Indexing Status"
+        }
+      },
+      "required": [
+        "position",
+        "dataset_id",
+        "dataset_name",
+        "document_id",
+        "document_name",
+        "data_source_type",
+        "segment_id",
+        "segment_position",
+        "score",
+        "content"
+      ],
+      "title": "RetrieverResourceData",
+      "type": "object"
+    },
     "RunCompletedData": {
       "properties": {
         "status": {
@@ -3557,6 +3803,18 @@
           "default": false,
           "title": "Retryable",
           "type": "boolean"
+        },
+        "retry_after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After"
         }
       },
       "required": [
@@ -3898,6 +4156,32 @@
           ],
           "default": null,
           "title": "Child Run Id"
+        },
+        "retriever_resources": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RetrieverResourceData"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retriever Resources"
+        },
+        "sql": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolSqlSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -3997,6 +4281,29 @@
       "title": "ToolCallStartedData",
       "type": "object"
     },
+    "ToolSqlSummary": {
+      "properties": {
+        "sql_executed": {
+          "title": "Sql Executed",
+          "type": "string"
+        },
+        "row_count": {
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sql_executed",
+        "row_count",
+        "truncated"
+      ],
+      "title": "ToolSqlSummary",
+      "type": "object"
+    },
     "UsageData": {
       "properties": {
         "step": {
@@ -4066,6 +4373,18 @@
           ],
           "default": null,
           "title": "Cost Usd"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Call Id"
         }
       },
       "required": [
@@ -4173,6 +4492,21 @@
             }
           ],
           "default": null
+        },
+        "retriever_resources": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RetrieverResourceData"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retriever Resources"
         }
       },
       "required": [
@@ -4210,6 +4544,18 @@
           "default": false,
           "title": "Retryable",
           "type": "boolean"
+        },
+        "retry_after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After"
         }
       },
       "required": [

@@ -257,6 +257,8 @@ class AgentRunner(NodeRunner[AgentConfig]):
             limits=config.limits,
             approval_mode="off" if config.approval_mode == "off" else None,
             session_mode="ephemeral",
+            # 자식은 이 런과 자기 버전 중 높은 등급으로 돈다(3단계 14.4).
+            tier=ctx.ports.node_settings.tier,
             correlation={
                 "node_run_id": str(ctx.node_run_id),
                 "node_id": ctx.node_id,

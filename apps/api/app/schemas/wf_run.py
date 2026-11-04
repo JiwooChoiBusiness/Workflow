@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from app.schemas.citations import RetrieverResourceData
 from app.schemas.events import (
     NodeError,
     NodeRunStatus,
@@ -55,6 +56,8 @@ class WfRunErrorOut(BaseModel):
     message: str
     node_id: str | None = None
     retryable: bool = False
+    # 일일 한도처럼 기다리면 풀리는 실패면 남은 초(3단계 12.4).
+    retry_after: float | None = None
 
 
 class WfPendingOut(BaseModel):
@@ -194,3 +197,7 @@ class WfRunDetail(WfRunOut):
     # 루트 그래프의 노드 런 요약(실행 순서). iteration 하위 노드 런은
     # GET .../node-runs?iteration=<node_id>로 본다.
     node_runs: list[WfNodeRunOut]
+    # 런에서 모은 인용(3단계 8.3). 목록 응답에는 없고 상세에만 있다.
+    retriever_resources: list[RetrieverResourceData] = Field(
+        default_factory=list[RetrieverResourceData]
+    )

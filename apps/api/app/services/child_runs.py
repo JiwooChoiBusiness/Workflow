@@ -46,7 +46,6 @@ from app.agent.child_runs import (
     ChildStarted,
     ChildStartError,
     SubAgentChoice,
-    VersionKind,
     child_files_dir,
     summarize_output,
     task_preview,
@@ -56,7 +55,7 @@ from app.agent.interactions import SESSION_AUTO_APPROVE, PendingInteraction, Res
 from app.agent.task_service import AgentTaskSpec, TaskSpecError, check_output_schema
 from app.config import Settings
 from app.db.engine import Database
-from app.db.models import Agent, Run, SessionFile
+from app.db.models import Run, SessionFile
 from app.db.models.enums import RunStatus, SessionFileKind
 from app.db.repositories.agents import AgentRepository
 from app.db.repositories.runs import ACTIVE_STATUSES, RunRepository
@@ -64,14 +63,16 @@ from app.db.repositories.session_files import SessionFileRepository
 from app.db.repositories.sessions import SessionRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.db.types import new_id, utcnow
+from app.llm.key_pool import KeyTier
 from app.runner.supervisor import Supervisor
 from app.sandbox.base import SandboxBackend, SandboxError, WorkspaceHandle
 from app.sandbox.paths import relative_posix, resolve_in_workspace
 from app.sandbox.provisioning import WorkspaceProvisioner
 from app.schemas.agent_version import ResultSpec, SubAgentRef
-from app.schemas.common import RunLimits
 from app.schemas.events import UsageTotal
+from app.services.agent_tree import resolve_version as resolve_version
 from app.services.errors import ServiceError, not_found
+from app.services.run_tier import run_limits_of
 from app.services.runs import (
     TERMINAL_STATUSES,
     ChildRunListener,
@@ -115,6 +116,8 @@ class ParentRun:
     external_user: str | None
     api_key_id: uuid.UUID | None
     workspace_root: Path
+    # 부모 런의 키 등급. 자식은 이 값과 자기 버전 중 높은 쪽으로 돈다(3단계 14.4).
+    tier: KeyTier = "free"
 
 
 @dataclass(frozen=True)
@@ -165,15 +168,6 @@ def _first_line(text: str) -> str:
 def child_title(parent_agent: str, task: str) -> str:
     """자식 세션 제목(7장): "<부모 에이전트 이름> → <task 첫 줄 50자>"."""
     return f"{parent_agent} → {_first_line(task)[:TITLE_TASK_CHARS] or '과업'}"
-
-
-def resolve_version(agent: Agent, *, draft_parent: bool) -> tuple[uuid.UUID, VersionKind] | None:
-    """자식이 쓸 버전(2.4). 발행 버전이 우선이고, 초안 부모만 자식의 초안으로 내려간다."""
-    if agent.published_version_id is not None:
-        return agent.published_version_id, "published"
-    if draft_parent and agent.draft_version_id is not None:
-        return agent.draft_version_id, "draft"
-    return None
 
 
 async def summarize_child(
@@ -510,6 +504,7 @@ class ChildRunService:
             session_approval_override="off" if override == SESSION_AUTO_APPROVE else None,
             session_mode="ephemeral",
             external_user=parent.external_user,
+            tier=parent.tier,
             correlation=correlation.model_dump(mode="json"),
         )
         origin = ChildTaskOrigin(
@@ -561,7 +556,7 @@ class ChildRunService:
         if root is None:
             return parent.max_child_calls
         try:
-            return RunLimits.model_validate(root.limits or {}).max_child_calls
+            return run_limits_of(root.limits).max_child_calls
         except ValidationError:
             return parent.max_child_calls
 
