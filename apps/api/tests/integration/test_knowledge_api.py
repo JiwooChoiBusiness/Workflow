@@ -5,6 +5,7 @@ app.db 쪽만 본다. 지식 레인이 문서를 집지 않게 하고 청크 편
 보려고 문서 상태는 DB에서 직접 바꾼다. 레인과 요청 안 색인은 test_knowledge_ingest.py가 본다.
 """
 
+import asyncio
 import hashlib
 import uuid
 from collections.abc import AsyncIterator
@@ -48,6 +49,9 @@ async def app(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> AsyncItera
     application.dependency_overrides[optional_knowledge_runtime] = lambda: None
     try:
         async with application.router.lifespan_context(application):
+            # conftest의 app처럼 첫 매시 정리가 끝난 뒤에 넘긴다. 이 모듈은 index.db 없이 상태를
+            # 손으로 적어서 늦게 돈 정리가 테이블이 없는 KB로 보고 다시 색인 큐에 넣는다.
+            await asyncio.wait_for(application.state.housekeeping.first_hourly_done.wait(), 30)
             yield application
     finally:
         configure_logging("INFO")

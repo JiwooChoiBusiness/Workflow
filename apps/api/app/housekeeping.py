@@ -583,6 +583,9 @@ class Housekeeping:
         self._interval_sec = interval_sec
         self._hourly_interval_sec = hourly_interval_sec
         self._tasks: list[asyncio.Task[None]] = []
+        # 기동 직후 첫 매시 작업이 끝나면(실패·취소 포함) 선다. 운영 코드는 기다리지 않고,
+        # 통합 시험이 그 작업과 겹치지 않게 이걸 기다린 뒤 앱을 넘긴다.
+        self.first_hourly_done = asyncio.Event()
 
     def start(self) -> None:
         if not self._tasks:
@@ -697,5 +700,8 @@ class Housekeeping:
     async def _hourly_loop(self) -> None:
         # 켜고 끄기를 자주 하는 개인 PC라 한 시간을 다 기다리지 않고 기동 직후에도 한 번 돈다.
         while True:
-            await self.run_hourly()
+            try:
+                await self.run_hourly()
+            finally:
+                self.first_hourly_done.set()
             await asyncio.sleep(self._hourly_interval_sec)

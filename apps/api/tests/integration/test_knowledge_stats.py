@@ -71,6 +71,8 @@ async def app(
     fast_settings: Settings, embedder: FakeEmbedder, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[FastAPI]:
     async with serve(fast_settings, monkeypatch, FakeAdapter(embedder=embedder)) as application:
+        # conftest의 app처럼 첫 매시 정리가 끝난 뒤에 넘긴다.
+        await asyncio.wait_for(application.state.housekeeping.first_hourly_done.wait(), 30)
         yield application
 
 

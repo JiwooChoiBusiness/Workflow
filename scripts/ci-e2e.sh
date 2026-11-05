@@ -5,7 +5,8 @@
 #
 #   bash scripts/ci-e2e.sh <포트> <데이터 폴더> [playwright test 인자...]
 #
-# 서버 로그는 $RUNNER_TEMP(없으면 임시 폴더)/e2e-<포트>.log에 남는다. LLM_FAKE_SCRIPT, E2E_FAKE_SCRIPT,
+# 서버 로그는 $RUNNER_TEMP(없으면 임시 폴더)/e2e-<포트>.log에 남는다. GitHub Actions에서 실패하면 그
+# 로그의 오류 줄 몇 개를 주석으로도 낸다(scripts/ci-log-annotations.py). LLM_FAKE_SCRIPT, E2E_FAKE_SCRIPT,
 # E2E_SQL_RUNTIME, ENCRYPTION_KEY 같은 환경변수는 서버와 Playwright에 그대로 간다. GEMINI_API_KEYS가
 # 없으면 쉼표 하나(키 없음)로 띄운다. uv·pnpm이 PATH에 없으면 UV·PNPM으로 명령을 준다
 # (예: PNPM="corepack pnpm"). 저장소의 .env가 있는 PC에서 돌릴 때는 GEMINI_API_KEYS와
@@ -35,6 +36,12 @@ stop() {
 }
 trap stop EXIT
 
+# 러너는 영어판 Windows라 파이썬이 파이프에 cp1252로 써서 한글 주석에서 멈춘다. UTF-8로 둔다.
+annotate_log() {
+  [ -n "${GITHUB_ACTIONS:-}" ] && [ -s "$log" ] || return 0
+  PYTHONUTF8=1 "${uv[@]}" run --no-sync python scripts/ci-log-annotations.py "$log" "$port" || true
+}
+
 up=""
 for _ in $(seq 1 90); do
   if curl -sf "http://127.0.0.1:$port/healthz" > /dev/null; then
@@ -47,10 +54,13 @@ done
 if [ -z "$up" ]; then
   echo "시험 서버($port)가 뜨지 않았다. 서버 로그:" >&2
   cat "$log" >&2
+  annotate_log
   exit 1
 fi
 
-cd apps/web
-E2E_BASE_URL="http://127.0.0.1:$port" "${pnpm[@]}" exec playwright test "$@"
+(cd apps/web && E2E_BASE_URL="http://127.0.0.1:$port" "${pnpm[@]}" exec playwright test "$@")
 status=$?
+if [ "$status" -ne 0 ]; then
+  annotate_log
+fi
 exit "$status"

@@ -1,13 +1,13 @@
 """검색 시험과 검색 서비스(3단계 설계 7장, M23). 가짜 임베더(LLM_FAKE)로 결정적으로 돈다.
 
 문서는 지식 레인을 거치지 않고 app.db 행과 index.db 행을 직접 넣는다(색인 상태를 시험마다 골라
-두려고). 레인이 집지 않도록 처음부터 completed 같은 상태로 넣는다.
+두려고). 레인 큐에는 넣지 않고 쓰는 순서만 레인 작업과 맞춘다(Seeder.document).
 """
 
 import csv
 import hashlib
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient, Response
-from sqlalchemy import text
+from sqlalchemy import text, update
 
 from app.config import Settings
 from app.db.engine import Database
@@ -84,14 +84,23 @@ class Seeder:
         *,
         answers: Sequence[str] | None = None,
         vectors: bool = True,
+        indexing_status: str = "completed",
         **columns: Any,
     ) -> uuid.UUID:
-        """문서 하나와 청크(색인 행 포함)를 넣는다. vectors=False면 전문 색인만 만든다."""
+        """문서 하나와 청크(색인 행 포함)를 넣는다. vectors=False면 전문 색인만 만든다.
+
+        레인 작업과 같은 순서로 쓴다. 색인 중인 문서와 pending 유닛을 먼저 넣고, 색인 행을 다 쓴
+        뒤에 ok와 indexing_status를 적는다. ok를 먼저 적으면 그사이 도는 매시 정리가 행이 없는
+        유닛으로 보고 다시 색인 큐에 넣는다(원본 파일이 없어 file_missing으로 끝난다).
+        """
         kb_id = uuid.UUID(kb["id"])
         workspace_id = await self.workspace_id()
+        embed = vectors and kb["indexing_technique"] == "high_quality"
+        # 벡터를 쓰지 않은 유닛은 끝까지 ok가 아니다. economy는 skip이고 임베딩 전이면 pending이다.
+        no_vector = "pending" if kb["indexing_technique"] == "high_quality" else "skip"
+        pending = {"fts": "pending", "vector": no_vector}
         units: list[tuple[int, UnitKind, str, str]] = []
         async with self.db.write() as session:
-            values: dict[str, Any] = {"indexing_status": "completed", **columns}
             document = KbDocument(
                 workspace_id=workspace_id,
                 kb_id=kb_id,
@@ -104,7 +113,8 @@ class Seeder:
                 sha256=hashlib.sha256(name.encode()).hexdigest(),
                 storage_key=f"seed/{uuid.uuid4().hex}",
                 batch="seed",
-                **values,
+                indexing_status="indexing",
+                **columns,
             )
             session.add(document)
             await session.flush()
@@ -126,7 +136,7 @@ class Seeder:
                     tokens=len(content),
                     content_hash=hashlib.sha256(content.encode()).hexdigest(),
                     status="completed",
-                    index_state={"fts": "ok", "vector": "ok"},
+                    index_state=pending,
                 )
                 session.add(segment)
                 await session.flush()
@@ -146,14 +156,14 @@ class Seeder:
                             content=child,
                             tokens=len(child),
                             content_hash=hashlib.sha256(child.encode()).hexdigest(),
-                            index_state={"fts": "ok", "vector": "ok"},
+                            index_state=pending,
                         )
                     )
                     units.append((child_no, "child", child, child))
             document_id = document.id
         await self.runtime.fts.ensure(kb_id, workspace_id=workspace_id)
         await self.runtime.fts.upsert(kb_id, [FtsRow(unit, body) for unit, _, _, body in units])
-        if vectors and kb["indexing_technique"] == "high_quality":
+        if embed:
             config = EmbeddingConfig.model_validate(kb["embedding"])
             await self.runtime.vectors.ensure(kb_id, config, workspace_id=workspace_id)
             embedded = await self.runtime.embeddings.embed_documents(
@@ -165,6 +175,17 @@ class Seeder:
                 if vector is not None
             ]
             await self.runtime.vectors.upsert(kb_id, rows)
+        done = {"fts": "ok", "vector": "ok" if embed else no_vector}
+        async with self.db.write() as session:
+            for model in (KbSegment, KbChildChunk):
+                await session.execute(
+                    update(model).where(model.document_id == document_id).values(index_state=done)
+                )
+            await session.execute(
+                update(KbDocument)
+                .where(KbDocument.id == document_id)
+                .values(indexing_status=indexing_status)
+            )
         return document_id
 
     def service(self, llm: Any = None) -> KnowledgeSearchService:
@@ -404,6 +425,52 @@ async def test_documents_and_chunks_that_are_off_stay_out(
 
     assert names(found) == ["켜짐"]
     assert found.json()["records"][0]["segment"]["document_id"] == str(keep)
+
+
+@pytest.mark.parametrize(
+    ("body", "chunks", "columns"),
+    [
+        ({}, ["보안 점검은 분기마다 한다"], {}),
+        ({"doc_form": "hierarchical_model"}, [("점검 규정", ["보안 점검은 분기마다 한다"])], {}),
+        ({"indexing_technique": "economy"}, ["보안 점검은 분기마다 한다"], {}),
+        ({}, ["보안 점검은 분기마다 한다"], {"vectors": False, "indexing_status": "error"}),
+    ],
+    ids=["general", "parent_child", "economy", "error_without_vectors"],
+)
+async def test_hourly_cleanup_leaves_seeded_documents_alone(
+    seeder: Seeder,
+    monkeypatch: pytest.MonkeyPatch,
+    body: dict[str, Any],
+    chunks: list[Chunk],
+    columns: dict[str, Any],
+) -> None:
+    # 기동 직후의 매시 정리가 늦게 돌아 Seeder가 색인 행을 쓰는 사이나 그 뒤에 끼어든 경우다(11-05
+    # 일시 실패).
+    maintenance = seeder.app.state.knowledge_maintenance
+    mismatched: list[dict[str, int]] = []
+    orphans: list[dict[str, int]] = []
+
+    def cleanup_first(write: Callable[..., Awaitable[None]]) -> Callable[..., Awaitable[None]]:
+        async def wrapped(*args: Any) -> None:
+            # KnowledgeRetention.jobs()의 kb_mismatch → kb_orphans 순서다.
+            mismatched.append(await maintenance.reconcile(skip_busy=True))
+            orphans.append(await maintenance.purge_orphans())
+            await write(*args)
+
+        return wrapped
+
+    for index in (seeder.runtime.fts, seeder.runtime.vectors):
+        monkeypatch.setattr(index, "upsert", cleanup_first(index.upsert))
+    kb = await seeder.kb(**body)
+    await seeder.document(kb, "점검", chunks, **columns)
+    orphans.append(await maintenance.purge_orphans())
+
+    found = await hit_test(seeder.client, kb["id"], "보안 점검")
+
+    assert mismatched
+    assert mismatched == [{"kbs": 0, "documents": 0}] * len(mismatched)
+    assert orphans == [{"vec": 0, "fts": 0, "requeued": 0, "dropped_kbs": 0}] * len(orphans)
+    assert names(found) == ["점검"]
 
 
 async def test_parent_child_results_carry_their_children(seeder: Seeder) -> None:

@@ -191,10 +191,7 @@ async def test_start_runs_the_hourly_job_right_away_and_stop_cancels(
 
     housekeeping.start()
     try:
-        for _ in range(100):
-            if not leftover.exists():
-                break
-            await asyncio.sleep(0.02)
+        await asyncio.wait_for(housekeeping.first_hourly_done.wait(), 5)
     finally:
         await housekeeping.stop()
 

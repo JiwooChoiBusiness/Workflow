@@ -1,3 +1,4 @@
+import asyncio
 import json
 import shutil
 import tempfile
@@ -48,6 +49,9 @@ async def app(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> AsyncItera
     try:
         # lifespan이 임시 폴더의 app.db에 마이그레이션을 적용한다.
         async with application.router.lifespan_context(application):
+            # 기동 직후 한 번 도는 매시 정리가 끝난 뒤에 넘긴다. 그 정리가 늦게 돌면 시험 본문이
+            # app.db·index.db에 직접 만든 상태를 설정 불일치·고아로 보고 되돌린다.
+            await asyncio.wait_for(application.state.housekeeping.first_hourly_done.wait(), 30)
             yield application
     finally:
         # create_app이 붙인 임시 폴더의 로그 파일 핸들러를 닫아야 Windows에서 폴더를 지운다.
@@ -159,6 +163,7 @@ async def scripted_app(
     application.state.llm = FakeAdapter([script] * 10_000)
     try:
         async with application.router.lifespan_context(application):
+            await asyncio.wait_for(application.state.housekeeping.first_hourly_done.wait(), 30)
             yield application
     finally:
         configure_logging("INFO")

@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
+from sqlalchemy import update
 
 from app.config import Settings
 from app.db.models import KbDocument, KbSegment
@@ -82,7 +83,7 @@ async def seed(app: FastAPI, kb: dict[str, Any], name: str, text: str) -> uuid.U
             sha256=hashlib.sha256(text.encode()).hexdigest(),
             storage_key=f"seed/{uuid.uuid4().hex}",
             batch="seed",
-            indexing_status="completed",
+            indexing_status="indexing",
             word_count=len(text),
         )
         session.add(document)
@@ -100,7 +101,7 @@ async def seed(app: FastAPI, kb: dict[str, Any], name: str, text: str) -> uuid.U
                 tokens=len(text),
                 content_hash=hashlib.sha256(text.encode()).hexdigest(),
                 status="completed",
-                index_state={"fts": "ok", "vector": "ok"},
+                index_state={"fts": "pending", "vector": "pending"},
             )
         )
         document_id = document.id
@@ -111,6 +112,18 @@ async def seed(app: FastAPI, kb: dict[str, Any], name: str, text: str) -> uuid.U
     vector = await runtime.embeddings.embed_single(text, config)
     await runtime.vectors.upsert(kb_id, [VecRow(unit_no, vector, doc_id_of(document_id))])
     async with app.state.db.write() as session:
+        # 레인 작업처럼 색인 행을 다 쓴 뒤에 ok와 completed를 적는다(이유는
+        # test_knowledge_retrieve.py의 Seeder.document).
+        await session.execute(
+            update(KbSegment)
+            .where(KbSegment.document_id == document_id)
+            .values(index_state={"fts": "ok", "vector": "ok"})
+        )
+        await session.execute(
+            update(KbDocument)
+            .where(KbDocument.id == document_id)
+            .values(indexing_status="completed")
+        )
         await KnowledgeBaseRepository(session, workspace_id).refresh_counts(kb_id)
     return document_id
 

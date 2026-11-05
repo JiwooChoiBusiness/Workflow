@@ -286,6 +286,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             app.state.knowledge_supervisor = knowledge_supervisor
             app.state.knowledge_lane = knowledge_lane
             app.state.knowledge_maintenance = knowledge_maintenance
+            app.state.housekeeping = housekeeping
             app.state.shutdown = shutdown
             app.state.wf_parents = parents
             app.state.sandbox = backend
