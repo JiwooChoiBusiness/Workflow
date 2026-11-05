@@ -19,7 +19,7 @@ from pydantic import SecretStr
 from sqlalchemy import text, update
 
 from app.config import Settings
-from app.db.models import KbDocument, KbSegment
+from app.db.models import KbDocument, KbSegment, Run
 from app.db.repositories.knowledge import KbCounterRepository
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.knowledge.units import FtsRow, fts_text
@@ -367,6 +367,144 @@ async def test_the_waiting_approval_card_is_masked_but_runs_the_raw_input(
     ran = await approve(logged_in, run_id)
     # *** 세 글자가 아니라 원문의 길이가 찍혔다.
     assert ran["output_excerpt"].strip().endswith(str(len(SECRET_9)))
+
+
+async def test_tool_inputs_in_the_message_history_are_masked_when_read_but_run_raw(
+    app: FastAPI,
+    logged_in: AsyncClient,
+    make_client: Callable[[], AsyncClient],
+    script: Any,
+) -> None:
+    # 메시지 행의 tool_use 입력은 재개가 실행할 원문으로 남고, 대화 기록 API(콘솔·웹앱·서비스
+    # API가 같은 함수를 쓴다)가 내보낼 때 가린다.
+    agent_id = await secret_agent(app, logged_in)
+    code = f"print(len('{SECRET_9}'))"
+    run_id = await pause_on(logged_in, agent_id, script, [], code)
+    session_id = (await logged_in.get(f"/api/console/runs/{run_id}")).json()["session_id"]
+    history = f"/api/console/sessions/{session_id}/messages"
+
+    waiting = (await logged_in.get(history)).json()
+
+    [card] = [
+        block
+        for item in waiting["items"]
+        for block in item["blocks"]
+        if block["type"] == "tool_use" and block["name"] == "run_python"
+    ]
+    assert card["input"] == {"code": "print(len('***'))"}
+    assert SECRET_9 not in json.dumps(waiting, ensure_ascii=False)
+    async with app.state.db.read() as session_db:
+        stored = (
+            await session_db.execute(
+                text("SELECT blocks FROM message WHERE run_id = :id"), {"id": run_id}
+            )
+        ).all()
+    # 저장 행은 원문이고, 승인 뒤에는 *** 세 글자가 아니라 원문의 길이가 찍힌다.
+    assert any(SECRET_9 in str(row[0]) for row in stored)
+    ran = await approve(logged_in, run_id)
+    assert ran["output_excerpt"].strip().endswith(str(len(SECRET_9)))
+    assert SECRET_9 not in (await logged_in.get(history)).text
+
+    published = await logged_in.post(f"/api/console/agents/{agent_id}/publish", json={})
+    assert published.status_code == 201, published.text
+    key = await logged_in.post(f"/api/console/agents/{agent_id}/api-keys", json={"name": "봇"})
+    headers = {"Authorization": f"Bearer {key.json()['key']}"}
+    script.add(
+        searching([], "배포 토큰"),
+        [*fake_tool_call("run_python", {"code": code}), fake_end("tool_use")],
+    )
+    api = make_client()
+    reply = await api.post(
+        "/api/v1/chat-messages",
+        json={"query": "배포 토큰 길이를 재 줘", "response_mode": "blocking"},
+        headers=headers,
+    )
+    assert reply.json()["status"] == "waiting_input", reply.text
+    page = await api.get(
+        "/api/v1/messages",
+        headers=headers,
+        params={"conversation_id": reply.json()["conversation_id"]},
+    )
+    assert page.status_code == 200, page.text
+    assert SECRET_9 not in page.text and "print(len('***'))" in page.text
+
+
+async def test_history_is_masked_with_the_secrets_of_each_runs_version(
+    app: FastAPI, logged_in: AsyncClient, script: Any
+) -> None:
+    # 재사용 과업 세션은 재발행 뒤의 런이 세션과 다른 버전으로 돈다. 기록은 세션 버전과 그
+    # 페이지 런들의 버전을 합쳐 가린다. 여기서는 런 행의 버전을 바꿔 그 상황을 만든다.
+    agent_id, _ = await agent_with(
+        logged_in,
+        tools=["shell"],
+        approval_mode="off",
+        env_vars=[{"name": "DEPLOY_TOKEN", "value": SECRET_9, "secret": True}],
+    )
+    published = await logged_in.post(f"/api/console/agents/{agent_id}/publish", json={})
+    assert published.status_code == 201, published.text
+    current = (await logged_in.get(f"/api/console/agents/{agent_id}/draft")).json()
+    removed = await logged_in.put(
+        f"/api/console/agents/{agent_id}/draft",
+        json={**{key: current[key] for key in DRAFT_FIELDS}, "env_vars": []},
+    )
+    assert removed.status_code == 200, removed.text
+    code = f"print(len('{SECRET_9}'))"
+    script.add(
+        [*fake_tool_call("run_python", {"code": code}), fake_end("tool_use")],
+        [*fake_text("쟀다."), fake_end()],
+    )
+    session = (
+        await logged_in.post(f"/api/console/agents/{agent_id}/preview/sessions", json={})
+    ).json()
+    sent = await logged_in.post(
+        f"/api/console/sessions/{session['id']}/messages",
+        json={"text": "배포 토큰 길이를 재 줘", "response_mode": "blocking"},
+    )
+    assert sent.json()["run"]["status"] == "succeeded", sent.text
+    history = f"/api/console/sessions/{session['id']}/messages"
+    # 세션이 쓰는 초안에서는 비밀값을 뺐으므로 런 버전을 바꾸기 전에는 가릴 근거가 없다.
+    assert SECRET_9 in (await logged_in.get(history)).text
+
+    async with app.state.db.write() as session_db:
+        await session_db.execute(
+            update(Run)
+            .where(Run.id == uuid.UUID(sent.json()["run"]["id"]))
+            .values(agent_version_id=uuid.UUID(published.json()["version"]["id"]))
+        )
+
+    shown = (await logged_in.get(history)).text
+    assert SECRET_9 not in shown and "print(len('***'))" in shown
+
+
+async def test_a_spilled_tool_output_file_is_masked_when_downloaded(
+    app: FastAPI, logged_in: AsyncClient, script: Any, settings: Settings
+) -> None:
+    # 256KB를 넘어 storage에 흘려 쓴 출력 파일은 원문이다. 내려받을 때 스트림째 가린다.
+    agent_id = await secret_agent(app, logged_in)
+    # 약 495KB라 1MB 조각 하나로 읽힌다. 조각 경계에 걸친 비밀값은 unit/test_run_masker.py가 본다.
+    lines = 15_000
+    code = f"import os\nprint((os.environ['DEPLOY_TOKEN'] + '\\n') * {lines}, end='')"
+    run_id = await pause_on(logged_in, agent_id, script, [], code)
+
+    ran = await approve(logged_in, run_id)
+
+    # 큰 글에 `not in`을 쓰면 실패할 때 pytest가 줄 diff를 만드느라 한참 멈춘다. 개수로 본다.
+    assert ran["output_bytes"] > 256 * 1024 and ran["output_storage_key"] is not None
+    assert ran["output_excerpt"].count(SECRET_9) == 0 and "***" in ran["output_excerpt"]
+    stored = settings.data_dir / "storage" / ran["output_storage_key"]
+    assert stored.read_bytes().count(SECRET_9.encode()) == lines
+    path = f"/api/console/runs/{run_id}/tool-calls/{ran['tool_call_id']}/output"
+    download = await logged_in.get(path)
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "text/plain; charset=utf-8"
+    assert download.text.count(SECRET_9) == 0
+    shown = download.text.splitlines()
+    assert len(shown) == lines and set(shown) == {"***"}
+    # 파일이 없으면 이벤트에 남은 발췌를 준다. 그것도 가린 값이다.
+    stored.unlink()
+    excerpt = (await logged_in.get(path)).text
+    assert "bytes omitted" in excerpt
+    assert excerpt.count(SECRET_9) == 0 and "***" in excerpt
 
 
 def dumped(request: ChatRequest) -> str:

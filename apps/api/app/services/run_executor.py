@@ -154,6 +154,7 @@ from app.services.runs import (
     task_input_of,
     task_output,
 )
+from app.services.secret_masking import mask_blocks
 from app.services.sql_runtime import SqlRuntime
 from app.services.sql_sources import AgentSqlPort, SqlExecutor, sql_choices
 from app.services.workflow_knowledge import AgentKnowledgePort, knowledge_choices
@@ -165,7 +166,7 @@ from app.storage.base import (
     tool_output_key,
 )
 from app.streaming.event_bus import EventBus, RunRef
-from app.workflow.variables import MIN_SECRET_CHARS, Masker, StreamMasker
+from app.workflow.variables import MIN_SECRET_CHARS, Masker, StreamMasker, mask_card
 
 log = structlog.get_logger("app.runner")
 
@@ -177,6 +178,9 @@ _STREAMED_EVENTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "tool_call.input_delta": ("json_fragment", ("tool_call_id",)),
     "tool_call.output_delta": ("text", ("tool_call_id", "stream")),
 }
+# 카드를 싣는 이벤트(승인·질문 카드, 하위 에이전트 카드). 새로 고친 화면이 읽는 저장 카드와 같게
+# 키·enum은 두고 값만 가린다(mask_card).
+_CARD_EVENTS = frozenset({"run.waiting_input", "child_run.started"})
 
 
 class RunMasker:
@@ -188,7 +192,8 @@ class RunMasker:
     요약, 과업 결과, 승인 대기 카드(pending_interaction)다. 도구는 원문으로 돌고, 모델은 한 실행
     구간 안에서만 원문을 본다. 재개·다음 턴·요약·자식 결과는 DB에서 다시 읽어 ***를 본다(2단계
     체크포인트 마스킹과 같은 절충). tool_use 입력은 승인 뒤 재개할 때 그대로 실행해야 해서 가리지
-    않는다. 델타는 조각 경계에 걸친 값을 놓치지 않게 스트림마다 이어서 본다(2단계 W5와 같은 방식).
+    않는다. 읽을 때는 secret_masking.mask_blocks가 가린다. 델타는 조각 경계에 걸친 값을 놓치지 않게
+    스트림마다 이어서 본다(2단계 W5와 같은 방식).
     """
 
     def __init__(self, secrets: Iterable[str]) -> None:
@@ -203,6 +208,8 @@ class RunMasker:
     ) -> list[tuple[str, Mapping[str, Any]]]:
         if not self._masker.secrets:
             return [(event_type, data)]
+        if event_type in _CARD_EVENTS:
+            return [*self.flush(), (event_type, mask_card(self._masker, data))]
         streamed = _STREAMED_EVENTS.get(event_type)
         if streamed is None or not isinstance(data.get(streamed[0]), str):
             return [*self.flush(), (event_type, self._masker.mask(dict(data)))]
@@ -226,16 +233,10 @@ class RunMasker:
         return held
 
     def blocks(self, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not self._masker.secrets:
-            return blocks
-        masked: list[dict[str, Any]] = []
-        for block in blocks:
-            if block.get("type") == "text" and isinstance(block.get("text"), str):
-                block = {**block, "text": self._masker.text(block["text"])}
-            elif block.get("type") == "tool_result" and isinstance(block.get("content"), str):
-                block = {**block, "content": self._masker.text(block["content"])}
-            masked.append(block)
-        return masked
+        return mask_blocks(self._masker, blocks, tool_inputs=False)
+
+    def card(self, card: Mapping[str, Any]) -> dict[str, Any]:
+        return mask_card(self._masker, card)
 
 
 @dataclass
@@ -1321,8 +1322,9 @@ class RunExecutor:
                     )
                     # 승인 카드의 명령·질문·보기도 가린다. 재개는 메시지 행의 tool_use 입력을
                     # 실행하고 이 행의 input·cwd는 보여 주기만 한다. 보기(options)는 답 검증에
-                    # 쓰이지만 화면도 이 가린 값을 보이므로 고른 답과 맞는다.
-                    run.pending_interaction = masker.value(pending.model_dump(mode="json"))
+                    # 쓰이지만 화면도 이 가린 값을 보이므로 고른 답과 맞는다. 재개가 쓰는 연결
+                    # 키(tool_call_id, message_id 등)와 kind는 mask_card가 그대로 둔다.
+                    run.pending_interaction = masker.card(pending.model_dump(mode="json"))
                     run.ended_at = None
                 else:
                     run.pending_interaction = None

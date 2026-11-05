@@ -69,9 +69,13 @@ async def _text_chunks(text: str) -> AsyncIterator[bytes]:
     yield text.encode("utf-8")
 
 
-def text_download_response(text: str, *, filename: str) -> StreamingResponse:
+def text_stream_response(chunks: AsyncIterator[bytes], *, filename: str) -> StreamingResponse:
     return StreamingResponse(
-        _text_chunks(text),
+        chunks,
         media_type="text/plain; charset=utf-8",
         headers=download_headers(filename),
     )
+
+
+def text_download_response(text: str, *, filename: str) -> StreamingResponse:
+    return text_stream_response(_text_chunks(text), filename=filename)

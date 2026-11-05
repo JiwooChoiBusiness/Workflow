@@ -17,6 +17,11 @@ MAX_CHAIN = 8
 class RunRepository(WorkspaceScopedRepository[Run]):
     model = Run
 
+    async def get_many(self, run_ids: Collection[uuid.UUID]) -> list[Run]:
+        if not run_ids:
+            return []
+        return await self._scalars(self._select().where(Run.id.in_(list(run_ids))))
+
     async def list_children(
         self, parent_ids: Collection[uuid.UUID], *, statuses: Collection[str] | None = None
     ) -> list[Run]:

@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.agent.interactions import InteractionReply
-from app.api.downloads import stored_file_response, text_download_response
+from app.api.downloads import text_download_response, text_stream_response
 from app.auth.dependencies import CurrentAuth, DbDep, SettingsDep
 from app.schemas.logs import RunLogList
 from app.schemas.run import RunEventList, RunInput, RunOut, RunResult, RunStatus
 from app.schemas.session import SessionSource
 from app.services.logs import RunLogService, assume_local
 from app.services.runs import RunService
+from app.services.secret_masking import masked_chunks
 from app.streaming.sse import SSE_MEDIA_TYPE, sse_response
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -151,12 +152,11 @@ async def download_tool_output(
     """도구 출력 전문. 256KB를 넘은 출력은 tool-outputs 파일, 아니면 이벤트에 남은 전문."""
     output = await service.tool_output(auth.workspace_id, run_id, tool_call_id)
     storage = request.app.state.storage
-    # 흘려 쓰기에 실패했거나 보존 정리로 지워졌으면 이벤트에 남은 발췌를 준다.
+    # 흘려 쓰기에 실패했거나 보존 정리로 지워졌으면 이벤트에 남은 발췌를 준다. 둘 다 그 런의 비밀
+    # env와 설정 키로 가린다(원문인 파일은 내보내면서 가린다).
     if output.storage_key is not None and await storage.size(output.storage_key) is not None:
-        return stored_file_response(
-            storage,
-            output.storage_key,
+        return text_stream_response(
+            masked_chunks(storage.read_stream(output.storage_key), output.masker),
             filename=output.filename,
-            mime="text/plain; charset=utf-8",
         )
     return text_download_response(output.text, filename=output.filename)

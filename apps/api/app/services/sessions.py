@@ -58,7 +58,9 @@ from app.services.child_runs import propagate_auto_approve_down
 from app.services.errors import ServiceError, not_found
 from app.services.files import guess_mime, sanitize_filename
 from app.services.runs import RunService, run_out, session_file_out, workspace_handle
+from app.services.secret_masking import mask_blocks, read_secret_values
 from app.storage.base import StorageBackend, StorageLimitExceeded, upload_key
+from app.workflow.variables import Masker
 
 log = structlog.get_logger("app.services.sessions")
 
@@ -104,7 +106,9 @@ def instance_out(row: WorkspaceInstance, chat: ChatSession | None = None) -> Wor
     )
 
 
-def message_out(row: Message, files: dict[uuid.UUID, SessionFile]) -> MessageOut:
+def message_out(
+    row: Message, files: dict[uuid.UUID, SessionFile], masker: Masker | None = None
+) -> MessageOut:
     refs: list[MessageFileData] = []
     for raw in row.files or []:
         try:
@@ -122,14 +126,19 @@ def message_out(row: Message, files: dict[uuid.UUID, SessionFile]) -> MessageOut
                     mime=item.mime,
                 )
             )
+    blocks = row.blocks or []
+    text = row.text
+    if masker is not None:
+        blocks = mask_blocks(masker, blocks, tool_inputs=True)
+        text = masker.text(text)
     return MessageOut(
         id=row.id,
         session_id=row.session_id,
         run_id=row.run_id,
         seq=row.seq,
         role=row.role,  # pyright: ignore[reportArgumentType]
-        blocks=row.blocks or [],
-        text=row.text,
+        blocks=blocks,
+        text=text,
         stop_reason=row.stop_reason,
         files=refs,
         usage=row.usage,
@@ -421,7 +430,8 @@ class SessionService:
         self, workspace_id: uuid.UUID, session_id: uuid.UUID, *, before_seq: int | None, limit: int
     ) -> MessageList:
         async with self._db.read() as session:
-            if await SessionRepository(session, workspace_id).get_active(session_id) is None:
+            chat = await SessionRepository(session, workspace_id).get_active(session_id)
+            if chat is None:
                 raise not_found("세션")
             rows = await MessageRepository(session, workspace_id).list_page(
                 session_id, before_seq=before_seq, limit=limit + 1
@@ -436,8 +446,17 @@ class SessionService:
                     except ValueError:
                         continue
             files = await SessionFileRepository(session, workspace_id).get_many(file_ids)
+            # 승인 뒤 재개가 tool_use 입력을 그대로 실행해야 해서 메시지 행은 원문이다. 내보낼 때
+            # 가린다. 재사용 과업 세션은 재발행 뒤의 런이 세션과 다른 버전으로 돌아서 이 페이지
+            # 런들의 버전도 합친다.
+            runs = await RunRepository(session, workspace_id).get_many(
+                {row.run_id for row in rows if row.run_id is not None}
+            )
+            versions = {chat.agent_version_id, *(run.agent_version_id for run in runs)}
+            secrets = await read_secret_values(session, workspace_id, versions, self._settings)
         by_id = {item.id: item for item in files}
-        return MessageList(items=[message_out(row, by_id) for row in rows], has_more=more)
+        masker = Masker(secrets)
+        return MessageList(items=[message_out(row, by_id, masker) for row in rows], has_more=more)
 
     async def list_files(
         self, workspace_id: uuid.UUID, session_id: uuid.UUID, *, kind: str | None = None

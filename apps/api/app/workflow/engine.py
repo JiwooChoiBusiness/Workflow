@@ -110,6 +110,7 @@ from app.workflow.variables import (
     VariableError,
     VariablePool,
     coerce,
+    mask_card,
     measure,
     parse_selector,
     preview,
@@ -234,7 +235,7 @@ class PendingWait(BaseModel):
     """wf_run.pending_interaction(3.7). 병렬 가지가 같이 멈춰도 하나(노드 id·index 순)만 담는다.
 
     approval·question은 agent 노드의 자식 런 승인·질문(interaction), form은 human_input 노드의
-    폼이다.
+    폼이다. interaction과 form.description은 비밀값을 가린 값이고 form.fields는 원문이다.
     """
 
     node_id: str
@@ -1697,9 +1698,7 @@ class _Execution:
                     "iteration_index": pending.iteration_index,
                     "child_run_id": pending.child_run_id,
                     "interaction": (
-                        self.masker.mask(
-                            interaction.model_dump(mode="json", exclude={"created_at"})
-                        )
+                        interaction.model_dump(mode="json", exclude={"created_at"})
                         if interaction is not None
                         else None
                     ),
@@ -1732,17 +1731,25 @@ class _Execution:
     def _pending_wait(self, key: str, node_id: str, iteration_index: int | None) -> PendingWait:
         waiting_on = self._pending[key]
         if isinstance(waiting_on, WorkflowFormData):
-            # 안내문은 풀 값으로 렌더한 글이라 이벤트와 대기 기록 모두 비밀값을 가린다.
-            form = WorkflowFormData.model_validate(self.masker.mask(waiting_on.model_dump()))
+            # 안내문만 가린다. human_input의 fields는 정적 config라 비밀값이 들어갈 수 없고, SQL
+            # 승인 폼의 sql default는 고치지 않고 승인하면 그대로 실행되는 원문이라 가리면 깨진다.
+            form = waiting_on.model_copy(
+                update={"description": self.masker.text(waiting_on.description)}
+            )
             return PendingWait(
                 node_id=node_id, iteration_index=iteration_index, kind="form", form=form
             )
         waiting = self._waiting.get(key)
+        # 자식 런의 카드는 자식 버전의 비밀값으로만 가려져 있어 워크플로우 비밀 env를 여기서 더
+        # 가린다. 가린 보기로 온 답은 서비스(unmask_answer)가 자식의 보기로 되돌린다.
+        interaction = PendingInteractionOut.model_validate(
+            mask_card(self.masker, waiting_on.model_dump(mode="json"))
+        )
         return PendingWait(
             node_id=node_id,
             iteration_index=iteration_index,
             child_run_id=waiting.child_run_id if waiting is not None else None,
-            interaction=waiting_on,
+            interaction=interaction,
             kind=waiting_on.kind,
         )
 

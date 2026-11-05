@@ -567,6 +567,31 @@ class StreamMasker:
         return held
 
 
+# 승인·질문 대기 카드(pending_interaction)에서 가리지 않는 키. 재개와 화면이 카드를 도구 호출·
+# 메시지·자식 런과 잇는 키와 enum·시각이다. 키를 가리면 재개가 도구 호출을 못 찾고 kind·version은
+# 검증에 걸린다. 숫자·불리언은 Masker가 건드리지 않고, 그 밖의 필드는 나중에 더해질 것까지 가린다.
+CARD_KEYS = frozenset(
+    {
+        "interaction_id",
+        "kind",
+        "tool_call_id",
+        "tool_name",
+        "message_id",
+        "completed_tool_call_ids",
+        "child_run_id",
+        "child_session_id",
+        "agent_id",
+        "version",
+        "created_at",
+        "changes_since",
+    }
+)
+
+
+def mask_card(masker: Masker, card: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value if key in CARD_KEYS else masker.mask(value) for key, value in card.items()}
+
+
 def _json_default(value: object) -> str:
     return str(value)
 

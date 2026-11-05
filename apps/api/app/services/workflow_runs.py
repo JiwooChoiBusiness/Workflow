@@ -33,6 +33,7 @@ from app.config import Settings
 from app.db.engine import Database
 from app.db.models import WfNodeRun, WfRun
 from app.db.models.enums import RunStatus, WfNodeRunStatus, WfRunTrigger, WorkflowKind
+from app.db.repositories.runs import RunRepository
 from app.db.repositories.wf_conversations import WfMessageRepository
 from app.db.repositories.workflows import (
     WfNodeRunRepository,
@@ -65,7 +66,7 @@ from app.schemas.workflow import WorkflowSettings
 from app.services.access import FlowScope, scoped_wf_run
 from app.services.errors import ServiceError, not_found
 from app.services.run_tier import require_paid_key, with_tier
-from app.services.runs import event_out, run_key
+from app.services.runs import event_out, run_key, run_out
 from app.services.sql_sources import graph_sql_sources
 from app.services.workflow_files import WorkflowFileService, bind_run_uploads
 from app.services.workflow_knowledge import graph_knowledge, workflow_tier
@@ -395,6 +396,30 @@ def form_expired(pending: WfPendingOut, now: datetime, ttl_hours: float) -> bool
     return form is not None and now - form.created_at > timedelta(hours=ttl_hours)
 
 
+def unmask_answer(
+    reply: InteractionReply, shown: Sequence[str] | None, raw: Sequence[str] | None
+) -> InteractionReply:
+    """워크플로우 카드에서 고른 보기를 자식 런의 보기로 되돌린다.
+
+    카드의 보기(shown)는 엔진이 워크플로우 비밀 env를 가린 값이고, 자식은 자기 런에 저장한
+    보기(raw)로 답을 검증한다. 같은 자리끼리 대응시키며, 가려서 같아진 보기가 서로 다른 원문이면
+    어느 것을 골랐는지 알 수 없어 422다. 보기에 없는 답(자유 답)은 그대로 넘겨 자식이 검증한다.
+    """
+    answer = reply.answer
+    if answer is None or not shown or not raw or len(shown) != len(raw):
+        return reply
+    meant = {raw[index] for index, option in enumerate(shown) if option == answer}
+    if not meant:
+        return reply
+    if len(meant) > 1:
+        raise ServiceError(
+            422,
+            "answer_ambiguous",
+            "가려진 보기가 서로 같아 고를 수 없다. 자식 런 화면에서 답한다",
+        )
+    return reply.model_copy(update={"answer": meant.pop()})
+
+
 class WorkflowParents:
     """RunService의 ChildRunListener.
 
@@ -668,8 +693,9 @@ class WorkflowRunService:
     ) -> StartedWfRun:
         """승인·질문 응답. 자식 런에 먼저 넘기고 워크플로우 런을 다시 넣는다(3.7의 3번).
 
-        streaming이면 다시 넣으며 낸 workflow.queued부터 준다. 다른 경로가 먼저 다시 넣었으면 대기로
-        끝난 앞 구간 뒤부터 준다.
+        카드의 보기는 워크플로우 비밀 env를 가린 값이라 고른 보기를 자식의 보기로 되돌려 넘긴다.
+        가려서 같아진 보기를 고르면 422 answer_ambiguous다. streaming이면 다시 넣으며 낸
+        workflow.queued부터 준다. 다른 경로가 먼저 다시 넣었으면 대기로 끝난 앞 구간 뒤부터 준다.
         """
         self.ensure_accepting()
         # 읽기 트랜잭션은 시작한 때의 스냅샷을 보므로 남은 이벤트를 먼저 쓰고 연다.
@@ -688,6 +714,13 @@ class WorkflowRunService:
                 )
             ref = wf_run_ref(run)
             after = await WfRunEventRepository(session, workspace_id).max_seq(run_id)
+            child = (
+                await RunRepository(session, workspace_id).get(pending.child_run_id)
+                if pending.child_run_id is not None
+                else None
+            )
+            # 워크플로우 카드는 agent 노드가 받은 이 카드(run_out)를 엔진이 가린 것이다.
+            child_card = run_out(child).pending_interaction if child is not None else None
         if pending.kind == "form":
             raise ServiceError(
                 409,
@@ -698,6 +731,14 @@ class WorkflowRunService:
         child_run_id = pending.child_run_id
         if child_run_id is None or self._tasks is None:
             raise ServiceError(409, "run_not_waiting", "응답을 넘길 자식 런이 없다")
+        card = pending.interaction
+        # 자식이 그새 다른 질문으로 넘어갔으면 보기 자리가 맞지 않아 대응시키지 않는다.
+        if (
+            card is not None
+            and child_card is not None
+            and child_card.interaction_id == card.interaction_id
+        ):
+            reply = unmask_answer(reply, card.options, child_card.options)
         try:
             await self._tasks.provide_input(child_run_id, reply)
         except ServiceError as exc:

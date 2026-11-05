@@ -1,19 +1,23 @@
 """agent 노드의 승인 대기·재개와 단일 노드 실행(2단계 설계 3.7, 6.1, 10장 M14, 완료 기준 A4).
 
 실제 agent 노드가 1단계 과업 런을 자식으로 만들고, 자식 런의 모델 응답은 가짜 어댑터 각본이다.
-승인·거절, 자식이 먼저 끝난 경우, 병렬 대기의 순차 처리, 중지, 재기동, 단일 노드 실행 API를 본다.
+승인·거절, 자식이 먼저 끝난 경우, 병렬 대기의 순차 처리, 중지, 재기동, 단일 노드 실행 API와 대기
+카드의 워크플로우 비밀값 가림을 본다.
 """
 
 import asyncio
+import base64
+import json
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import select
 
 from app import sysinfo
@@ -22,6 +26,7 @@ from app.config import Settings
 from app.db.models import ChatSession, Message, Run
 from app.db.repositories.workspaces import WorkspaceRepository
 from app.llm.fake_adapter import FakeAdapter, fake_end, fake_text, fake_tool_call
+from app.llm.types import ChatRequest, ModelEvent, ToolResultBlock
 from app.logsetup import configure_logging
 from app.main import create_app
 from app.services.runs import RunService
@@ -53,7 +58,9 @@ SCHEMA = {
 
 @pytest.fixture
 def settings(short_settings: Settings) -> Settings:
-    return short_settings
+    # 워크플로우 비밀 env를 저장하려면 ENCRYPTION_KEY가 있어야 한다(대기 카드 가림 시험).
+    key = SecretStr(base64.b64encode(bytes(range(32))).decode())
+    return short_settings.model_copy(update={"encryption_key": key})
 
 
 @pytest.fixture
@@ -121,14 +128,20 @@ async def make_agent(
     return agent["id"]
 
 
-async def make_workflow(api: AsyncClient, body_graph: dict[str, Any], **settings: Any) -> str:
+async def make_workflow(
+    api: AsyncClient,
+    body_graph: dict[str, Any],
+    *,
+    env_vars: Sequence[dict[str, Any]] = (),
+    **settings: Any,
+) -> str:
     created = await api.post("/api/console/workflows", json={"name": "검토 흐름"})
     assert created.status_code == 201, created.text
     workflow_id = created.json()["id"]
     current = (await api.get(f"/api/console/workflows/{workflow_id}/draft")).json()
     body = {
         "graph": body_graph,
-        "env_vars": [],
+        "env_vars": list(env_vars),
         "conversation_vars": [],
         "settings": {**current["settings"], **settings},
         "updated_at": current["updated_at"],
@@ -341,6 +354,97 @@ async def test_stopping_a_waiting_run_cancels_the_child(
     detail = (await api.get(f"/api/console/wf-runs/{run_id}")).json()
     agent_run = next(item for item in detail["node_runs"] if item["node_id"] == "agent_1")
     assert agent_run["status"] == "cancelled" and agent_run["ended_at"] is not None
+
+
+# 비밀 탐지 도구에 걸리지 않게 실행 시 조립한다.
+WF_TOKEN = "tok-wf-" + "3b9d" * 5
+SECRET_ENV = [{"name": "TOKEN", "value": WF_TOKEN, "secret": True}]
+
+
+def answering(seen: list[ChatRequest], text: str) -> Callable[[ChatRequest], list[ModelEvent]]:
+    def turn(request: ChatRequest) -> list[ModelEvent]:
+        seen.append(request)
+        return [*fake_text(text), fake_end()]
+
+    return turn
+
+
+def tool_result(request: ChatRequest, call_id: str) -> str:
+    return next(
+        block.content
+        for message in request.messages
+        for block in message.blocks
+        if isinstance(block, ToolResultBlock) and block.tool_use_id == call_id
+    )
+
+
+async def test_the_agent_node_wait_card_hides_workflow_secrets_and_a_masked_option_still_answers(
+    api: AsyncClient, script: Any, sse: Events
+) -> None:
+    agent_id = await make_agent(api)
+    flow = agent_flow(agent_id, instruction="{{ env.TOKEN }}를 확인한다")
+    workflow_id = await make_workflow(api, flow, env_vars=SECRET_ENV)
+    ask = {
+        "question": f"{WF_TOKEN}로 진행할까?",
+        "options": [WF_TOKEN, "아니오"],
+        "allow_free_text": False,
+    }
+    seen: list[ChatRequest] = []
+    script.add(
+        [*fake_tool_call("ask_user", ask, call_id="call_ask"), fake_end("tool_use")],
+        answering(seen, "고른 값으로 확인했다"),
+    )
+
+    run_id, events, run = await start_waiting(api, sse, workflow_id)
+
+    card = run["pending_interaction"]["interaction"]
+    assert card["kind"] == "question" and card["options"] == ["***", "아니오"]
+    assert card["question"] == "***로 진행할까?"
+    log = (await api.get(f"/api/console/wf-runs/{run_id}/event-log")).json()["items"]
+    for shown in (run, events, log):
+        assert WF_TOKEN not in json.dumps(shown, ensure_ascii=False)
+
+    answered = await api.post(
+        f"/api/console/wf-runs/{run_id}/input",
+        json={"answer": "***", "response_mode": "blocking"},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["status"] == "succeeded", answered.json()
+    assert answered.json()["outputs"] == {"answer": "고른 값으로 확인했다"}
+    # 가린 보기를 골랐지만 자식은 같은 자리의 원문 보기를 답으로 받았다.
+    assert tool_result(seen[-1], "call_ask") == WF_TOKEN
+
+
+async def test_the_agent_node_approval_card_hides_workflow_secrets_and_approves_the_raw_command(
+    api: AsyncClient, script: Any, sse: Events
+) -> None:
+    agent_id = await make_agent(api)
+    flow = agent_flow(agent_id, instruction="{{ env.TOKEN }}를 출력한다")
+    workflow_id = await make_workflow(api, flow, env_vars=SECRET_ENV)
+    echo = {"command": f"echo {WF_TOKEN}"}
+    seen: list[ChatRequest] = []
+    script.add(
+        [*fake_tool_call("shell", echo, call_id="call_echo"), fake_end("tool_use")],
+        answering(seen, "출력했다"),
+    )
+
+    run_id, events, run = await start_waiting(api, sse, workflow_id)
+
+    card = run["pending_interaction"]["interaction"]
+    assert card["kind"] == "approval" and card["input"]["command"] == "echo ***"
+    for shown in (run, events):
+        assert WF_TOKEN not in json.dumps(shown, ensure_ascii=False)
+
+    approved = await api.post(
+        f"/api/console/wf-runs/{run_id}/input",
+        json={"decision": "approve", "response_mode": "blocking"},
+    )
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "succeeded", approved.json()
+    # 카드는 가린 명령이지만 실행은 자식 메시지 행의 원문 입력으로 했다.
+    assert WF_TOKEN in tool_result(seen[-1], "call_echo")
 
 
 async def test_json_result_files_and_approval_off_setting(

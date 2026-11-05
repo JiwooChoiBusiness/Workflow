@@ -81,8 +81,10 @@ from app.services.access import SessionScope, scoped_session
 from app.services.agent_tree import tree_tier
 from app.services.errors import ServiceError, not_found
 from app.services.run_tier import require_paid_key, with_tier
+from app.services.secret_masking import read_secret_values
 from app.storage.base import StorageBackend, StorageError
 from app.streaming.event_bus import BusEvent, EventBus, RunRef, Subscription
+from app.workflow.variables import Masker
 
 if TYPE_CHECKING:
     from app.services.child_runs import ChildRunService, ClaimedParent
@@ -407,6 +409,8 @@ class ToolOutput:
     filename: str
     storage_key: str | None
     text: str
+    # 흘려 쓴 파일은 원문이라 내려보낼 때 이것으로 가린다.
+    masker: Masker
 
 
 class RunService:
@@ -1018,11 +1022,18 @@ class RunService:
     async def tool_output(
         self, workspace_id: uuid.UUID, run_id: uuid.UUID, tool_call_id: str
     ) -> ToolOutput:
-        ref = await self._ref(workspace_id, run_id)
+        async with self._db.read() as session:
+            run = await RunRepository(session, workspace_id).get(run_id)
+            if run is None:
+                raise not_found("런")
+            secrets = await read_secret_values(
+                session, workspace_id, [run.agent_version_id], self._settings
+            )
+        masker = Masker(secrets)
         await self._bus.flush()
         async with self._db.read() as session:
             rows = await RunEventRepository(session, workspace_id).list_by_type(
-                ref.run_id, "tool_call.completed"
+                run.id, "tool_call.completed"
             )
         for row in reversed(rows):
             if row.payload.get("tool_call_id") != tool_call_id:
@@ -1031,7 +1042,9 @@ class RunService:
             return ToolOutput(
                 filename=f"{tool_call_id}.txt",
                 storage_key=key if isinstance(key, str) else None,
-                text=str(row.payload.get("output_excerpt") or ""),
+                # 발췌는 쓸 때 이미 가렸다. 그 뒤에 더한 비밀값까지 덮으려고 한 번 더 거친다.
+                text=masker.text(str(row.payload.get("output_excerpt") or "")),
+                masker=masker,
             )
         raise not_found("도구 호출 출력")
 
