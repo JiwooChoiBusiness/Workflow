@@ -987,6 +987,17 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
 - 신규 의존성: 서버 `sqlite-vec`, `sqlglot`(Z5 (a)일 때). 샌드박스 전용(서버 import 없음) `duckdb`, 기존 `pypdf`·`python-docx`. 화면은 새 패키지 없음.
 - 범위 밖 목록(3.3)은 사용자가 되살리지 않는 한 후속이다.
 
+M29 마무리에서 위 가정을 구현과 맞춰 봤다(2026-11-05). 대부분 그대로이고, 달라지거나 더해진 것은 아래뿐이다. 자세한 것은 17.4에 있다.
+- 임베딩에 하루 한도 버킷(`KB_EMBED_RPD`, 기본 1,000)을 더했다. 그중 약 11%는 검색·청크 고치기 몫이라 문서 색인 몫은 888건이다(M21 검토 → M22).
+- 채팅의 일일 429는 키를 바꾸지 않고 다음 모델로 간다. 키 하나라도 일일 429를 받으면 그 모델은 모든 키에서 태평양 자정까지 건너뛴다(M21a).
+- 청크 모드의 화면 이름은 '일반·맥락 확장·Q&A'이고, 부모·자식 청크는 '큰 조각·작은 조각'이다(사용자 결정 11-03).
+- 유료 등급은 하위 에이전트 트리까지 위로 전파되고 재개 때 다시 계산한다(M24). 유료 데이터 소스도 같은 규칙이다(M27).
+- 에이전트에 데이터 소스를 붙이면 SQL 도구 둘(`describe_sql_source`, `query_sql`)이 자동으로 붙는다. 승인 등급은 `read`다.
+- SQLite 숨김은 숨긴 열 IGNORE에 더해 숨긴 표 DENY로 막는다. 숨김이 하나라도 있으면 질의용 사본을 만든다(M27 검토).
+- Text2SQL 한도 기본값은 서버 설정에서 오고, 이미 만든 소스에는 소급하지 않는다. 템플릿은 승인 거절과 승인 대기 만료를 고정 답으로 끝낸다(M29 Text2SQL 갈래).
+- 색인 점검·재생성 도구를 더했다. `platform doctor`의 지식 항목과 `platform knowledge rebuild-index`다(M29 앞부분).
+- 샌드박스 런타임에 `pytz`가 더해졌다(DuckDB의 TIMESTAMPTZ 값을 꺼낼 때 필요). 버전은 duckdb 2.0.0, pytz 2026.6, pypdf 6.21.4, python-docx 1.2.0으로 고정했다. 화면 패키지는 늘지 않았다.
+
 ### 17.2 리스크
 
 | 리스크 | 영향 | 완화 |
@@ -1360,6 +1371,37 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
   - GitHub Actions 첫 실행 확인. 세 잡이 처음 도는 것이라 다음 셋을 봐야 한다. Linux pytest의 SQL 시험, Windows 러너의 샌드박스와 런타임 받기, `ci-e2e.sh`의 프로세스 정리(`/proc/<pid>/winpid`)다.
   - 템플릿 `input_timeout` 가지를 실제 대기 만료로 끝까지 돌려 보기(노드 출력은 단위 시험으로 확인).
   - 웹앱에서는 승인 뒤 재검사 거부 이유가 보이지 않는다(템플릿이 고치기 가지로 답한다). 그대로 둔다.
+- M29 마무리 이후 확정(2026-11-05)
+  - 완료 기준 K1~K13은 모두 통과로 판정했다(17.5). K1의 "파싱 중 RSS"는 서버가 남긴 단계 시각으로 자른 파싱 구간에서 잰다.
+  - 통합 시험의 겨루기
+    - 시험 시드는 실제 색인 작업과 같은 순서로 쓴다. 문서는 indexing, 유닛은 pending으로 넣고, 색인 행을 다 쓴 뒤 ok·completed로 바꾼다. 벡터를 쓰지 않는 유닛은 ok가 되지 않는다(economy는 `skip`). 시드 도우미 일곱 곳을 고쳤다.
+    - 통합 시험 fixture는 앱 기동 뒤 첫 매시 작업이 끝날 때까지 기다린 다음 앱을 넘긴다(`Housekeeping.first_hourly_done`). 첫 실행을 건너뛰지 않고 기다리기만 한다. 재기동 시험이 직접 쓰는 `serve()`는 기동 직후 상태를 보므로 기다리지 않는다.
+    - 늦게 돈 첫 정리가 시험이 손으로 만든 상태를 고아나 설정 불일치로 보고 다시 색인하던 일시 실패를 이렇게 막았다. 병렬 부하에서 한 번 나왔고, 재현 플러그인으로 원인을 확인했다.
+  - CI 진단: e2e 잡에서 Playwright는 `github` 리포터를 함께 쓰고, 실패하면 `scripts/ci-log-annotations.py`가 서버 로그 오류 줄 다섯 개까지를 주석으로 낸다. Actions 로그는 로그인해야 보이지만 주석은 공개 API로 읽힌다. 키 모양은 가린다.
+- M29 마무리에서 뒤로 미룬 것
+  - CI e2e 잡의 첫 실패(d4979de) 원인 확인. 로컬에서 같은 조건으로는 통과한다. 다음 푸시의 주석으로 본다. 가장 유력한 의심은 캐시가 없던 첫 실행에서 CSV 시험이 런타임을 받는 대기(300초)다.
+  - 재기동 시험의 `serve()` 첫 기동 중 겨루기(이론상, 확률 낮음).
+  - 점검 때 사용자와 정할 작은 항목: 평가셋 CSV 내보내기, 도구 출력 내려받기와 도구 카드 입력의 읽기 시점 가림, 델타 flush 범위 좁히기, vec 테이블 content_hash, 워크플로우 agent 노드의 대기 카드 가림.
+
+### 17.5 완료 기준 점검표(M29 마무리)
+
+3.4의 K1~K13을 M21~M29의 시험·실측과 짝지었다. 시험 경로는 `apps/api/tests/` 기준이다. 가짜 임베더·가짜 어댑터로 본 것과 실제 키로 본 것을 구분해 적는다.
+
+| # | 판정 | 근거 |
+|---|---|---|
+| K1 | 통과 | 맑은 고딕을 넣은 한국어 PDF 49쪽(글자 57,669자, 표 14개)을 Edge 헤드리스 인쇄로 만들어 가짜 임베더 서버에 올렸다(M29 마무리). 상태는 waiting → parsing → cleaning → splitting → indexing → completed(서버 단계 시각), 청크 43개가 목록에 보였고, 파서 설치를 포함해 13.4초 걸렸다. 서버 단계 시각으로 자른 파싱 구간의 RSS 증가는 +1.1~2.9MB, 20ms 간격으로 잰 파싱 구간 안은 +0.04MB다. 0.2초 폴링 라벨로 자르면 첫 실행이 +8.9MB인데, 늘어난 몫은 업로드 처리(+2.6MB)와 파싱 뒤 정리·분할·색인 시작(+6.0MB)이다. 단계 순서 시험은 `integration/test_knowledge_ingest.py::test_text_document_goes_through_every_stage`, 샌드박스 파싱은 `windows/test_kb_ingest_pdf.py` |
+| K2 | 통과 | 가짜 임베더 13,222청크: 멈춘 동안 호출 0, 재개 뒤 재기동하고 completed, 임베딩 6,400 + 6,822 = 13,222(다시 임베딩 없음), 60초 창 최대 5,990건, 묶음 최대 100(M29 앞부분). 실제 키: 청크 300개 문서 4분 42초, 429 없음(M22 live) |
+| K3 | 통과 | 실제 키 평가(문서 48개 색인, 질문 53개) R@1·R@3·MRR@10 1.000(M23 live, `integration/test_knowledge_eval_live.py`). 가짜 쪽 키워드 질문 12개 1위는 `integration/test_knowledge_retrieve.py::test_keyword_questions_come_first_on_the_synthetic_set`·`unit/knowledge/test_fts_bigram.py` |
+| K4 | 통과 | 검색 설정·필터·두 KB 병합 시험(`unit/knowledge/test_multi_kb.py`, `integration/test_knowledge_retrieve.py`)과 노드 시험이 같은 서비스(`KnowledgeSearchService.retrieve`)를 탄다. M29 앞부분에서 검색 범위 계산을 바꾼 뒤에도 통과(문서 목록 없이 거르는 갈래 포함) |
+| K5 | 통과 | 실제 Gemini 지식 챗플로우 1턴, 인용 문서와 내용 일치(M24 live, `integration/test_knowledge_chatflow_live.py`). 미리보기·웹앱 칩은 e2e `knowledge.spec.ts`, 서비스 API `metadata.retriever_resources`와 메시지 목록은 M24 통합 시험 |
+| K6 | 통과 | e2e `knowledge.spec.ts`의 지식 에이전트 시험(각본 서버, 도구 카드 요약과 인용 칩). CI e2e 잡이 각본 서버(8503)로 돈다(M29 Text2SQL 갈래) |
+| K7 | 통과 | datasets API 통합 시험(M23)과 KS7(다른 KB 키 404, 자기 KB 200) |
+| K8 | 통과 | economy KB 임베딩 호출 0 시험, 승격 뒤 레인이 벡터를 채우는 시험(벡터 수·호출 수가 청크 수와 같음, M29 앞부분) |
+| K9 | 통과 | 차원 변경 재생성 시험, 같은 글을 다른 KB에 넣으면 호출 0(M29 앞부분 새 시험 둘), KS10 수동 768 → 1536 |
+| K10 | 통과 | `unit/workflow/test_dsl_knowledge.py`, `kb_slug`·`source_slug` 재연결 통합 시험(M24·M27). Dify 지식 검색 가져오기와 `kb_required`(M24) |
+| K11 | 통과 | CSV 소스로 템플릿 한 턴은 `windows/test_sql_chatflow_duckdb.py::test_text_to_sql_template_answers_from_a_csv_source`. CSV 1,000행, 행 상한 50으로 두 턴을 본다. 집계 질문은 결과 표가 답변 프롬프트에 실리고, 1,000행 조회는 잘림 표시와 머리글 + 50행 CSV 파일(wf_file)로 나온다. 거부 목록은 KS3, 숨김 열은 KS5, 재귀 CTE·교차 조인 시간 상한은 KS4, CSV 중화는 KS14다(`docs/ops/security.md`). 실제 모델로는 SQLite 소스 템플릿 1턴(M27 live, 11-05 통과) |
+| K12 | 통과 | memcheck 최대 193.0MB(인제스트·검색·SQL 구간 포함, 예산 300MB, 목표 200MB). 백업·복구 뒤 KNN 시험(M22)과 CLI 백업·복구·재색인(M29 앞부분). 1·2단계 시험 포함 전체 pytest 2,739, windows 37, vitest 475, e2e 27 + 건너뜀 3. GitHub CI는 python(ubuntu)·windows·web 잡 통과, e2e 잡은 첫 실행에서 실패(로컬 재현은 통과, 원인은 다음 푸시의 주석으로 본다) |
+| K13 | 통과 | 분당 90 리미터로 134청크를 색인하는 동안 검색 시험 31~63ms, 지식 검색 노드 141~187ms, 청크 단건 편집 78ms(가짜 임베더라 실제 API 지연은 빠짐, M29 앞부분) |
 
 ## 18. 1·2단계 접점 변경 목록
 
@@ -1408,5 +1450,6 @@ SQL 추출: `llm` 노드가 코드 펜스에 SQL을 내도록 템플릿 프롬�
 | `app/backup.py` | 변경 | 폴더 이름 바꾸기가 PermissionError면 짧게 다시 시도 | M29 |
 | `app/sysinfo.py`·`app/knowledge_doctor.py`, `app/cli.py`·`app/services/knowledge_rebuild.py` | 추가 | doctor 지식 항목 다섯, `knowledge rebuild-index` | M29 |
 | `app/main.py` | 일반화 | Database를 먼저 만들어 지식 런타임에 넘긴다(K9 벡터 재사용). 동작 동일 | M29 |
+| `app/housekeeping.py`(`first_hourly_done`), `app/main.py`(`app.state.housekeeping`) | 추가 | 기동 직후 첫 매시 작업이 끝나면(실패·취소 포함) 서는 이벤트. 통합 시험 fixture만 기다리고 운영 코드는 기다리지 않아 동작 동일 | M29 마무리 |
 
 바꾸지 않는 것: `AgentLoop`의 스텝 로직(요청에 `tier`를 실을 뿐), 승인 판정(`interactions.py`. `search_knowledge`·`query_sql`은 승인 대상 이름에 없으므로 자동), 채팅 어댑터의 스트림·분당 429 순환·5xx 재시도·모델 폴백 규칙(일일 429와 유료 등급 분기만 추가), 샌드박스 프로토콜과 로컬 백엔드 구현(세 번째 인스턴스를 만들 뿐), `Supervisor`의 큐·워커·취소 로직(`dequeue` 추가 외), 2단계 엔진의 스케줄러·체크포인트·재개, 이벤트 봉투와 SSE 규약, `platform backup`의 폴더 구조(파일 하나와 옵션 추가), 로그인·CSRF.
