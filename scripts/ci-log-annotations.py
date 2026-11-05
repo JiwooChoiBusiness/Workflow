@@ -1,18 +1,26 @@
-# CI e2e 서버 로그의 오류 줄을 GitHub Actions 주석 명령으로 찍는다. scripts/ci-e2e.sh가 실패했을 때
-# 부른다. Actions 로그는 로그인해야 보이지만 check-run 주석은 공개 API로 읽힌다.
+# CI e2e 서버 로그의 샌드박스 실행 요약과 오류 줄을 GitHub Actions 주석 명령으로 찍는다.
+# scripts/ci-e2e.sh가 실패했을 때 부른다. Actions 로그는 로그인해야 보이지만 check-run 주석은 공개
+# API로 읽힌다. 등급을 경고로 두는 것은 error 주석이 스텝당 10개까지이고 Playwright github
+# 리포터가 실패 주석으로 그 몫을 먼저 다 쓰기 때문이다.
 #
 #   python scripts/ci-log-annotations.py <서버 로그> <포트>
 #
 # 서버 로그는 한 줄에 JSON 하나이고 한글이 \uXXXX로 들어 있어서 풀어서 보여 준다.
-# Traceback·error 이상인 줄을 먼저, 5xx 응답 줄을 그다음에 골라 서로 다른 것 5개까지 낸다.
+# 샌드박스 요약은 sandbox.exec_started·exec_finished 기록의 수, timed_out·killed 수, duration_ms
+# 최소·중앙·최대, 끝 기록이 없는 실행 수, 처음 몇 개의 (kind, code, timed_out, duration_ms)다.
+# 오류 줄은 Traceback·error 이상인 줄을 먼저, 5xx 응답 줄을 그다음에 골라 서로 다른 것 5개까지 낸다.
 # 키 모양(AQ.·AIza로 시작하는 토큰, ENCRYPTION_KEY 값)은 가린다.
 import json
 import os
 import re
+import statistics
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 LIMIT = 5
+SANDBOX_SHOWN = 8
 LINE_CHARS = 300
 MESSAGE_CHARS = 2000
 # Traceback은 끝쪽(마지막 프레임과 예외)만 남긴다.
@@ -69,6 +77,71 @@ def pick(rows: list[str]) -> list[list[str]]:
     return errors + responses
 
 
+@dataclass
+class SandboxExec:
+    kind: str
+    finished: dict[str, Any] | None = None
+
+    def shown(self) -> str:
+        if self.finished is None:
+            return f"({self.kind}, 끝 기록 없음)"
+        values = [self.finished.get(key) for key in ("code", "timed_out", "duration_ms")]
+        return f"({', '.join([self.kind, *map(str, values)])})"
+
+
+def sandbox_summary(rows: list[str]) -> list[str]:
+    execs: list[SandboxExec] = []
+    # exec_id는 대개 도구 호출 id라 한 번만 나오지만 sql·sql-prepare처럼 되풀이되는 것도 있다. 끝
+    # 기록은 같은 id로 시작해 아직 끝나지 않은 것 중 먼저 시작한 것과 짝짓는다.
+    running: dict[str, list[SandboxExec]] = {}
+    started = 0
+    finished: list[dict[str, Any]] = []
+    for row in rows:
+        if "sandbox.exec_" not in row:
+            continue
+        try:
+            record = json.loads(row)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        event = record.get("event")
+        exec_id = str(record.get("exec_id"))
+        if event == "sandbox.exec_started":
+            started += 1
+            entry = SandboxExec(str(record.get("kind")))
+            execs.append(entry)
+            running.setdefault(exec_id, []).append(entry)
+        elif event == "sandbox.exec_finished":
+            finished.append(record)
+            waiting = running.get(exec_id)
+            if waiting:
+                entry = waiting.pop(0)
+            else:
+                entry = SandboxExec("?")
+                execs.append(entry)
+            entry.finished = record
+    if not execs:
+        return ["샌드박스 실행 기록 없음"]
+    unfinished = sum(len(left) for left in running.values())
+    timed_out = sum(1 for record in finished if record.get("timed_out") is True)
+    killed = sum(1 for record in finished if record.get("killed") is True)
+    lines = [
+        f"시작 {started}, 끝 {len(finished)}, 끝 기록 없음 {unfinished}, "
+        f"timed_out {timed_out}, killed {killed}"
+    ]
+    durations = [ms for record in finished if isinstance(ms := record.get("duration_ms"), int)]
+    if durations:
+        lines.append(
+            f"duration_ms 최소 {min(durations)}, 중앙 {round(statistics.median(durations))}, "
+            f"최대 {max(durations)}"
+        )
+    shown = execs[:SANDBOX_SHOWN]
+    lines.append(f"처음 {len(shown)}개 (kind, code, timed_out, duration_ms)")
+    lines.extend(entry.shown() for entry in shown)
+    return lines
+
+
 def message(lines: list[str], secret: str) -> str:
     text = "\n".join(line[:LINE_CHARS] for line in lines)[:MESSAGE_CHARS]
     if secret:
@@ -88,8 +161,12 @@ def main() -> None:
             chosen.append(text)
         if len(chosen) == LIMIT:
             break
+    # 경고 주석도 스텝당 10개까지다. 요약 하나와 오류 줄 5개면 넘지 않지만, 같은 스텝의 Playwright가
+    # 느린 시험 경고(최대 5)를 먼저 냈으면 넘친 뒤쪽이 빠지므로 요약을 먼저 낸다.
+    summary = message(sandbox_summary(rows), secret)
+    print(f"::warning title=e2e 샌드박스 실행 ({port})::{summary}")
     for text in chosen:
-        print(f"::error title=e2e 서버 로그 ({port})::{text}")
+        print(f"::warning title=e2e 서버 로그 ({port})::{text}")
 
 
 if __name__ == "__main__":

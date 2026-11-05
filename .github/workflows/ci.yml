@@ -146,6 +146,15 @@ jobs:
         with:
           path: ${{ runner.temp }}/sql-runtime
           key: ${{ steps.sql-runtime-key.outputs.key }}
+      # e2e의 셸 도구 시험이 CI에서만 도구 시간 상한까지 멈춘다. 서버와 같은 bash 스텝 환경에서 샌드박스
+      # PowerShell 실행 시간을 먼저 재서 notice 주석으로 남긴다(scripts/ci-sandbox-probe.py).
+      - name: 샌드박스 셸 점검
+        shell: bash
+        # 실행 셋이 모두 300초 상한에 걸려도 15분 남짓이다. 그보다 길면 점검 자체가 멈춘 것이고,
+        # 진단용이라 멈추더라도 뒤의 e2e는 돈다.
+        timeout-minutes: 20
+        continue-on-error: true
+        run: PYTHONUTF8=1 uv run --no-sync python scripts/ci-sandbox-probe.py "$RUNNER_TEMP/probe-data"
       # 서버마다 한 스텝 안에서 띄우고, 헬스를 기다리고, 그 서버로 시험을 돌리고, 내린다
       # (scripts/ci-e2e.sh). 서버 로그는 $RUNNER_TEMP/e2e-<포트>.log다.
       - name: 기본 서버 e2e
