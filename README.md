@@ -6,7 +6,9 @@ n8n 형식의 LLM 에이전트 & 워크플로우 플랫폼을 혼자 쓰려고 �
 
 2단계(워크플로우)도 끝났다. 캔버스에서 워크플로우와 챗플로우를 편집하고 실행·발행하며(웹앱과 서비스 API 포함), YAML(DSL)로 내보내고 가져온다(Dify DSL은 일부만). 노드는 LLM·조건 분기·반복·코드·HTTP 요청 같은 기본 노드에 더해 루프, 리스트 연산, 문서 추출(pdf·docx 포함), 내장 도구 호출, 사람 입력(폼으로 런을 멈추고 답을 받음)이 있다. 에이전트가 다른 에이전트를 도구로 부르는 지휘자 모드도 들어갔다.
 
-남은 일은 3단계 RAG + Text2SQL(구현 중)와 2단계에서 미룬 두 가지다. 에이전트 노드의 '대화마다 같은 세션' 옵션은 아직 '실행마다 새 세션'처럼 돌고, 편집기의 실행 탭은 새로 고치면 진행 중이던 런에 다시 붙지 않는다(실행 기록 화면에서는 이어 받는다). 해당 두 가지는 단계가 모두 끝나고 자체 QA 과정을 거칠 예정이다. 마일스톤별 기록은 `docs/progress.md`에 있다.
+3단계(RAG와 Text2SQL)는 기능이 들어갔고 마무리 중이다. 지식 베이스에 문서를 올리면 청크로 나눠 벡터(sqlite-vec)와 전문(FTS5) 색인을 만들고, 하이브리드 검색과 평가 화면으로 검색을 조정한다. 워크플로우의 지식 노드, LLM 노드의 인용 칩, 에이전트의 `search_knowledge` 도구, 지식 베이스 단위 서비스 API로 쓴다. CSV·엑셀·SQLite 파일은 데이터 소스로 등록해 두면 SQL 노드와 에이전트의 `query_sql` 도구가 읽기 전용 SQL로 표에 묻고 답하고, 실행 전 승인을 켤 수도 있다.
+
+남은 일은 3단계 마무리와 2단계에서 미룬 두 가지다. 에이전트 노드의 '대화마다 같은 세션' 옵션은 아직 '실행마다 새 세션'처럼 돌고, 편집기의 실행 탭은 새로 고치면 진행 중이던 런에 다시 붙지 않는다(실행 기록 화면에서는 이어 받는다). 해당 두 가지는 단계가 모두 끝나고 자체 QA 과정을 거칠 예정이다. 마일스톤별 기록은 `docs/progress.md`에 있다.
 
 - `docs/research/dify-analysis.md` : n8n 중 Dify를 뜯어본 기록(참조용)
 - `docs/decisions/` : 범위, 실행 방식 같은 결정 기록. 2단계는 ADR 0005(워크플로우 엔진)와 0006(지휘자 에이전트)
@@ -15,21 +17,22 @@ n8n 형식의 LLM 에이전트 & 워크플로우 플랫폼을 혼자 쓰려고 �
 - `docs/design/agent-orchestration.md` : 지휘자 에이전트(에이전트를 도구로 부르는 모드) 설계
 - `docs/design/phase3-rag.md` : 3단계(지식 베이스와 Text2SQL) 설계. 결정 요약은 ADR 0007·0008
 - `docs/design/phase4-options.md` : 4단계(고도화) 선택지. 범위는 논의해서 정한다
+- `docs/design/phase4-graphrag.md` : 4단계 GraphRAG(문서에서 개체·관계 그래프를 만들어 지도로 보여 주는 기능) 설계. 결정 요약은 ADR 0009
 - `docs/research/gemini-api-2026-10.md`, `docs/research/rag-text2sql-2026-11.md` : 3·4단계 설계의 근거로 모은 조사와 실측
-- `docs/manual.md` : 사용 설명서. 화면에서 에이전트와 워크플로우를 만들고 발행해 쓰는 과정
+- `docs/manual.md` : 사용 설명서. 화면에서 에이전트와 워크플로우를 만들고 발행해 쓰는 과정, 지식 베이스와 데이터 소스 쓰는 법
 - `docs/progress.md` : 마일스톤별 진행 기록
 - `docs/ops/` : [설치](docs/ops/install.md), [운영](docs/ops/operations.md), [백업과 복구](docs/ops/backup-restore.md), [보안 확인](docs/ops/security.md), [샌드박스 Windows 검증](docs/ops/sandbox-windows-check.md)
 
-순서는 에이전트 샌드박스, 워크플로우 엔진, RAG이고, 그 뒤에 도구 선택지를 넓히는 고도화 단계를 둘 생각이다. 3단계는 설계의 기본값으로 구현을 시작했고, 4단계는 선택지 문서만 있다.
+순서는 에이전트 샌드박스, 워크플로우 엔진, RAG이고, 그 뒤에 도구 선택지를 넓히고 GraphRAG를 더하는 고도화 단계를 둘 생각이다. 3단계는 설계의 기본값으로 구현했고, 4단계는 선택지 문서와 GraphRAG 설계만 있다.
 
 `.claude/`에는 Claude Code 작업 설정이 들어 있다. 설계와 구현은 Claude와 같이 하되 결정과 커밋은 내가 한다. 라이선스는 Apache 2.0이다.
 
 ## 구조
 
-- `apps/api/app/` : FastAPI 서버 하나가 API, 러너, 화면 서빙을 다 한다. `agent/`는 에이전트 루프와 도구, `sandbox/`는 세션별 작업공간과 PowerShell 실행·Job Object, `llm/`은 Gemini 어댑터와 키 순환, `workflow/`는 그래프 엔진·노드·DSL 변환, `knowledge/`는 지식 베이스의 청크 분할·색인(sqlite-vec·FTS5)·검색, `runner/`는 실행 큐와 재기동 복구, `streaming/`은 이벤트 링버퍼와 SSE, `services/`와 `api/`(console·web·v1)는 그 위의 서비스와 라우터, `db/`는 SQLAlchemy 모델과 리포지토리다.
+- `apps/api/app/` : FastAPI 서버 하나가 API, 러너, 화면 서빙을 다 한다. `agent/`는 에이전트 루프와 도구, `sandbox/`는 세션별 작업공간과 PowerShell 실행·Job Object, `llm/`은 Gemini 어댑터와 키 순환, `workflow/`는 그래프 엔진·노드·DSL 변환, `knowledge/`는 지식 베이스의 청크 분할·색인(sqlite-vec·FTS5, 파일은 `DATA_DIR/knowledge/index.db`)·검색과 Text2SQL(`sql/`: sqlglot으로 SQL 검사, DuckDB·SQLite로 실행), `runner/`는 실행 큐와 재기동 복구, `streaming/`은 이벤트 링버퍼와 SSE, `services/`와 `api/`(console·web·v1)는 그 위의 서비스와 라우터, `db/`는 SQLAlchemy 모델과 리포지토리다.
 - `apps/api/migrations/` : Alembic 마이그레이션. 서버가 뜰 때 자동으로 적용된다.
 - `apps/api/tests/` : pytest. `unit`, `integration`, `windows`(Windows 전용)와 픽스처.
-- `apps/web/src/` : React 화면. `app/`(라우트와 페이지), `components/`(builder·chat·flow·logs·ui), `features/`(기능별 API 호출과 상태), `api/`(서버 OpenAPI와 이벤트 스키마에서 만든 타입), `locales/ko/`(화면 문구).
+- `apps/web/src/` : React 화면. `app/`(라우트와 페이지), `components/`(builder·chat·flow·knowledge·logs·sql·ui), `features/`(기능별 API 호출과 상태), `api/`(서버 OpenAPI와 이벤트 스키마에서 만든 타입), `locales/ko/`(화면 문구).
 - `apps/web/e2e/` : Playwright 브라우저 스모크.
 - `packages/event-schema/` : 런 이벤트 JSON 스키마. 서버가 만들고 화면 타입을 여기서 생성한다.
 - `scripts/` : 스모크, 메모리 측정, 타입 생성.
@@ -50,11 +53,14 @@ corepack pnpm --dir apps/web install
 
 ```bash
 uv run platform serve        # --reload를 붙이면 코드가 바뀔 때 다시 뜬다(개발용)
-uv run platform doctor       # 셸, 파이썬과 pip, 데이터 경로, 실행 정책, 포트, 암호화 키 점검
-uv run platform backup       # DATA_DIR을 backups/<시각>/에 복사(서버가 떠 있어도 된다)
+uv run platform doctor       # 셸, 파이썬과 pip, 데이터 경로, 실행 정책, 포트, 암호화 키, 지식 색인 점검
+uv run platform backup       # DATA_DIR을 backups/<시각>/에 복사(서버가 떠 있어도 된다. 지식 색인을 빼려면 --no-index)
+uv run platform knowledge rebuild-index   # 지식 색인(index.db)을 다시 만든다(서버를 끄고)
 bash scripts/smoke.sh        # 떠 있는 서버 기본 확인
 python scripts/memcheck.py   # 서버를 따로 띄워 메모리(RSS) 측정
 ```
+
+지식 베이스의 벡터와 전문 색인은 `DATA_DIR/knowledge/index.db` 한 파일에 있다. 문서 원문은 `app.db`에 있어서 이 파일은 다시 만들 수 있다. sqlite-vec는 `uv sync`로 같이 깔리고, CSV·엑셀 데이터 소스를 쓸 때만 DuckDB 런타임(약 250MB)을 화면의 '런타임 준비'로 따로 받는다.
 
 화면은 `corepack pnpm --dir apps/web build`로 빌드해 두면 서버가 `apps/web/dist`를 서빙한다. 화면을 고치는 중에는 `corepack pnpm --dir apps/web dev`(5173)를 쓰면 되고, `/api` 요청은 127.0.0.1:8500으로 넘어간다.
 
