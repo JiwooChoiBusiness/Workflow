@@ -33,10 +33,15 @@ SheetName = Annotated[str, StringConstraints(min_length=1, max_length=100)]
 MAX_SOURCE_FILES = 20
 # 노드 config와 데이터 소스 limits의 상한. max_rows는 SQL_MAX_ROWS가 더 낮으면 그 값을 쓴다.
 SQL_TIMEOUT_CAP = 60
+SQL_MEMORY_CAP = 8192
 LLM_BYTES_CAP = 64 * 1024
 DEFAULT_MAX_ROWS = 200
 DEFAULT_LLM_ROWS = 50
 DEFAULT_SCHEMA_TOKENS = 8000
+LimitRows = Annotated[int, Field(ge=1, le=10_000)]
+LimitTimeout = Annotated[int, Field(ge=1, le=SQL_TIMEOUT_CAP)]
+LimitMemory = Annotated[int, Field(ge=128, le=SQL_MEMORY_CAP)]
+LimitLlmBytes = Annotated[int, Field(ge=1024, le=LLM_BYTES_CAP)]
 
 
 class SqlFileOptions(BaseModel):
@@ -141,14 +146,28 @@ class SqlAnnotations(BaseModel):
 
 
 class SqlLimits(BaseModel):
+    """저장된 데이터 소스의 한도. 새 소스의 값은 설정에서 만든다(sql_sources.default_limits)."""
+
     model_config = ConfigDict(extra="forbid")
 
-    max_rows: int = Field(default=DEFAULT_MAX_ROWS, ge=1, le=10_000)
-    timeout_sec: int = Field(default=30, ge=1, le=SQL_TIMEOUT_CAP)
-    memory_mb: int = Field(default=512, ge=128, le=8192)
+    max_rows: LimitRows
+    timeout_sec: LimitTimeout
+    memory_mb: LimitMemory
     # 모델에 보내는 결과 글(result_text)의 행 수와 바이트(10.6).
-    llm_rows: int = Field(default=DEFAULT_LLM_ROWS, ge=1, le=10_000)
-    llm_bytes: int = Field(default=LLM_BYTES_CAP, ge=1024, le=LLM_BYTES_CAP)
+    llm_rows: LimitRows
+    llm_bytes: LimitLlmBytes
+
+
+class SqlLimitsIn(BaseModel):
+    """만들기·고치기에서 받는 한도. 비운 칸은 만들 때 서버 설정값, 고칠 때 저장된 값을 쓴다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_rows: LimitRows | None = None
+    timeout_sec: LimitTimeout | None = None
+    memory_mb: LimitMemory | None = None
+    llm_rows: LimitRows | None = None
+    llm_bytes: LimitLlmBytes | None = None
 
 
 class SqlMaterialized(BaseModel):
@@ -220,7 +239,7 @@ class SqlSourceCreate(BaseModel):
     # 만든 뒤에는 바꿀 수 없다.
     kind: SqlSourceKind = "files"
     approval: SqlApproval = "none"
-    limits: SqlLimits | None = None
+    limits: SqlLimitsIn | None = None
     glossary: Glossary = ""
     data_policy: DataPolicyIn
 
@@ -244,7 +263,7 @@ class SqlSourcePatch(BaseModel):
     slug: Slug | None = None
     description: SourceDescription | None = None
     approval: SqlApproval | None = None
-    limits: SqlLimits | None = None
+    limits: SqlLimitsIn | None = None
     glossary: Glossary | None = None
     # key_tier를 바꿀 때 다시 확인받는다.
     data_policy: DataPolicyIn | None = None
@@ -397,6 +416,7 @@ class SqlNodeOptions(BaseModel):
     timeout_max: int
     default_max_rows: int
     default_timeout_sec: int
+    default_memory_mb: int
     default_llm_rows: int
     default_llm_bytes: int
     llm_bytes_max: int

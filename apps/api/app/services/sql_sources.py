@@ -90,6 +90,7 @@ from app.schemas.sql_source import (
     DEFAULT_SCHEMA_TOKENS,
     LLM_BYTES_CAP,
     MAX_SOURCE_FILES,
+    SQL_MEMORY_CAP,
     SQL_TIMEOUT_CAP,
     SqlAnnotations,
     SqlAnnotationsUpdate,
@@ -100,6 +101,7 @@ from app.schemas.sql_source import (
     SqlExportSchemaOut,
     SqlFailure,
     SqlLimits,
+    SqlLimitsIn,
     SqlMaterialized,
     SqlNodeOptions,
     SqlQueryLogList,
@@ -186,11 +188,43 @@ def parse_annotations(raw: Mapping[str, Any] | None) -> SqlAnnotations:
         return SqlAnnotations()
 
 
-def parse_limits(raw: Mapping[str, Any] | None) -> SqlLimits:
+# limits가 깨진 데이터 소스. 같은 행을 읽을 때마다 경고를 다시 찍지 않는다(프로세스가 도는 동안).
+_INVALID_LIMITS_WARNED: set[uuid.UUID] = set()
+
+
+def parse_limits(
+    raw: Mapping[str, Any] | None, defaults: SqlLimits, *, source_id: uuid.UUID | None = None
+) -> SqlLimits:
+    """저장된 limits. 빠진 칸(열 기본값 {} 포함)은 defaults로 채우고, 깨졌으면 defaults를 쓴다."""
     try:
-        return SqlLimits.model_validate(raw or {})
+        return SqlLimits.model_validate({**defaults.model_dump(), **(raw or {})})
     except ValidationError:
-        return SqlLimits()
+        if source_id is None or source_id not in _INVALID_LIMITS_WARNED:
+            if source_id is not None:
+                _INVALID_LIMITS_WARNED.add(source_id)
+            log.warning("sql.limits_invalid", source_id=str(source_id) if source_id else None)
+        return defaults
+
+
+def default_limits(settings: Settings) -> SqlLimits:
+    """새 데이터 소스의 한도. 노드 폼 기본값(sql_options)도 이 값이다.
+
+    설정을 바꿔도 이미 만든 소스에는 소급하지 않는다(설정 탭에서 고친다).
+    """
+    return SqlLimits(
+        max_rows=min(DEFAULT_MAX_ROWS, settings.sql_max_rows),
+        timeout_sec=settings.sql_timeout_sec,
+        memory_mb=min(settings.sql_memory_mb, SQL_MEMORY_CAP),
+        llm_rows=DEFAULT_LLM_ROWS,
+        llm_bytes=LLM_BYTES_CAP,
+    )
+
+
+def fill_limits(base: SqlLimits, given: SqlLimitsIn | None) -> SqlLimits:
+    """given에서 비운 칸은 base(만들 때 설정값, 고칠 때 저장된 값)로 채운다."""
+    if given is None:
+        return base
+    return base.model_copy(update=given.model_dump(exclude_none=True))
 
 
 def parse_materialized(raw: Mapping[str, Any] | None) -> SqlMaterialized | None:
@@ -228,7 +262,7 @@ class LoadedSource:
         return dialect_of(self.kind)
 
 
-def load(row: SqlSource) -> LoadedSource:
+def load(row: SqlSource, settings: Settings) -> LoadedSource:
     files = parse_files(row.files)
     snapshot = parse_snapshot(row.table_schema)
     annotations = parse_annotations(row.annotations)
@@ -243,7 +277,7 @@ def load(row: SqlSource) -> LoadedSource:
         snapshot=snapshot,
         annotations=annotations,
         glossary=row.glossary,
-        limits=parse_limits(row.limits),
+        limits=parse_limits(row.limits, default_limits(settings), source_id=row.id),
         approval=row.approval,
         tier=sql_key_tier_of(row),
         materialized=parse_materialized(row.materialized),
@@ -313,8 +347,8 @@ def _file_out(item: SqlSourceFile) -> SqlSourceFileOut:
     )
 
 
-def source_out(row: SqlSource, status: SqlSourceStatus) -> SqlSourceOut:
-    source = load(row)
+def source_out(row: SqlSource, status: SqlSourceStatus, settings: Settings) -> SqlSourceOut:
+    source = load(row, settings)
     return SqlSourceOut(
         id=row.id,
         slug=row.slug,
@@ -393,7 +427,7 @@ class SqlExecutor:
                 raise SqlUnavailable(
                     ERR_NOT_FOUND, "데이터 소스를 찾을 수 없다. 지웠거나 다른 PC의 id다"
                 )
-            return load(row)
+            return load(row, self._settings)
 
     def query_file(self, source: LoadedSource) -> Path | None:
         """질의가 여는 캐시 파일. files 소스는 질의 파일, 숨김이 있는 sqlite 소스는 사본이고 숨김이
@@ -734,15 +768,6 @@ class SqlSourceService:
             mode="json"
         )
 
-    def _limits(self, limits: SqlLimits | None) -> SqlLimits:
-        if limits is not None:
-            return limits
-        return SqlLimits(
-            max_rows=min(DEFAULT_MAX_ROWS, self._settings.sql_max_rows),
-            timeout_sec=self._settings.sql_timeout_sec,
-            memory_mb=self._settings.sql_memory_mb,
-        )
-
     async def _active(
         self, session: AsyncSession, workspace_id: uuid.UUID, source_id: uuid.UUID
     ) -> SqlSource:
@@ -752,14 +777,16 @@ class SqlSourceService:
         return row
 
     async def _out(self, row: SqlSource) -> SqlSourceOut:
-        return source_out(row, await self.executor.status(load(row)))
+        return source_out(
+            row, await self.executor.status(load(row, self._settings)), self._settings
+        )
 
     async def list_sources(self, workspace_id: uuid.UUID) -> SqlSourceList:
         async with self._db.read() as session:
             rows = await SqlSourceRepository(session, workspace_id).list_active()
         items: list[SqlSourceSummary] = []
         for row in rows:
-            source = load(row)
+            source = load(row, self._settings)
             status = await self.executor.status(source)
             items.append(
                 SqlSourceSummary(
@@ -808,7 +835,9 @@ class SqlSourceService:
                         table_schema=None,
                         annotations=SqlAnnotations().model_dump(mode="json"),
                         glossary=body.glossary,
-                        limits=self._limits(body.limits).model_dump(mode="json"),
+                        limits=fill_limits(default_limits(self._settings), body.limits).model_dump(
+                            mode="json"
+                        ),
                         approval=body.approval,
                         data_policy=policy,
                         materialized=None,
@@ -839,7 +868,10 @@ class SqlSourceService:
                 if patch.approval is not None:
                     row.approval = patch.approval
                 if patch.limits is not None:
-                    row.limits = patch.limits.model_dump(mode="json")
+                    stored = parse_limits(
+                        row.limits, default_limits(self._settings), source_id=row.id
+                    )
+                    row.limits = fill_limits(stored, patch.limits).model_dump(mode="json")
                 if patch.glossary is not None:
                     row.glossary = patch.glossary
                 if patch.data_policy is not None:
@@ -999,7 +1031,7 @@ class SqlSourceService:
             raise ServiceError(503, "sql_unavailable", "SQL 실행 환경이 없다")
         async with self._db.read() as session:
             row = await self._active(session, workspace_id, source_id)
-            source = load(row)
+            source = load(row, self._settings)
         if not source.files:
             raise ServiceError(
                 422, "sql_source_empty", "데이터 소스에 파일이 없다. 파일을 먼저 올린다"
@@ -1080,7 +1112,7 @@ class SqlSourceService:
             row = await self._active(session, workspace_id, source_id)
             row.table_schema = snapshot.model_dump(mode="json")
             row.annotations = annotations.model_dump(mode="json")
-            built = self.executor.query_file(load(row))
+            built = self.executor.query_file(load(row, self._settings))
             row.materialized = (
                 SqlMaterialized(
                     filename=built.name,
@@ -1141,7 +1173,7 @@ class SqlSourceService:
         annotations = SqlAnnotations(tables=body.tables)
         async with self._db.write() as session:
             row = await self._active(session, workspace_id, source_id)
-            before = load(row)
+            before = load(row, self._settings)
             changed = (
                 hidden_columns(before.annotations),
                 hidden_tables(before.annotations),
@@ -1254,7 +1286,7 @@ class SqlSourceService:
     ) -> SqlSchemaText:
         async with self._db.read() as session:
             row = await self._active(session, workspace_id, source_id)
-            source = load(row)
+            source = load(row, self._settings)
         text = describe(
             source, tables=tables, include_samples=include_samples, max_tokens=max_tokens
         )
@@ -1281,7 +1313,7 @@ class SqlSourceService:
         """
         async with self._db.read() as session:
             row = await self._active(session, workspace_id, source_id)
-            source = load(row)
+            source = load(row, self._settings)
         if source.snapshot is None:
             raise ServiceError(
                 409, ERR_NOT_PREPARED, "데이터 소스를 먼저 준비해야 스키마를 내보낼 수 있다"
@@ -1447,13 +1479,15 @@ def describe(
 
 
 def sql_node_options(settings: Settings) -> SqlNodeOptions:
+    defaults = default_limits(settings)
     return SqlNodeOptions(
         max_rows_max=settings.sql_max_rows,
         timeout_max=SQL_TIMEOUT_CAP,
-        default_max_rows=min(DEFAULT_MAX_ROWS, settings.sql_max_rows),
-        default_timeout_sec=settings.sql_timeout_sec,
-        default_llm_rows=DEFAULT_LLM_ROWS,
-        default_llm_bytes=LLM_BYTES_CAP,
+        default_max_rows=defaults.max_rows,
+        default_timeout_sec=defaults.timeout_sec,
+        default_memory_mb=defaults.memory_mb,
+        default_llm_rows=defaults.llm_rows,
+        default_llm_bytes=defaults.llm_bytes,
         llm_bytes_max=LLM_BYTES_CAP,
         default_schema_tokens=DEFAULT_SCHEMA_TOKENS,
         approvals=["none", "always"],

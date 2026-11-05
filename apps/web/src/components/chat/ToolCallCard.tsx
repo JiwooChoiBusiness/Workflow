@@ -118,8 +118,8 @@ function KnowledgeSummary({ tool, citationLinks }: { tool: ToolCallView; citatio
 }
 
 /*
- * query_sql 결과(3단계 설계 10.3, 12.3): 행 수·잘림·실행한 SQL과 결과 글의 표(앞 llm_rows행). 잘렸으면 전체가
- * 작업공간 sql/<호출>.csv에 남고, 런이 끝나 file.changed가 오면 그 파일을 내려받는 링크가 된다.
+ * query_sql 결과(3단계 설계 10.3, 12.3): 행 수·잘림·실행한 SQL과 결과 글의 표(앞 llm_rows행). 잘렸으면 행 상한까지
+ * 받은 행이 작업공간 sql/<호출>.csv에 남고, 런이 끝나 file.changed가 오면 그 파일을 내려받는 링크가 된다.
  */
 function SqlSummary({ tool, fileHref }: { tool: ToolCallView; fileHref?: FileHref }) {
   const { t } = useTranslation("chat");

@@ -3,20 +3,26 @@
 # iteration 안의 code, txt 파일을 읽는 document_extractor)와 챗플로우 미리보기 대화 3턴(llm 메모리,
 # answer)을 돌린 다음(2단계 8장), 지식 베이스에 1MB 글 문서 하나를 가짜 임베더로
 # 색인하고(청크 약 1,000개, 분당 6,000건) 하이브리드 검색 20번(메타데이터 필터 5번 포함)과 평가
-# 실행 1번을 한다(3단계 13장). 그 뒤 다시 같은 시간만큼 잰다. 런 중 구간은 초기 설정·로그인부터
+# 실행 1번을 하고, Text2SQL 데이터 소스(SQLite 1만 행, DuckDB 런타임이 있으면 CSV 1만 행도)를 준비해
+# SQL을 5번씩 실행한다(3단계 13장). 그 뒤 다시 같은 시간만큼 잰다. 런 중 구간은 초기 설정·로그인부터
 # run.completed까지, 워크플로우 런 중 구간은 워크플로우를 만들 때부터 workflow.completed까지,
 # 챗플로우 구간은 챗플로우를 만들 때부터 세 번째 턴의 workflow.completed까지, 인제스트 구간은 지식
 # 베이스를 만들 때부터 문서가 completed가 될 때까지, 검색 구간은 메타데이터를 넣을 때부터 평가
-# 응답까지다.
+# 응답까지, SQL 구간은 데이터 소스를 만들 때부터 마지막 SQL 응답까지다. 첫 SQL 검증이 서버에
+# sqlglot을 불러온다.
 # 최댓값이 MEMORY_BUDGET_MB(기본 300)를 넘으면 종료 코드 1, 서버가 뜨지 않거나 런이 succeeded로
 # 끝나지 않으면 2다.
 #
-#   python scripts/memcheck.py [--seconds 5] [--idle-only]
+#   python scripts/memcheck.py [--seconds 5] [--idle-only] [--sql-runtime <폴더>]
+#
+# 임시 데이터 폴더에는 DuckDB 런타임(약 250MB)이 없어서 CSV 소스는 건너뛰고 결과에 그렇게 적는다.
+# --sql-runtime에 런타임을 받아 둔 DATA_DIR이나 그 안의 cache/kb-sql을 주면 복사해 와서 CSV도 잰다.
 #
 # 서버 의존성 없이 표준 라이브러리만 쓴다. 서버는 uv sync로 만든 .venv의 platform 명령으로 띄우고,
 # 이미 떠 있는 서버나 실제 데이터와 겹치지 않게 빈 포트와 임시 데이터 폴더를 쓴다. 셸은 서버가
 # 플랫폼에 맞춰 고르므로(Windows는 PowerShell, 그 밖은 bash) 환경변수를 더 줄 필요가 없다.
 import argparse
+import csv
 import http.client
 import io
 import json
@@ -25,6 +31,7 @@ import random
 import shutil
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import sysconfig
@@ -32,6 +39,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import closing
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -52,6 +60,7 @@ PHASES = {
     "chat": "챗플로우 3턴 중",
     "ingest": "인제스트 중",
     "search": "검색 중",
+    "sql": "SQL 중",
     "after": "런 뒤",
 }
 ITERATION_ITEMS = 20
@@ -70,6 +79,48 @@ KB_WORDS = (
     "연차 휴가 출장 보고서 회의록 예산 일정 계약 보안 점검 배포 장애 고객 문의 정산 구매 채용 교육"
     " 인사 평가 서버 백업 복구 로그 권한 승인 결재 공지 규정 지침"
 ).split()
+SQL_ROWS = 10_000
+SQL_REGIONS = ("서울", "부산", "대구", "광주", "대전")
+SQL_PRODUCTS = ("노트북", "모니터", "키보드", "마우스", "의자", "책상")
+# (SQL, 성공해야 하는지). 마지막은 검증이 거부하는 쓰기·파일 읽기다. 세 번째는 max_rows(200)를 넘어
+# 잘린다.
+SQLITE_QUERIES = (
+    (
+        "SELECT c.region, COUNT(*) AS n, SUM(o.amount) AS total FROM orders o"
+        " JOIN customers c ON c.id = o.customer_id GROUP BY c.region ORDER BY c.region",
+        True,
+    ),
+    (
+        "SELECT substr(ordered_at, 1, 7) AS month, SUM(amount) AS total FROM orders"
+        " GROUP BY month ORDER BY month",
+        True,
+    ),
+    ("SELECT * FROM orders ORDER BY amount DESC", True),
+    (
+        "SELECT customer_id, AVG(amount) AS average FROM orders GROUP BY customer_id"
+        " HAVING COUNT(*) > 3 ORDER BY average DESC",
+        True,
+    ),
+    ("DELETE FROM orders", False),
+)
+CSV_QUERIES = (
+    (
+        "SELECT region, COUNT(*) AS n, SUM(amount) AS total FROM sales GROUP BY region"
+        " ORDER BY region",
+        True,
+    ),
+    (
+        "SELECT product, AVG(amount) AS average FROM sales GROUP BY product ORDER BY average DESC",
+        True,
+    ),
+    ("SELECT * FROM sales ORDER BY amount DESC", True),
+    (
+        "SELECT region, product, SUM(amount) AS total FROM sales GROUP BY region, product"
+        " ORDER BY region, product",
+        True,
+    ),
+    ("SELECT * FROM read_csv('sales.csv')", False),
+)
 # document_extractor가 서버 안에서 읽는 txt(pdf·docx와 달리 파서 설치가 없다).
 DOC_TEXT = "메모리 확인용 문서\n" * 200
 WORKFLOW_GRAPH = {
@@ -225,13 +276,22 @@ class Console:
             for name, morsel in SimpleCookie(header).items():
                 self.cookies[name] = morsel.value
 
-    def upload(self, path: str, filename: str, data: bytes) -> dict[str, Any]:
+    def upload(
+        self,
+        path: str,
+        filename: str,
+        data: bytes,
+        *,
+        field: str = "file",
+        content_type: str = "text/plain",
+        expect: int = 201,
+    ) -> dict[str, Any]:
         """multipart 한 파일. 업로드 경로의 CSRF 검사는 X-Requested-With: fetch로 통과한다."""
         boundary = uuid.uuid4().hex
         head = (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-            "Content-Type: text/plain\r\n\r\n"
+            f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
         )
         body = head.encode() + data + f"\r\n--{boundary}--\r\n".encode()
         headers = {
@@ -246,13 +306,15 @@ class Console:
             payload = response.read()
         finally:
             conn.close()
-        if response.status != 201:
+        if response.status != expect:
             detail = payload[:300].decode("utf-8", errors="replace")
             raise ScenarioError(f"POST {path} 응답이 {response.status}다: {detail}")
         return json.loads(payload)
 
-    def call(self, method: str, path: str, body: Any, *, expect: int) -> dict[str, Any]:
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+    def call(
+        self, method: str, path: str, body: Any, *, expect: int, timeout: float = 30
+    ) -> dict[str, Any]:
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
         try:
             self._send(conn, method, path, body)
             response = conn.getresponse()
@@ -428,8 +490,125 @@ def _search(console: Console, kb_id: str, document_id: str) -> None:
     console.call("POST", f"{base}/eval/run", {"save": False}, expect=200)
 
 
+def _sqlite_bytes(folder: Path) -> bytes:
+    """고객 500명과 주문 1만 건이 든 SQLite 파일."""
+    rng = random.Random(13)  # noqa: S311  같은 데이터를 다시 만들려는 고정 시드다.
+    path = folder / "memcheck-shop.sqlite"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.executescript(
+            "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT, region TEXT);"
+            "CREATE TABLE orders(id INTEGER PRIMARY KEY, customer_id INTEGER, amount REAL,"
+            " ordered_at TEXT);"
+        )
+        conn.executemany(
+            "INSERT INTO customers VALUES (?, ?, ?)",
+            [(n, f"고객{n}", rng.choice(SQL_REGIONS)) for n in range(1, 501)],
+        )
+        conn.executemany(
+            "INSERT INTO orders VALUES (?, ?, ?, ?)",
+            [
+                (
+                    n,
+                    rng.randrange(1, 501),
+                    round(rng.uniform(1_000, 500_000), 2),
+                    f"2026-{rng.randrange(1, 13):02d}-{rng.randrange(1, 29):02d}",
+                )
+                for n in range(1, SQL_ROWS + 1)
+            ],
+        )
+        conn.commit()
+    data = path.read_bytes()
+    path.unlink()
+    return data
+
+
+def _csv_bytes() -> bytes:
+    rng = random.Random(17)  # noqa: S311  같은 데이터를 다시 만들려는 고정 시드다.
+    out = io.StringIO(newline="")
+    writer = csv.writer(out)
+    writer.writerow(["id", "region", "product", "amount", "sold_on"])
+    for n in range(1, SQL_ROWS + 1):
+        writer.writerow(
+            [
+                n,
+                rng.choice(SQL_REGIONS),
+                rng.choice(SQL_PRODUCTS),
+                rng.randrange(1_000, 500_000),
+                f"2026-{rng.randrange(1, 13):02d}-{rng.randrange(1, 29):02d}",
+            ]
+        )
+    return out.getvalue().encode("utf-8")
+
+
+def _sql_source(
+    console: Console,
+    name: str,
+    kind: str,
+    filename: str,
+    data: bytes,
+    queries: tuple[tuple[str, bool], ...],
+) -> None:
+    """데이터 소스를 만들어 파일 하나를 올리고 준비한 뒤 SQL 시험을 차례로 부른다."""
+    source = console.call(
+        "POST",
+        "/api/console/sql-sources",
+        {"name": name, "kind": kind, "data_policy": {"acknowledged": True}},
+        expect=201,
+    )
+    base = f"/api/console/sql-sources/{source['id']}"
+    console.upload(
+        f"{base}/files",
+        filename,
+        data,
+        field="files",
+        content_type="application/octet-stream",
+        expect=200,
+    )
+    prepared = console.call("POST", f"{base}/prepare", {}, expect=200, timeout=RUN_TIMEOUT_SEC)
+    if prepared["status"]["state"] != "ready":
+        raise ScenarioError(f"{name} 준비가 {prepared['status']}로 끝났다")
+    for sql, should_pass in queries:
+        result = console.call(
+            "POST", f"{base}/query", {"sql": sql}, expect=200, timeout=RUN_TIMEOUT_SEC
+        )
+        if bool(result["ok"]) != should_pass:
+            raise ScenarioError(f"{name}: {sql} 결과가 기대와 다르다: {result.get('error')}")
+
+
+def _sql(console: Console, folder: Path) -> str:
+    """SQLite 소스와, DuckDB 런타임이 있으면 CSV 소스를 준비해 SQL을 5번씩 실행한다."""
+    _sql_source(
+        console, "memcheck SQLite", "sqlite", "shop.sqlite", _sqlite_bytes(folder), SQLITE_QUERIES
+    )
+    runtime = console.call("GET", "/api/console/sql-runtime", None, expect=200)
+    if runtime["state"] != "ready":
+        return f"SQLite 질의 {len(SQLITE_QUERIES)}번. DuckDB 런타임이 없어 CSV는 건너뛰었다"
+    _sql_source(console, "memcheck CSV", "files", "sales.csv", _csv_bytes(), CSV_QUERIES)
+    return f"SQLite 질의 {len(SQLITE_QUERIES)}번, CSV(DuckDB) 질의 {len(CSV_QUERIES)}번"
+
+
+def _copy_sql_runtime(source: Path, data_dir: Path) -> bool:
+    """받아 둔 DuckDB 런타임을 임시 데이터 폴더의 cache/kb-sql로 복사한다. 없으면 False."""
+    folder = source / "cache" / "kb-sql" if (source / "cache" / "kb-sql").is_dir() else source
+    # 다 받은 폴더에만 표시 파일 .installed가 있다(app/workflow/extract_runner.py). 옮기다 만
+    # packages-<해시>.partial-* 폴더는 표시 파일이 있어도 뺀다.
+    packages = [
+        item
+        for item in sorted(folder.glob("packages-*"))
+        if ".partial-" not in item.name and (item / ".installed").is_file()
+    ]
+    extensions = folder / "duckdb-ext"
+    if not packages or not (extensions / ".installed").is_file():
+        return False
+    target = data_dir / "cache" / "kb-sql"
+    target.mkdir(parents=True, exist_ok=True)
+    for item in [*packages, extensions]:
+        shutil.copytree(item, target / item.name)
+    return True
+
+
 def _measure(
-    server: subprocess.Popen[bytes], port: int, seconds: float, *, idle_only: bool
+    server: subprocess.Popen[bytes], port: int, seconds: float, *, idle_only: bool, folder: Path
 ) -> dict[str, list[float]]:
     deadline = time.monotonic() + READY_TIMEOUT_SEC
     while _healthz(port) is None:
@@ -461,6 +640,8 @@ def _measure(
             print(f"인제스트: 청크 {segments}개", flush=True)
             sampler.phase = "search"
             _search(console, kb_id, document_id)
+            sampler.phase = "sql"
+            print(f"SQL: {_sql(console, folder)}", flush=True)
             sampler.phase = "after"
             time.sleep(seconds)
     finally:
@@ -515,6 +696,11 @@ def main(argv: list[str] | None = None) -> int:
         help="유휴 상태를 재는 시간(초). 런 뒤에도 같은 시간만큼 잰다. 기본 5",
     )
     parser.add_argument("--idle-only", action="store_true", help="런 없이 유휴 상태만 잰다")
+    parser.add_argument(
+        "--sql-runtime",
+        type=Path,
+        help="DuckDB 런타임을 받아 둔 DATA_DIR이나 그 cache/kb-sql. 주면 CSV 데이터 소스도 잰다",
+    )
     args = parser.parse_args(argv)
     budget_mb = float(os.environ.get("MEMORY_BUDGET_MB") or 300)
 
@@ -537,6 +723,8 @@ def main(argv: list[str] | None = None) -> int:
     error: str | None = None
     samples: dict[str, list[float]] = {}
     try:
+        if args.sql_runtime is not None and not _copy_sql_runtime(args.sql_runtime, data_dir):
+            print(f"{args.sql_runtime}에 다 받은 DuckDB 런타임이 없다. CSV는 건너뛴다", flush=True)
         with output.open("wb") as out:
             server = subprocess.Popen(
                 [command, "serve"],
@@ -547,7 +735,9 @@ def main(argv: list[str] | None = None) -> int:
                 creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
             )
         try:
-            samples = _measure(server, port, args.seconds, idle_only=args.idle_only)
+            samples = _measure(
+                server, port, args.seconds, idle_only=args.idle_only, folder=data_dir
+            )
         except (ScenarioError, OSError) as exc:
             error = str(exc) or type(exc).__name__
         finally:

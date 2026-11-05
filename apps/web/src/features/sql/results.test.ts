@@ -71,7 +71,7 @@ describe("SQL 결과", () => {
       "</document>",
       "결과가 200행을 넘어 잘렸다. 처음 2행만 싣는다.",
       "실행한 SQL: SELECT region, memo FROM t LIMIT 201",
-      "전체 결과는 작업공간 sql/call_1.csv에 CSV로 저장했다.",
+      "결과가 잘려 행 상한까지 받은 행만 작업공간 sql/call_1.csv에 CSV로 저장했다.",
     ].join("\n");
     expect(parseToolResult(output)).toEqual({
       table: {
@@ -120,6 +120,7 @@ describe("SQL 결과", () => {
     expect(parsed.table?.rows).toHaveLength(50);
     expect(parsed.executed).toBe(sql);
 
+    // 옛 서버가 남긴 기록의 끝줄("전체 결과는 …")도 꼬리로 읽는다.
     const cut = parseToolResult(
       [
         "결과가 1000행을 넘어 잘렸다. 처음 0행만 싣는다.",

@@ -403,6 +403,12 @@ test("Text2SQL: 템플릿 챗플로우의 노드 폼, 미리보기의 SQL 승인
   await expect(declined.getByTestId("sql-node-failure")).toHaveText("SQL 실행을 거절했습니다.");
   await expect(declined.getByText("거절", { exact: true })).toBeVisible();
   await panel.getByRole("tab", { name: "대화", exact: true }).click();
+  // 거절하면 고치기 가지로 가지 않고 템플릿이 정해 둔 문장으로 답한다.
+  await expect(
+    panel.getByText(
+      "SQL 실행이 승인되지 않았거나 승인 대기 시간이 지나 이번 질문에는 답하지 않았습니다.",
+    ),
+  ).toBeVisible();
 
   // 발행하고 웹앱에서도 같은 승인 카드로 답한다.
   await panel.getByRole("tab", { name: "발행" }).click();
@@ -538,7 +544,7 @@ test("에이전트: 미리보기의 query_sql 도구 카드에 행 수·잘림·
   await expect(panel.getByText(/지역별 고객 수를 표로 정리했습니다/)).toBeVisible();
   await expect(panel.getByText("query_sql", { exact: true })).toBeVisible();
   await expect(panel.getByText("1행", { exact: true })).toBeVisible();
-  await expect(panel.getByText("잘림 · 전체는 CSV")).toBeVisible();
+  await expect(panel.getByText("잘림 · 받은 행(행 상한까지)은 CSV")).toBeVisible();
   await expect(panel.getByLabel("실행한 SQL")).toContainText("LIMIT 2");
   const table = panel.getByRole("table", { name: "결과 표" });
   await expect(table.getByRole("cell", { name: "부산" })).toBeVisible();
@@ -551,7 +557,7 @@ test("에이전트: 미리보기의 query_sql 도구 카드에 행 수·잘림·
   await page.reload();
   await expect(panel.getByText("query_sql", { exact: true })).toBeVisible();
   await expect(panel.getByText("1행", { exact: true })).toBeVisible();
-  await expect(panel.getByText("잘림 · 전체는 CSV")).toBeVisible();
+  await expect(panel.getByText("잘림 · 받은 행(행 상한까지)은 CSV")).toBeVisible();
   await expect(panel.getByLabel("실행한 SQL")).toContainText("LIMIT 2");
   await expect(table.getByRole("cell", { name: "부산" })).toBeVisible();
   await expect(panel.getByRole("link", { name: /잘린 결과 CSV/ })).toBeVisible();

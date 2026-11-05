@@ -8,10 +8,11 @@ approval=always(노드 또는 데이터 소스 기본값)면 검증을 통과한
 만든다. 폼은 {sql: 고칠 수 있는 SQL, decision: approve·reject}이고, 재개하면 받은 SQL을 다시 검증해
 실행한다. 거절은 sql_rejected다(오류 정책을 탄다).
 
-실패하면 출력 error에 "<코드>: <문장>"을, sql_executed에 시도한 SQL을 싣는다.
-error.strategy=default면 엔진이 이 값을 기본값보다 먼저 써서 뒤 노드가 오류와 SQL로 고쳐 다시 돌릴
-수 있다(10.3 템플릿). 성공하면 error는 빈 글이다. 결과가 max_rows를 넘으면 truncated이고
-export_file이면 CSV를 파일로 낸다.
+실패하면 출력 error에 "<코드>: <문장>"을, sql_executed에 시도한 SQL(승인 대기였으면 카드에 보인
+SQL)을 싣는다. 검증·실행 실패뿐 아니라 데이터 소스 상태, 거절, 폼 응답 오류, 대기 만료도 같다.
+error.strategy=default면 엔진이 이 값을 기본값보다 먼저 써서 뒤 노드가 오류와 SQL로 고쳐 다시
+돌리거나 거절을 가를 수 있다(10.3 템플릿). 성공하면 error는 빈 글이다. 결과가 max_rows를 넘으면
+truncated이고 export_file이면 CSV를 파일로 낸다.
 """
 
 import uuid
@@ -40,6 +41,8 @@ from app.workflow.nodes.human_input import FormWaiting, open_form, take_reply
 from app.workflow.nodes.sql_schema import source_info, source_issues, sql_port
 from app.workflow.nodes.start import InputError, StartField, coerce_inputs
 from app.workflow.ports import FilePortError, SqlPortError, SqlSourceInfo
+from app.workflow.render import TemplateError
+from app.workflow.variables import VariableError
 
 APPROVE = "approve"
 REJECT = "reject"
@@ -63,7 +66,7 @@ class SqlQueryConfig(BaseModel):
     approval: Literal["none", "always"] | None = None
     llm_rows: int | None = Field(default=None, ge=1, le=10_000)
     llm_bytes: int | None = Field(default=None, ge=1024, le=LLM_BYTES_CAP)
-    # 결과가 잘리면 전체(max_rows행)를 CSV 파일로 낸다.
+    # 결과가 잘리면 받은 행(max_rows행까지)을 CSV 파일로 낸다.
     export_file: bool = True
 
 
@@ -163,31 +166,60 @@ class SqlQueryRunner(NodeRunner[SqlQueryConfig]):
     async def run(
         self, ctx: NodeContext, config: SqlQueryConfig, state: dict[str, Any] | None
     ) -> NodeResult:
+        shown: dict[str, Any] = {}
+        try:
+            return await self._run(ctx, config, state, shown)
+        except (NodeFailure, TemplateError, VariableError) as exc:
+            # 출력 없이 실패하면 error.strategy=default에서 error가 비어 뒤 노드가 성공으로 본다.
+            retryable = isinstance(exc, NodeFailure) and exc.retryable
+            retry_after = exc.retry_after if isinstance(exc, NodeFailure) else None
+            return NodeResult(
+                status="failed",
+                error=NodeError(
+                    code=exc.code, message=exc.message, retryable=retryable, retry_after=retry_after
+                ),
+                outputs={
+                    "error": f"{exc.code}: {exc.message}",
+                    "sql_executed": shown.get("sql", ""),
+                },
+                # 데이터 소스를 읽기 전에 실패했으면 엔진이 이 노드가 읽은 변수를 입력으로 남긴다.
+                inputs=shown or None,
+            )
+
+    async def _run(
+        self,
+        ctx: NodeContext,
+        config: SqlQueryConfig,
+        state: dict[str, Any] | None,
+        shown: dict[str, Any],
+    ) -> NodeResult:
         port = sql_port(ctx)
         info = await source_info(port, config.source_id)
         max_rows = min(config.max_rows or info.max_rows, info.max_rows_cap)
         approval = config.approval or info.approval
-        shown: dict[str, Any] = {
-            "source_id": str(info.id),
-            "max_rows": max_rows,
-            "approval": approval,
-        }
+        shown.update({"source_id": str(info.id), "max_rows": max_rows, "approval": approval})
         if approval == "always":
+            # 대기가 만료돼 take_reply가 input_timeout으로 끝나도 카드에 보인 SQL을 출력에 싣는다.
+            saved_sql = (state or {}).get("sql")
+            if isinstance(saved_sql, str):
+                shown["sql"] = saved_sql
             waiting, given = take_reply(ctx, state, SqlWaiting)
             if waiting is None:
                 sql = self._sql(ctx, config)
+                shown["sql"] = sql
                 try:
                     validated = await port.validate(info.id, sql, max_rows=max_rows)
                 except SqlPortError as exc:
-                    return _failed(exc, sql, {**shown, "sql": sql})
+                    return _failed(exc, sql, shown)
                 opened = open_form(ctx, approval_text(info))
                 waiting = SqlWaiting(**opened.model_dump(), sql=validated)
+            shown.update({"form_id": waiting.form_id, "sql": waiting.sql})
             if given is None:
                 return NodeResult(
                     status="waiting_input",
                     pending=approval_form(waiting),
                     state=waiting.model_dump(mode="json"),
-                    inputs={**shown, "form_id": waiting.form_id, "sql": waiting.sql},
+                    inputs=dict(shown),
                 )
             try:
                 values = coerce_inputs(approval_fields(waiting.sql), given)
@@ -236,7 +268,7 @@ class SqlQueryRunner(NodeRunner[SqlQueryConfig]):
         if run.rows_cut:
             warnings.append(
                 f"rows_cut: 행이 1MB를 넘어 rows에는 {len(run.rows)}행만 담았다"
-                + (" (전체는 CSV 파일)" if run.file else "")
+                + (" (받은 행은 CSV 파일)" if run.file else "")
             )
         return NodeResult(
             status="succeeded",

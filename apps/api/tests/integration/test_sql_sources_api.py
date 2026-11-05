@@ -5,8 +5,10 @@ sqlite 소스는 샌드박스 파이썬의 sqlite3만 쓰므로 DuckDB 런타임
 tests/windows/test_sql_runner_duckdb.py). 다른 워크스페이스의 데이터 소스는 404다.
 """
 
+import asyncio
 import os
 import sqlite3
+import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -24,6 +26,10 @@ from app.db.engine import Database
 from app.db.models import SqlQueryLog, SqlSource, Workspace
 from app.db.repositories.sql_sources import SqlSourceRepository
 from app.db.types import new_id
+from app.knowledge.sql.runner import EXTENSIONS_MARKER, extensions_dir, runtime_dir
+from app.sandbox.base import SandboxBackend, WorkspaceHandle
+from app.services import sql_runtime
+from app.workflow.extract_runner import READY_MARKER, run_script
 
 FETCH = {"X-Requested-With": "fetch"}
 BASE = "/api/console/sql-sources"
@@ -142,6 +148,227 @@ async def test_files_source_needs_the_duckdb_runtime(
         f"{BASE}/{source['id']}/files/{files[1]['file_id']}", headers=FETCH
     )
     assert [item["table"] for item in removed.json()["files"]] == ["sales"]
+
+
+async def test_new_sources_fill_missing_limits_from_the_server_settings(
+    app: FastAPI, logged_in: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings: Settings = app.state.settings
+    monkeypatch.setattr(settings, "sql_max_rows", 150)
+    monkeypatch.setattr(settings, "sql_timeout_sec", 12)
+    monkeypatch.setattr(settings, "sql_memory_mb", 768)
+    from_settings = {
+        "max_rows": 150,
+        "timeout_sec": 12,
+        "memory_mb": 768,
+        "llm_rows": 50,
+        "llm_bytes": 65536,
+    }
+
+    plain = await create_source(logged_in, "기본", "sqlite")
+    partial = await create_source(logged_in, "일부", "sqlite", limits={"max_rows": 20})
+    options = (await logged_in.get("/api/console/node-types")).json()["sql_options"]
+
+    assert plain["limits"] == from_settings
+    assert partial["limits"] == {**from_settings, "max_rows": 20}
+    assert (
+        options["default_max_rows"],
+        options["default_timeout_sec"],
+        options["default_memory_mb"],
+        options["default_llm_rows"],
+        options["default_llm_bytes"],
+    ) == (150, 12, 768, 50, 65536)
+
+    # 고칠 때 비운 칸은 저장된 값이고, 설정을 바꿔도 이미 만든 소스에는 소급하지 않는다.
+    monkeypatch.setattr(settings, "sql_memory_mb", 2048)
+    patched = await logged_in.patch(f"{BASE}/{partial['id']}", json={"limits": {"timeout_sec": 5}})
+    stored = (await logged_in.get(f"{BASE}/{plain['id']}")).json()
+
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["limits"] == {**from_settings, "max_rows": 20, "timeout_sec": 5}
+    assert stored["limits"] == from_settings
+    wrong = await logged_in.post(
+        BASE,
+        json={"name": "x", "limits": {"memory_mb": 64}, "data_policy": {"acknowledged": True}},
+    )
+    assert wrong.status_code == 422
+
+
+def _alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int32, ctypes.c_uint32]
+        kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+        kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        # PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE. WAIT_TIMEOUT(0x102)이면 살아 있다.
+        process = kernel32.OpenProcess(0x1000 | 0x00100000, False, pid)
+        if not process:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(process, 0) == 0x102
+        finally:
+            kernel32.CloseHandle(process)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+async def runtime_state(client: AsyncClient, wanted: str, seconds: float) -> dict[str, Any]:
+    deadline = time.monotonic() + seconds
+    while True:
+        status = (await client.get("/api/console/sql-runtime")).json()
+        if status["state"] == wanted or time.monotonic() > deadline:
+            return status
+        await asyncio.sleep(0.1)
+
+
+async def test_a_stuck_runtime_install_stops_at_the_time_limit_and_can_be_installed_again(
+    app: FastAPI, logged_in: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(app.state.settings, "sql_runtime_install_timeout_sec", 4)
+    pid_file = tmp_path / "pip.pid"
+    work_dirs: list[Path] = []
+
+    async def stuck(
+        sandbox: SandboxBackend, handle: WorkspaceHandle, cache_dir: Path, *, exec_prefix: str
+    ) -> tuple[Path, str]:
+        # 응답 없이 붙잡힌 pip처럼 실제 하위 프로세스가 오래 잔다. 자기 시간 상한(300초)보다 먼저
+        # 설치 전체의 상한(4초)에 걸려야 한다.
+        work_dirs.append(handle.root)
+        script = (
+            "import os, time\n"
+            f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+            "time.sleep(300)\n"
+        )
+        await run_script(
+            sandbox,
+            handle,
+            exec_id=f"{exec_prefix}-pip",
+            script=script,
+            output="never.json",
+            output_limit=1024,
+            timeout_sec=300,
+        )
+        raise AssertionError("설치 시간 상한에 끊겨야 한다")
+
+    monkeypatch.setattr(sql_runtime, "install_runtime", stuck)
+    started = time.monotonic()
+    accepted = await logged_in.post("/api/console/sql-runtime/prepare", json={})
+    failed = await runtime_state(logged_in, "failed", 30)
+
+    assert accepted.status_code == 202 and accepted.json()["state"] == "installing"
+    assert failed["state"] == "failed", failed
+    assert failed["error"]["code"] == "sql_runtime_install_timeout"
+    assert "4초" in failed["error"]["message"]
+    assert time.monotonic() - started < 20
+    pid = int(pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while _alive(pid) and time.monotonic() < deadline:
+        await asyncio.sleep(0.1)
+    assert not _alive(pid)
+    assert work_dirs and not work_dirs[0].exists()
+
+    async def quick(
+        sandbox: SandboxBackend, handle: WorkspaceHandle, cache_dir: Path, *, exec_prefix: str
+    ) -> tuple[Path, str]:
+        # 202 응답이 installing을 보이게 조금 머문다.
+        await asyncio.sleep(0.5)
+        lib = runtime_dir(cache_dir)
+        lib.mkdir(parents=True)
+        (lib / READY_MARKER).write_text("duckdb==2.0.0\n", encoding="utf-8")
+        extensions = extensions_dir(cache_dir)
+        extensions.mkdir(parents=True)
+        (extensions / EXTENSIONS_MARKER).write_text("v2.0.0\n", encoding="utf-8")
+        return lib, "v2.0.0"
+
+    monkeypatch.setattr(sql_runtime, "install_runtime", quick)
+    retried = await logged_in.post("/api/console/sql-runtime/prepare", json={})
+    ready = await runtime_state(logged_in, "ready", 10)
+
+    assert retried.status_code == 202 and retried.json()["state"] == "installing"
+    assert ready["state"] == "ready" and ready["error"] is None
+
+
+async def test_two_install_requests_at_once_start_one_install(
+    app: FastAPI, logged_in: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: list[Path] = []
+    release = asyncio.Event()
+
+    async def slow(
+        sandbox: SandboxBackend, handle: WorkspaceHandle, cache_dir: Path, *, exec_prefix: str
+    ) -> tuple[Path, str]:
+        started.append(handle.root)
+        await release.wait()
+        lib = runtime_dir(cache_dir)
+        lib.mkdir(parents=True)
+        (lib / READY_MARKER).write_text("duckdb==2.0.0\n", encoding="utf-8")
+        extensions = extensions_dir(cache_dir)
+        extensions.mkdir(parents=True)
+        (extensions / EXTENSIONS_MARKER).write_text("v2.0.0\n", encoding="utf-8")
+        return lib, "v2.0.0"
+
+    monkeypatch.setattr(sql_runtime, "install_runtime", slow)
+    runtime = app.state.sql_runtime
+
+    first, second = await asyncio.gather(
+        logged_in.post("/api/console/sql-runtime/prepare", json={}),
+        logged_in.post("/api/console/sql-runtime/prepare", json={}),
+    )
+    task = runtime._install
+    deadline = time.monotonic() + 10
+    while not started and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    again = await logged_in.post("/api/console/sql-runtime/prepare", json={})
+
+    assert [first.status_code, second.status_code] == [202, 202]
+    assert {first.json()["state"], second.json()["state"]} == {"installing"}
+    assert again.json()["state"] == "installing" and runtime._install is task
+    release.set()
+    ready = await runtime_state(logged_in, "ready", 10)
+    assert ready["state"] == "ready"
+    # 표시 파일을 읽는 사이에 두 요청이 겹쳐도 설치는 한 번만 돌았다.
+    assert len(started) == 1
+
+
+async def test_broken_or_partial_stored_limits_fall_back_to_the_server_settings(
+    app: FastAPI, logged_in: AsyncClient, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings: Settings = app.state.settings
+    monkeypatch.setattr(settings, "sql_timeout_sec", 12)
+    monkeypatch.setattr(settings, "sql_memory_mb", 768)
+    broken = await create_source(logged_in, "깨진 한도", "sqlite")
+    partial = await create_source(logged_in, "빠진 한도", "sqlite")
+    async with db.write() as session:
+        for source_id, limits in (
+            (broken["id"], {"max_rows": 0, "timeout_sec": "x"}),
+            (partial["id"], {"max_rows": 40}),
+        ):
+            row = await session.get(SqlSource, uuid.UUID(source_id))
+            assert row is not None
+            row.limits = limits
+
+    read_broken = (await logged_in.get(f"{BASE}/{broken['id']}")).json()
+    read_partial = (await logged_in.get(f"{BASE}/{partial['id']}")).json()
+
+    from_settings = {
+        "max_rows": 200,
+        "timeout_sec": 12,
+        "memory_mb": 768,
+        "llm_rows": 50,
+        "llm_bytes": 65536,
+    }
+    assert read_broken["limits"] == from_settings
+    # 빠진 칸만 설정값으로 채우고 저장된 칸은 그대로다.
+    assert read_partial["limits"] == {**from_settings, "max_rows": 40}
 
 
 async def test_sqlite_source_prepares_and_answers_queries(

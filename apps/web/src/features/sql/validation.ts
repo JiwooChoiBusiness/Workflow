@@ -46,6 +46,7 @@ export const SOURCE_CODES = [
   "sql_source_file_missing",
   "sql_unavailable",
   "sql_runtime_install_failed",
+  "sql_runtime_install_timeout",
   "sql_prepare_failed",
 ] as const;
 

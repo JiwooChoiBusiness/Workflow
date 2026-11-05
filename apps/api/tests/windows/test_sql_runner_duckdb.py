@@ -7,12 +7,15 @@
 timeout_sec에 끊기고 프로세스가 남지 않는다.
 
 런타임은 모듈이 한 번만 받도록 데이터 폴더를 모듈 안에서 같이 쓴다. PyPI에 닿지 않으면
-건너뛴다. 기본 실행에서 빠지고 `uv run pytest -m windows`로 돈다.
+건너뛴다. 기본 실행에서 빠지고 `uv run pytest -m windows`로 돈다. 환경변수 KB_TEST_SQL_RUNTIME에
+폴더를 주면 거기 받아 둔 런타임을 복사해 쓰고, 없으면 이 모듈이 받은 것을 그 폴더에 남긴다(CI의
+windows 잡이 actions/cache로 이 폴더를 보존한다).
 """
 
 import asyncio
 import datetime
 import io
+import os
 import shutil
 import socket
 import subprocess
@@ -33,10 +36,19 @@ from httpx import ASGITransport, AsyncClient
 
 from app import sysinfo
 from app.config import Settings
-from app.knowledge.sql.runner import QueryOutput, QueryRequest, SqlRunFailed, run_query
+from app.knowledge.sql.runner import (
+    EXTENSIONS_MARKER,
+    QueryOutput,
+    QueryRequest,
+    SqlRunFailed,
+    extensions_dir,
+    run_query,
+    runtime_dir,
+)
 from app.logsetup import configure_logging
 from app.main import create_app
 from app.services.sql_runtime import SqlRuntime
+from app.workflow.extract_runner import READY_MARKER
 
 pytestmark = [
     pytest.mark.windows,
@@ -48,6 +60,9 @@ FETCH = {"X-Requested-With": "fetch"}
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 REGIONS = ["서울", "부산", "대구", "광주"]
+# 데이터 폴더에 공백·괄호·한글을 넣어 allowed_paths와 read_csv가 그런 경로를 받는지 본다(사용자 폴더
+# 이름 ElonChoi(최지우)와 같은 모양).
+DATA_NAME = "데이터 (시험)"
 
 
 def pypi_reachable() -> bool:
@@ -58,11 +73,31 @@ def pypi_reachable() -> bool:
         return False
 
 
+def runtime_complete(kb_sql: Path) -> bool:
+    return (runtime_dir(kb_sql) / READY_MARKER).is_file() and (
+        extensions_dir(kb_sql) / EXTENSIONS_MARKER
+    ).is_file()
+
+
+def copy_runtime(source: Path, target: Path) -> None:
+    """다 받은 런타임(패키지와 확장 폴더)을 복사한다. 원본이 덜 받았거나 대상에 있으면 그만둔다."""
+    if not runtime_complete(source) or runtime_complete(target):
+        return
+    for folder in (runtime_dir(source), extensions_dir(source)):
+        shutil.copytree(folder, target / folder.name, dirs_exist_ok=True)
+
+
 @pytest.fixture(scope="module")
 def root() -> Iterator[Path]:
     # pip 임시 폴더가 경로 길이 260자를 넘지 않게 실제 DATA_DIR처럼 짧은 경로를 쓴다.
     path = Path(tempfile.mkdtemp(prefix="wfq")).resolve()
+    kb_sql = path / DATA_NAME / "cache" / "kb-sql"
+    cache = os.environ.get("KB_TEST_SQL_RUNTIME")
+    if cache:
+        copy_runtime(Path(cache), kb_sql)
     yield path
+    if cache:
+        copy_runtime(kb_sql, Path(cache))
     shutil.rmtree(path, ignore_errors=True)
 
 
@@ -70,11 +105,7 @@ def root() -> Iterator[Path]:
 async def running(root: Path) -> AsyncIterator[tuple[FastAPI, AsyncClient]]:
     if not pypi_reachable():
         pytest.skip("PyPI에 닿지 않아 DuckDB를 받을 수 없다")
-    # 데이터 폴더에 공백·괄호·한글을 넣어 allowed_paths와 read_csv가 그런 경로를 받는지 본다
-    # (사용자 폴더 이름 ElonChoi(최지우)와 같은 모양).
-    settings = Settings.model_validate(
-        {"data_dir": root / "데이터 (시험)", "web_dist_dir": root / "x"}
-    )
+    settings = Settings.model_validate({"data_dir": root / DATA_NAME, "web_dist_dir": root / "x"})
     checks = sysinfo.startup_checks
     sysinfo.startup_checks = lambda _settings: []  # type: ignore[assignment]
     application = create_app(settings)

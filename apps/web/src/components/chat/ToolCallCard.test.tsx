@@ -17,7 +17,7 @@ const OUTPUT = [
   "</document>",
   "결과가 2행을 넘어 잘렸다. 처음 2행만 싣는다.",
   "실행한 SQL: SELECT region, COUNT(*) AS n FROM customers GROUP BY region LIMIT 3",
-  "전체 결과는 작업공간 sql/call_1.csv에 CSV로 저장했다.",
+  "결과가 잘려 행 상한까지 받은 행만 작업공간 sql/call_1.csv에 CSV로 저장했다.",
 ].join("\n");
 
 function show(files: ChangedFile[], output = OUTPUT, restored = false) {
@@ -52,7 +52,7 @@ describe("query_sql 도구 카드", () => {
       screen.getByText("shop · SELECT region, COUNT(*) AS n FROM customers GROUP BY region"),
     ).toBeTruthy();
     expect(screen.getByText("2행")).toBeTruthy();
-    expect(screen.getByText("잘림 · 전체는 CSV")).toBeTruthy();
+    expect(screen.getByText("잘림 · 받은 행(행 상한까지)은 CSV")).toBeTruthy();
     expect(screen.getByLabelText("실행한 SQL").textContent).toContain("LIMIT 3");
     const table = screen.getByRole("table", { name: "결과 표" });
     expect(within(table).getByRole("cell", { name: "서울" })).toBeTruthy();
@@ -89,7 +89,7 @@ describe("query_sql 도구 카드", () => {
     show([], output, true);
     expect(screen.getByText("120행")).toBeTruthy();
     expect(screen.getByText("앞 50행")).toBeTruthy();
-    expect(screen.queryByText("잘림 · 전체는 CSV")).toBeNull();
+    expect(screen.queryByText("잘림 · 받은 행(행 상한까지)은 CSV")).toBeNull();
     expect(screen.getByLabelText("실행한 SQL").textContent).toBe(sql);
   });
 });

@@ -1,6 +1,9 @@
 # text_to_sql 챗플로우 템플릿(3단계 설계 10.3). 스키마 → SQL 만들기 → 실행 → 성공이면 답변,
-# 실패면 오류와 SQL로 한 번 고쳐 다시 실행한 뒤 답변한다. 데이터 소스는 만들 때 주거나(sql_source_id)
-# 세 SQL 노드(schema, run_sql, rerun_sql)에서 고른다.
+# 실패면 오류와 SQL로 한 번 고쳐 다시 실행한 뒤 답변한다. 실행 전 승인에서 거절했거나 대기가 만료됐으면
+# 고치지 않고 정해 둔 문장으로 답한다. 데이터 소스는 만들 때 주거나(sql_source_id) 세 SQL 노드(schema,
+# run_sql, rerun_sql)에서 고른다.
+# 노드가 출력 없이 실패하면(시간 상한, 예상 밖 예외) 기본값 error가 node_failed로 채워지고, 성공은
+# error가 빈 글일 때만이라 빈 결과로 답하지 않고 고치기 가지로 간다.
 nodes:
   - id: start
     type: start
@@ -34,16 +37,27 @@ nodes:
     title: SQL 실행
     position: { x: 780, y: 0 }
     config: { source_id: null, sql: "{{ write_sql.text }}" }
-    error: { strategy: default }
+    error: { strategy: default, default_outputs: { error: "node_failed: 노드가 결과 없이 끝났다" } }
   - id: check
     type: if_else
     title: 실행 성공?
     position: { x: 1040, y: 0 }
     config:
       cases:
+        - id: rejected
+          logical: or
+          conditions:
+            - { var: run_sql.error, op: starts_with, value: "sql_rejected:" }
+            - { var: run_sql.error, op: starts_with, value: "input_timeout:" }
         - id: ok
           conditions:
-            - { var: run_sql.error, op: is_empty }
+            - { var: run_sql.error, op: "=", value: "" }
+  - id: answer_rejected
+    type: answer
+    title: 답변(승인 안 됨)
+    position: { x: 1300, y: -360 }
+    config:
+      text: "SQL 실행이 승인되지 않았거나 승인 대기 시간이 지나 이번 질문에는 답하지 않았습니다."
   - id: answer_llm
     type: llm
     title: 답변 만들기
@@ -89,7 +103,7 @@ nodes:
     title: 고친 SQL 실행
     position: { x: 1560, y: 160 }
     config: { source_id: null, sql: "{{ fix_sql.text }}" }
-    error: { strategy: default }
+    error: { strategy: default, default_outputs: { error: "node_failed: 노드가 결과 없이 끝났다" } }
   - id: answer_llm_2
     type: llm
     title: 답변 만들기(고친 뒤)
@@ -125,3 +139,4 @@ edges:
   - { id: e8, source: fix_sql, target: rerun_sql }
   - { id: e9, source: rerun_sql, target: answer_llm_2 }
   - { id: e10, source: answer_llm_2, target: answer_2 }
+  - { id: e11, source: check, source_handle: case_rejected, target: answer_rejected }

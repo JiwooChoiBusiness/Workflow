@@ -106,12 +106,15 @@ class Settings(BaseSettings):
     kb_index_cache_kb: int = Field(default=8000, ge=1)
     kb_bit_candidates_threshold: int = Field(default=200_000, ge=1)
 
-    # Text2SQL(3단계 설계 10장). max_rows 상한, 데이터 소스의 기본 시간 상한(초, 60까지), 질의·준비
-    # 하위 프로세스의 메모리(MB), 데이터 소스 파일 하나의 상한(MB).
+    # Text2SQL(3단계 설계 10장). max_rows 상한, 새 데이터 소스의 기본 시간 상한(초, 60까지), 새
+    # 데이터 소스의 메모리 기본값이자 질의·준비 하위 프로세스의 상한(MB), 데이터 소스 파일 하나의
+    # 상한(MB). 시간·메모리를 바꿔도 이미 만든 데이터 소스의 값은 그대로다.
     sql_max_rows: int = Field(default=1000, ge=1, le=10_000)
     sql_timeout_sec: int = Field(default=30, ge=1, le=60)
     sql_memory_mb: int = Field(default=512, ge=128)
     sql_upload_max_mb: int = Field(default=200, ge=1)
+    # DuckDB 런타임 설치(pip과 확장 받기 전체)의 시간 상한(초). 실측 13~52초의 열 배 이상이다.
+    sql_runtime_install_timeout_sec: int = Field(default=600, ge=1)
 
     e2b_api_key: SecretStr | None = None
     e2b_template: str | None = None

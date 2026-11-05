@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv는 v8부터 주 버전 태그(v10 등)를 두지 않아 전체 버전으로 고정한다.
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.0"
           python-version: "3.12"
@@ -34,22 +35,54 @@ jobs:
       - run: uvx pip-audit -r requirements-audit.txt
         continue-on-error: true
       # 메모리 기준은 windows 잡의 값이고 여기 값은 참고다. 둘 다 예산을 넘으면 실패한다(설계 2.7).
+      # DuckDB 런타임이 없어 SQL 구간은 SQLite만 잰다.
       - run: uv run python scripts/memcheck.py
 
   # Job Object·PowerShell 실제 동작은 Windows에서만 확인된다(설계 12.1 Q6). windows 마커까지 전부 돈다.
-  # sqlite-vec 휠 로드(tests/windows/test_sqlite_vec_load.py)도 여기서 돈다. live(실제 Gemini 호출)는
-  # 키가 없어 뺀다.
+  # sqlite-vec 휠 로드(tests/windows/test_sqlite_vec_load.py)와 실제 DuckDB 러너
+  # (tests/windows/test_sql_runner_duckdb.py)도 여기서 돈다. live(실제 Gemini 호출)는 키가 없어 뺀다.
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.0"
           python-version: "3.12"
       - run: uv sync --locked
+      # DuckDB 런타임(약 250MB)을 실행마다 받지 않게 캐시한다. 키는 고정 버전(runner.py의 RUNTIME_SPECS,
+      # EXTENSIONS)과 샌드박스 파이썬 버전이다. e2e 잡도 같은 키를 쓴다.
+      - name: DuckDB 런타임 캐시 키
+        id: sql-runtime-key
+        shell: bash
+        run: |
+          key=$(uv run python -c "import platform; from app.knowledge.sql.runner import EXTENSIONS, RUNTIME_SPECS; print('-'.join(['py' + platform.python_version(), *RUNTIME_SPECS, *EXTENSIONS]).replace('==', '-'))")
+          echo "key=sql-runtime-${{ runner.os }}-$key" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        id: sql-runtime
+        with:
+          path: ${{ runner.temp }}/sql-runtime
+          key: ${{ steps.sql-runtime-key.outputs.key }}
+      # 런타임 시험은 캐시 폴더의 런타임을 복사해 쓰고, 없으면 받은 것을 그 폴더에 남긴다.
       - run: uv run pytest -m "not live"
-      - run: uv run python scripts/memcheck.py
+        env:
+          KB_TEST_SQL_RUNTIME: ${{ runner.temp }}/sql-runtime
+      - run: uv run python scripts/memcheck.py --sql-runtime "${{ runner.temp }}/sql-runtime"
+      - name: 받은 DuckDB 런타임 확인
+        id: sql-runtime-done
+        if: always() && steps.sql-runtime.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          # 글롭은 cygpath로 바꾼 POSIX 경로에서 한다(RUNNER_TEMP는 Windows 경로다).
+          dir="$(cygpath -u "$RUNNER_TEMP")/sql-runtime"
+          if [ -f "$dir/duckdb-ext/.installed" ] && ls "$dir"/packages-*/.installed > /dev/null 2>&1; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/save@v6
+        if: always() && steps.sql-runtime-done.outputs.complete == 'true'
+        with:
+          path: ${{ runner.temp }}/sql-runtime
+          key: ${{ steps.sql-runtime-key.outputs.key }}
 
   web:
     runs-on: ubuntu-latest
@@ -75,13 +108,15 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # Playwright 스모크(설계 7.6, 2단계 M20). 러너에 깔린 Edge를 쓰고 가짜 어댑터 서버를 8502에 띄운다.
-  # 각본 서버가 필요한 orchestration.spec은 스스로 건너뛴다. 실패하면 서버 로그를 남긴다.
+  # Playwright 스모크(설계 7.6, 2단계 M20). 러너에 깔린 Edge를 쓰고 가짜 어댑터 서버(기본 8502, 각본
+  # 8503·8504)를 시험 스텝마다 띄웠다 내린다. orchestration.spec은 각본 서버를 따로 두지 않아 스스로
+  # 건너뛴다. text2sql.spec은 SQLite 파일을 node:sqlite로 만들므로 Node 22.13+(또는 23.4+)가 필요하다
+  # (여기는 24). 실패하면 서버 로그를 남긴다.
   e2e:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.0"
           python-version: "3.12"
@@ -98,21 +133,79 @@ jobs:
         working-directory: apps/web
       - run: pnpm build
         working-directory: apps/web
-      - name: 시험 서버 띄우기
+      # CSV 데이터 소스 시험은 DuckDB 런타임이 있어야 돈다. windows 잡과 같은 캐시를 쓰고, 없으면 시험이
+      # 화면의 "런타임 준비"로 받는다(E2E_SQL_RUNTIME=install).
+      - name: DuckDB 런타임 캐시 키
+        id: sql-runtime-key
         shell: bash
         run: |
-          export SERVER_PORT=8502 DATA_DIR="$RUNNER_TEMP/e2e-data" LLM_FAKE=true GEMINI_API_KEYS=, PYTHONUTF8=1
+          key=$(uv run python -c "import platform; from app.knowledge.sql.runner import EXTENSIONS, RUNTIME_SPECS; print('-'.join(['py' + platform.python_version(), *RUNTIME_SPECS, *EXTENSIONS]).replace('==', '-'))")
+          echo "key=sql-runtime-${{ runner.os }}-$key" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        id: sql-runtime
+        with:
+          path: ${{ runner.temp }}/sql-runtime
+          key: ${{ steps.sql-runtime-key.outputs.key }}
+      # 서버마다 한 스텝 안에서 띄우고, 헬스를 기다리고, 그 서버로 시험을 돌리고, 내린다
+      # (scripts/ci-e2e.sh). 서버 로그는 $RUNNER_TEMP/e2e-<포트>.log다.
+      - name: 기본 서버 e2e
+        shell: bash
+        env:
+          E2E_SQL_RUNTIME: install
+        run: |
+          data="$RUNNER_TEMP/e2e-data"
+          cached="$(cygpath -u "$RUNNER_TEMP")/sql-runtime"
+          if [ -f "$cached/duckdb-ext/.installed" ]; then
+            target="$(cygpath -u "$data")/cache/kb-sql"
+            mkdir -p "$target"
+            cp -r "$cached/." "$target/"
+          else
+            echo "::notice::DuckDB 런타임 캐시가 없어 CSV 시험이 런타임을 받는다"
+          fi
           # dsl.spec이 비밀 환경 변수를 저장하므로 일회용 키를 만든다.
-          export ENCRYPTION_KEY="$(uv run python -c 'import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())')"
-          nohup uv run platform serve > "$RUNNER_TEMP/e2e-server.log" 2>&1 &
-          for _ in $(seq 1 90); do
-            curl -sf http://127.0.0.1:8502/healthz > /dev/null && exit 0
-            sleep 1
+          export ENCRYPTION_KEY="$(uv run --no-sync python -c 'import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())')"
+          bash scripts/ci-e2e.sh 8502 "$data"
+      - name: 받은 DuckDB 런타임을 캐시 폴더로
+        id: sql-runtime-done
+        if: always() && steps.sql-runtime.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          temp="$(cygpath -u "$RUNNER_TEMP")"
+          src="$temp/e2e-data/cache/kb-sql"
+          # 다 받은 패키지 폴더(.installed가 있는 packages-<해시>)만 옮긴다. 옮기다 만 .partial- 폴더는 뺀다.
+          complete=()
+          for dir in "$src"/packages-*; do
+            case "$dir" in *.partial-*) continue ;; esac
+            if [ -f "$dir/.installed" ]; then complete+=("$dir"); fi
           done
-          cat "$RUNNER_TEMP/e2e-server.log"
-          exit 1
-      - run: pnpm e2e
-        working-directory: apps/web
+          if [ -f "$src/duckdb-ext/.installed" ] && [ "${#complete[@]}" -gt 0 ]; then
+            mkdir -p "$temp/sql-runtime"
+            cp -r "$src/duckdb-ext" "${complete[@]}" "$temp/sql-runtime/"
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/save@v6
+        if: always() && steps.sql-runtime-done.outputs.complete == 'true'
+        with:
+          path: ${{ runner.temp }}/sql-runtime
+          key: ${{ steps.sql-runtime-key.outputs.key }}
+      # 각본 서버 시험(K6 지식 에이전트, query_sql 도구 카드). 각본은 서버 전체가 순서대로 한 번만 쓰므로
+      # 시험마다 새 데이터 폴더로 서버를 따로 띄우고 그 시험만 돌린다.
+      - name: 각본 서버 e2e(지식 에이전트)
+        shell: bash
+        env:
+          LLM_FAKE_SCRIPT: apps/web/e2e/fixtures/knowledge_agent_search.json
+          E2E_FAKE_SCRIPT: knowledge_agent_search
+        run: bash scripts/ci-e2e.sh 8503 "$RUNNER_TEMP/e2e-knowledge" knowledge
+      - name: 각본 서버 e2e(query_sql 도구 카드)
+        shell: bash
+        env:
+          LLM_FAKE_SCRIPT: apps/web/e2e/fixtures/sql_agent_query.json
+          E2E_FAKE_SCRIPT: sql_agent_query
+        run: bash scripts/ci-e2e.sh 8504 "$RUNNER_TEMP/e2e-sql" text2sql --grep query_sql
       - if: failure()
         shell: bash
-        run: tail -n 200 "$RUNNER_TEMP/e2e-server.log"
+        run: |
+          for log in "$(cygpath -u "$RUNNER_TEMP")"/e2e-*.log; do
+            echo "== $log"
+            tail -n 200 "$log"
+          done

@@ -39,6 +39,7 @@ log = structlog.get_logger("app.services.sql_runtime")
 
 KB_SQL_CACHE = ("cache", "kb-sql")
 ERR_RUNTIME_MISSING = "sql_runtime_missing"
+ERR_INSTALL_TIMEOUT = "sql_runtime_install_timeout"
 
 
 class SqlRuntimeMissing(Exception):
@@ -66,6 +67,7 @@ class SqlRuntime:
         self.cache_dir = settings.data_dir.joinpath(*KB_SQL_CACHE)
         self._clock = clock
         self._slot: asyncio.Semaphore | None = None
+        self._start_lock: asyncio.Lock | None = None
         self._install: asyncio.Task[None] | None = None
         self._failure: SqlRuntimeFailure | None = None
         self._installed_at: datetime | None = None
@@ -146,20 +148,47 @@ class SqlRuntime:
 
     async def start_install(self) -> SqlRuntimeStatus:
         """런타임 설치를 뒤에서 시작한다. 이미 돌고 있거나 받아 두었으면 지금 상태만 돌려준다."""
-        if not self.installing:
-            packages, extensions = await asyncio.to_thread(self._flags)
-            if not (packages and extensions):
-                self._failure = None
-                self._install = asyncio.create_task(self._run_install(), name="sql-runtime")
+        # 표시 파일을 읽는 await 사이에 두 번째 요청이 들어와 태스크가 둘 생기지 않게 잠근다.
+        # 루프에서 처음 쓸 때 만든다(slot과 같은 이유).
+        if self._start_lock is None:
+            self._start_lock = asyncio.Lock()
+        async with self._start_lock:
+            if not self.installing:
+                packages, extensions = await asyncio.to_thread(self._flags)
+                if not (packages and extensions):
+                    self._failure = None
+                    self._install = asyncio.create_task(self._run_install(), name="sql-runtime")
         return await self.status()
 
     async def _run_install(self) -> None:
         started = self._clock()
+        limit = self.settings.sql_runtime_install_timeout_sec
+        # pip과 확장 받기에도 각자 시간 상한이 있지만 합치면 15분이고, 응답 없는 하위 프로세스가 그
+        # 상한에 걸리지 않으면 installing이 끝나지 않는다. 넘으면 취소가 exec의 정리를 거쳐 프로세스
+        # 트리를 끝내고 작업 폴더를 지운다.
+        deadline = asyncio.timeout(limit)
         try:
-            async with self.work() as handle:
+            async with deadline, self.work() as handle:
                 _, version = await install_runtime(
                     self.backend(), handle, self.cache_dir, exec_prefix="sql-runtime"
                 )
+        except TimeoutError as exc:
+            if deadline.expired():
+                self._failure = SqlRuntimeFailure(
+                    code=ERR_INSTALL_TIMEOUT,
+                    message=(
+                        f"{limit}초 안에 끝나지 않아 설치를 멈췄다. "
+                        "인터넷 연결을 확인하고 다시 받는다"
+                    ),
+                )
+                log.warning("sql.runtime_install_timeout", seconds=limit)
+            else:
+                # 설치 안쪽에서 난 다른 시간 초과(파일 옮기기 등)는 상한 초과가 아니라 설치 실패다.
+                self._failure = SqlRuntimeFailure(
+                    code="sql_runtime_install_failed", message=f"설치 중 시간 초과: {exc}"
+                )
+                log.warning("sql.runtime_install_failed", code="timeout", error=str(exc))
+            return
         except SqlRunFailed as exc:
             self._failure = SqlRuntimeFailure(code=exc.code, message=exc.message)
             log.warning("sql.runtime_install_failed", code=exc.code, error=exc.message)

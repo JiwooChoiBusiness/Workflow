@@ -119,7 +119,9 @@ export interface ToolSqlResult {
 }
 
 const EXECUTED = "실행한 SQL:";
-const CSV_LINE = /\r?\n전체 결과는 작업공간 (\S+\.csv)에 CSV로 저장했다\.?\s*$/;
+// 끝줄은 꼬리 "작업공간 <경로>.csv에 CSV로 저장했다."만 계약이고 앞의 덧말은 바뀔 수 있다. 옛 기록의
+// "전체 결과는 작업공간 …"과 지금 서버의 "결과가 잘려 행 상한까지 받은 행만 작업공간 …"을 다 읽는다.
+const CSV_LINE = /\r?\n[^\n]*?작업공간 (\S+\.csv)에 CSV로 저장했다\.?\s*$/;
 
 // 서버 results.summary_line의 네 모양을 읽는다.
 function summaryCounts(summary: string): Pick<ToolSqlResult, "rowCount" | "shown" | "truncated"> {
@@ -135,7 +137,7 @@ function summaryCounts(summary: string): Pick<ToolSqlResult, "rowCount" | "shown
 
 /*
  * query_sql 도구의 결과 글을 읽는다. 모양은 <document name="질의 결과" …>표</document>, 요약 줄, "실행한 SQL: …",
- * 잘렸으면 "전체 결과는 작업공간 <경로>에 CSV로 저장했다."이다(apps/api/app/agent/tools/query_sql.py). 메시지
+ * 잘렸으면 "… 작업공간 <경로>에 CSV로 저장했다."로 끝나는 줄이다(apps/api/app/agent/tools/query_sql.py). 메시지
  * 기록에서 다시 그린 카드에는 tool_call.completed.sql이 없어 행 수·잘림·실행한 SQL도 이 글에서 읽는다.
  */
 export function parseToolResult(output: string): ToolSqlResult {

@@ -25,6 +25,7 @@ from app.config import Settings
 from app.db.models import SqlSource
 from app.llm.fake_adapter import fake_end, fake_text, fake_tool_call
 from app.llm.types import ChatRequest, ModelEvent, ToolResultBlock
+from app.services.sql_sources import WorkflowSqlPort
 
 FETCH = {"X-Requested-With": "fetch"}
 BASE = "/api/console/sql-sources"
@@ -264,6 +265,99 @@ async def test_a_failed_sql_takes_the_fix_branch_once(
     ]
 
 
+async def test_a_rejected_approval_answers_with_a_fixed_sentence_and_skips_the_fix(
+    logged_in: AsyncClient, script: Any, tmp_path: Path
+) -> None:
+    source = await make_source(logged_in, tmp_path)
+    # 템플릿의 SQL 노드는 approval을 비워 두어 데이터 소스의 승인 방식을 따른다.
+    patched = await logged_in.patch(f"{BASE}/{source['id']}", json={"approval": "always"})
+    assert patched.status_code == 200, patched.text
+    created = await logged_in.post(
+        "/api/console/workflows",
+        json={
+            "name": "주문 분석",
+            "kind": "chatflow",
+            "template": "text_to_sql",
+            "sql_source_id": source["id"],
+        },
+    )
+    workflow_id = created.json()["id"]
+    seen: list[ChatRequest] = []
+    script.add(replying(seen, TOTALS))
+
+    waiting = await chat(logged_in, workflow_id, "지역별 합계")
+    assert waiting["run"]["status"] == "waiting_input", waiting["run"]
+    shown = waiting["run"]["pending_interaction"]["form"]["fields"][0]["default"]
+    finished = await logged_in.post(
+        f"/api/console/wf-runs/{waiting['run']['id']}/input",
+        json={
+            "kind": "form",
+            "values": {"sql": shown, "decision": "reject"},
+            "response_mode": "blocking",
+        },
+    )
+
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["status"] == "succeeded", finished.json()
+    messages = (
+        await logged_in.get(f"/api/console/wf-conversations/{waiting['conversation_id']}/messages")
+    ).json()["items"]
+    assert messages[-1]["text"] == (
+        "SQL 실행이 승인되지 않았거나 승인 대기 시간이 지나 이번 질문에는 답하지 않았습니다."
+    )
+    # 모델은 SQL 만들기 한 번만 불렀다. 거절한 SQL을 고치거나 빈 결과로 답하지 않는다.
+    assert len(seen) == 1
+    runs = await node_runs(logged_in, waiting["run"]["id"])
+    assert runs["run_sql"]["status"] == "failed"
+    assert runs["run_sql"]["error"]["code"] == "sql_rejected"
+    assert runs["answer_rejected"]["status"] == "succeeded"
+    for skipped in ("answer_llm", "fix_sql", "rerun_sql", "answer_llm_2"):
+        assert runs[skipped]["status"] == "skipped", (skipped, runs[skipped]["status"])
+    assert await query_logs(logged_in, source["id"]) == []
+
+
+async def test_a_node_failure_without_outputs_takes_the_fix_branch_not_the_answer(
+    logged_in: AsyncClient, script: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = await make_source(logged_in, tmp_path)
+    created = await logged_in.post(
+        "/api/console/workflows",
+        json={
+            "name": "주문 분석",
+            "kind": "chatflow",
+            "template": "text_to_sql",
+            "sql_source_id": source["id"],
+        },
+    )
+    workflow_id = created.json()["id"]
+
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        # 노드가 잡지 않는 예외. 엔진이 출력 없는 node_error로 끝낸다(시간 상한도 같은 모양이다).
+        raise RuntimeError("실행 환경이 갑자기 멈췄다")
+
+    monkeypatch.setattr(WorkflowSqlPort, "execute", broken)
+    seen: list[ChatRequest] = []
+    script.add(
+        replying(seen, TOTALS),
+        replying(seen, TOTALS),
+        replying(seen, "SQL을 실행하지 못해 답하지 못했습니다."),
+    )
+
+    body = await chat(logged_in, workflow_id, "지역별 합계")
+
+    assert body["run"]["status"] == "succeeded", body["run"]
+    assert body["answer"] == "SQL을 실행하지 못해 답하지 못했습니다."
+    runs = await node_runs(logged_in, body["run"]["id"])
+    assert runs["run_sql"]["status"] == "failed"
+    assert runs["run_sql"]["error"]["code"] == "node_error"
+    # 빈 결과로 답하는 성공 가지가 아니라 고치기 가지로 갔고, 두 프롬프트에 기본값 error가 실렸다.
+    assert runs["answer_llm"]["status"] == "skipped"
+    assert runs["fix_sql"]["status"] == "succeeded"
+    write_sql, fix_sql, answer_llm_2 = seen
+    assert "node_failed: 노드가 결과 없이 끝났다" in fix_sql.system
+    assert "오류: node_failed: 노드가 결과 없이 끝났다" in answer_llm_2.system
+
+
 def approval_flow(source_id: str) -> dict[str, Any]:
     nodes = [
         node("start", "start", {"fields": []}),
@@ -440,7 +534,7 @@ async def test_agent_queries_its_source_and_keeps_the_full_result_as_csv(
     )
     assert "CREATE TABLE orders (" in described
     assert "결과가 2행을 넘어 잘렸다" in queried
-    assert "전체 결과는 작업공간 sql/call_q.csv에 CSV로 저장했다." in queried
+    assert "행 상한까지 받은 행만 작업공간 sql/call_q.csv에 CSV로 저장했다." in queried
     events = (await logged_in.get(f"/api/console/runs/{body['run']['id']}/events")).json()
     completed = [item["data"] for item in events["items"] if item["type"] == "tool_call.completed"]
     assert completed[0].get("sql") is None

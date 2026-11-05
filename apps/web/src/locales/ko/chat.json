@@ -82,7 +82,7 @@
     "knowledgeSummary": "결과 {{count}}개(문서 {{documents}}개) · 1위 {{name}}",
     "knowledgeNone": "찾은 결과가 없습니다.",
     "sqlRows": "{{rows}}행",
-    "sqlTruncated": "잘림 · 전체는 CSV",
+    "sqlTruncated": "잘림 · 받은 행(행 상한까지)은 CSV",
     "sqlExecuted": "실행한 SQL",
     "sqlTable": "결과 표",
     "sqlShown": "앞 {{shown}}행",

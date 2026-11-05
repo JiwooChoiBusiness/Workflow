@@ -3227,6 +3227,7 @@
     "timeout_max": 60,
     "default_max_rows": 200,
     "default_timeout_sec": 30,
+    "default_memory_mb": 512,
     "default_llm_rows": 50,
     "default_llm_bytes": 65536,
     "llm_bytes_max": 65536,

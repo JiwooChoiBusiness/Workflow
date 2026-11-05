@@ -7919,33 +7919,37 @@ export interface components {
             sheet?: string | null;
             options?: components["schemas"]["SqlFileOptions"] | null;
         };
-        /** SqlLimits */
+        /**
+         * SqlLimits
+         * @description 저장된 데이터 소스의 한도. 새 소스의 값은 설정에서 만든다(sql_sources.default_limits).
+         */
         SqlLimits: {
-            /**
-             * Max Rows
-             * @default 200
-             */
+            /** Max Rows */
             max_rows: number;
-            /**
-             * Timeout Sec
-             * @default 30
-             */
+            /** Timeout Sec */
             timeout_sec: number;
-            /**
-             * Memory Mb
-             * @default 512
-             */
+            /** Memory Mb */
             memory_mb: number;
-            /**
-             * Llm Rows
-             * @default 50
-             */
+            /** Llm Rows */
             llm_rows: number;
-            /**
-             * Llm Bytes
-             * @default 65536
-             */
+            /** Llm Bytes */
             llm_bytes: number;
+        };
+        /**
+         * SqlLimitsIn
+         * @description 만들기·고치기에서 받는 한도. 비운 칸은 만들 때 서버 설정값, 고칠 때 저장된 값을 쓴다.
+         */
+        SqlLimitsIn: {
+            /** Max Rows */
+            max_rows?: number | null;
+            /** Timeout Sec */
+            timeout_sec?: number | null;
+            /** Memory Mb */
+            memory_mb?: number | null;
+            /** Llm Rows */
+            llm_rows?: number | null;
+            /** Llm Bytes */
+            llm_bytes?: number | null;
         };
         /**
          * SqlMaterialized
@@ -7977,6 +7981,8 @@ export interface components {
             default_max_rows: number;
             /** Default Timeout Sec */
             default_timeout_sec: number;
+            /** Default Memory Mb */
+            default_memory_mb: number;
             /** Default Llm Rows */
             default_llm_rows: number;
             /** Default Llm Bytes */
@@ -8180,7 +8186,7 @@ export interface components {
              * @enum {string}
              */
             approval: "none" | "always";
-            limits?: components["schemas"]["SqlLimits"] | null;
+            limits?: components["schemas"]["SqlLimitsIn"] | null;
             /**
              * Glossary
              * @default
@@ -8281,7 +8287,7 @@ export interface components {
             description?: string | null;
             /** Approval */
             approval?: ("none" | "always") | null;
-            limits?: components["schemas"]["SqlLimits"] | null;
+            limits?: components["schemas"]["SqlLimitsIn"] | null;
             /** Glossary */
             glossary?: string | null;
             data_policy?: components["schemas"]["DataPolicyIn"] | null;

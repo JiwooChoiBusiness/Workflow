@@ -252,6 +252,53 @@ async def test_approval_reject_and_a_write_statement_are_refused(
     assert port.executed == []
 
 
+async def test_rejection_bad_replies_expiry_and_source_problems_fill_the_error_output(
+    kit: Any, make_node: Any, fake_sql: Any, sql_source_id: uuid.UUID
+) -> None:
+    config = {"source_id": str(sql_source_id), "sql": "{{ start.q }}", "approval": "always"}
+    graph = query_graph(kit, make_node, config, error={"strategy": "default"})
+    port = fake_sql()
+    first = await kit.run(graph, inputs={"q": ANSWER}, ports=kit.ports(sql=port))
+    form = first.outcome.pending.form
+    shown = "SELECT region, SUM(amount) AS total FROM sales GROUP BY region LIMIT 201"
+
+    async def answer(reply: dict[str, Any]) -> Any:
+        return await resume(
+            kit,
+            graph,
+            first.outcome.checkpoint,
+            NodeReply("run_sql", None, {"form_id": form.form_id, **reply}),
+            inputs={"q": ANSWER},
+            ports=kit.ports(sql=port),
+        )
+
+    rejected = await answer({"values": {"sql": "SELECT 1", "decision": "reject"}})
+    broken = await answer({"values": {"sql": shown, "decision": "maybe"}})
+    expired = await answer({"timeout": True})
+    missing = await kit.run(
+        query_graph(
+            kit,
+            make_node,
+            {"source_id": str(uuid.uuid4()), "sql": "SELECT region FROM sales"},
+            error={"strategy": "default"},
+        ),
+        ports=kit.ports(sql=port),
+    )
+
+    # 기본값 전략이면 런은 이어지고, 템플릿이 거절과 실패를 가를 수 있게 error가 채워진다.
+    assert rejected.status == "succeeded", rejected.error
+    assert rejected.outputs["error"] == "sql_rejected: 사용자가 SQL 실행을 거절했다"
+    # 거절하면 카드에 보인 SQL을 싣는다(고친 글이 아니다).
+    assert rejected.outputs["sql_executed"] == shown
+    assert broken.outputs["error"].startswith("invalid_inputs: 승인 폼 응답이 올바르지 않다")
+    assert broken.outputs["sql_executed"] == shown
+    assert expired.outputs["error"] == "input_timeout: 정한 시간 안에 폼 응답이 없었다"
+    assert expired.outputs["sql_executed"] == shown
+    assert missing.outcome.outputs["error"] == "sql_source_not_found: 데이터 소스를 찾을 수 없다"
+    assert missing.outcome.outputs["sql_executed"] == ""
+    assert port.executed == []
+
+
 async def test_a_refused_sql_does_not_open_the_approval_form(
     kit: Any, make_node: Any, fake_sql: Any, sql_source_id: uuid.UUID
 ) -> None:

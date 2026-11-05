@@ -130,7 +130,7 @@ async def test_query_result_names_the_sql_and_the_csv() -> None:
     lines = result.content.splitlines()
     assert lines[0] == '<document name="질의 결과" source="매출">'
     assert lines[-2] == "실행한 SQL: SELECT region FROM sales LIMIT 201"
-    assert lines[-1] == f"전체 결과는 작업공간 {csv_path}에 CSV로 저장했다."
+    assert lines[-1] == f"결과가 잘려 행 상한까지 받은 행만 작업공간 {csv_path}에 CSV로 저장했다."
     assert result.sql == {
         "sql_executed": "SELECT region FROM sales LIMIT 201",
         "row_count": 200,

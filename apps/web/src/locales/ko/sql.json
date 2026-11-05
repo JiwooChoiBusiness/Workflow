@@ -23,7 +23,7 @@
   },
   "kindHint": {
     "files": "CSV·TSV·xlsx를 20개까지 올립니다. 파일 하나가 표 하나이고 DuckDB로 질의합니다.",
-    "sqlite": ".db·.sqlite 파일 하나를 SQLite로 질의합니다."
+    "sqlite": ".db·.sqlite·.sqlite3 파일 하나를 SQLite로 질의합니다."
   },
   "approval": {
     "none": "자동 실행",
@@ -126,7 +126,7 @@
     "replace": "다른 파일로 바꾸기",
     "drop": "파일을 여기에 끌어 놓거나 올리기를 누르세요.",
     "hintFiles": "CSV·TSV·xlsx를 20개까지 올립니다. 파일 하나는 기본 200MB까지이고, xlsx는 준비 때 전체를 읽으므로 50MB 이하를 권합니다.",
-    "hintSqlite": ".db·.sqlite 파일 하나를 올립니다. 다시 올리면 바꿉니다.",
+    "hintSqlite": ".db·.sqlite·.sqlite3 파일 하나를 올립니다. 다시 올리면 바꿉니다.",
     "uploading": "올리는 중…",
     "uploaded": "파일 {{count}}개를 올렸습니다.",
     "empty": "아직 올린 파일이 없습니다.",
@@ -294,6 +294,7 @@
     "sql_memory_limit": "메모리 상한을 넘어 멈췄습니다. 조건을 좁히거나 집계해서 결과를 줄이세요.",
     "sql_runtime_missing": "DuckDB 런타임이 없습니다. 데이터 소스 화면에서 런타임을 준비하세요.",
     "sql_runtime_install_failed": "DuckDB 런타임을 받지 못했습니다. 인터넷 연결을 확인하고 다시 받으세요.",
+    "sql_runtime_install_timeout": "DuckDB 런타임 받기가 시간 상한 안에 끝나지 않아 멈췄습니다. 인터넷 연결을 확인하고 다시 받으세요.",
     "sql_failed": "SQL 실행 환경에서 문제가 생겼습니다. 잠시 뒤 다시 시도하세요.",
     "sql_rejected": "SQL 실행을 거절했습니다.",
     "sql_source_not_prepared": "데이터 소스를 먼저 준비해야 합니다.",
@@ -423,7 +424,7 @@
     "remove": "데이터 소스 {{id}} 빼기",
     "full": "{{max}}개까지 고를 수 있습니다.",
     "toolsAttached": "describe_sql_source·query_sql 도구가 붙습니다",
-    "toolsAttachedHint": "도구와 스킬 탭에 자동 도구로 보입니다. 결과가 잘리면 전체를 작업공간의 sql/ 폴더에 CSV로 남깁니다.",
+    "toolsAttachedHint": "도구와 스킬 탭에 자동 도구로 보입니다. 결과가 잘리면 받은 행(행 상한까지)을 작업공간의 sql/ 폴더에 CSV로 남깁니다.",
     "notReady": "준비되지 않은 데이터 소스가 있습니다. 준비하기 전에는 도구가 실패합니다.",
     "paidTitle": "유료 키 전용 데이터 소스",
     "paidHint": "{{names}}을(를) 붙이면 이 에이전트의 런은 모두 유료 키로 돕니다.",
