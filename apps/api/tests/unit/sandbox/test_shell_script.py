@@ -150,6 +150,7 @@ def windows_parent(venv: Path) -> dict[str, str]:
         "LOCALAPPDATA": r"C:\Users\me\AppData\Local",
         "ProgramData": r"C:\ProgramData",
         "PSModulePath": r"C:\Windows\system32\WindowsPowerShell\v1.0\Modules",
+        "PSModuleAnalysisCachePath": r"C:\PSModuleAnalysisCachePath\ModuleAnalysisCache",
         "NUMBER_OF_PROCESSORS": "8",
         "PROCESSOR_ARCHITECTURE": "AMD64",
         # uv run이 넣은 venv 경로(대소문자·끝 구분자가 달라도 빠져야 한다)와 일반 경로
@@ -176,6 +177,7 @@ def test_windows_env_is_built_from_a_short_list(layout: dict[str, Path]) -> None
 
     assert set(env) == {*WINDOWS_INHERITED_ENV, *PLATFORM_VARS, "PATH", "MY_SETTING"}
     assert env["SystemRoot"] == r"C:\Windows"
+    assert env["PSModuleAnalysisCachePath"] == r"C:\PSModuleAnalysisCachePath\ModuleAnalysisCache"
     assert env["TEMP"] == env["TMP"] == str(ws / ".tmp")
     entries = env["PATH"].split(";")
     # Windows 명령이 Git의 GNU 명령(find, sort 등)보다 먼저 잡히도록 System32가 맨 앞이다.
@@ -195,6 +197,25 @@ def test_windows_env_is_built_from_a_short_list(layout: dict[str, Path]) -> None
     assert env["MPLCONFIGDIR"] == str(ws / ".cache" / "matplotlib")
     assert env["PYTHONSAFEPATH"] == env["PYTHONUTF8"] == "1"
     assert env["MY_SETTING"] == "값"
+
+
+def test_module_analysis_cache_path_is_left_out_when_parent_has_none(
+    layout: dict[str, Path],
+) -> None:
+    parent = windows_parent(layout["venv"])
+    del parent["PSModuleAnalysisCachePath"]
+
+    env = build_env(
+        workspace=layout["workspace"],
+        cwd=layout["workspace"],
+        sandbox_python_dir=layout["python"],
+        pip_cache_dir=layout["pip_cache"],
+        agent_env={},
+        parent_env=parent,
+        windows=True,
+    )
+
+    assert "PSModuleAnalysisCachePath" not in env
 
 
 def test_windows_path_without_system_root_keeps_workspace_dirs_first(

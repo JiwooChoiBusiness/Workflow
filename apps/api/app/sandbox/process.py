@@ -25,6 +25,9 @@ WINDOWS_INHERITED_ENV = (
     "LOCALAPPDATA",
     "ProgramData",
     "PSModulePath",
+    # GitHub 러너는 미리 만든 모듈 분석 캐시를 이 변수로 가리킨다. 이 값이 빠지면 PowerShell이
+    # 시작할 때마다 PSModulePath의 모듈을 다시 분석해 20~30초씩 걸렸다.
+    "PSModuleAnalysisCachePath",
     "NUMBER_OF_PROCESSORS",
     "PROCESSOR_ARCHITECTURE",
 )
